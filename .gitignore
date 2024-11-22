@@ -1,0 +1,6 @@
+.DS_Store
+/zig-out
+/.zig-cache
+/.idea/zigbrains.xml
+*.sublime-project
+*.sublime-workspace
