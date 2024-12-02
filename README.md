@@ -16,3 +16,4 @@ zig build
 
 ## License
 
+This project is licensed under the MIT license. A copy of the license is available in the [license file](LICENSE.md).
