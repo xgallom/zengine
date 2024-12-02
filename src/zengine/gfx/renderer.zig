@@ -123,7 +123,7 @@ pub const Renderer = struct {
             },
             .primitive_type = sdl.SDL_GPU_PRIMITIVETYPE_TRIANGLELIST,
             .rasterizer_state = .{
-                .fill_mode = sdl.SDL_GPU_FILLMODE_LINE,
+                .fill_mode = sdl.SDL_GPU_FILLMODE_FILL,
                 .cull_mode = sdl.SDL_GPU_CULLMODE_BACK,
                 .front_face = sdl.SDL_GPU_FRONTFACE_COUNTER_CLOCKWISE,
                 .enable_depth_clip = true,

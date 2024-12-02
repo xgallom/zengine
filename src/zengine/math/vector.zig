@@ -96,7 +96,6 @@ pub fn VectorMath(comptime N: usize) type {
 
             pub fn local_coordinates(result: *Coordinates, direction: *const Self, up: *const Self) void {
                 result.front = direction.*;
-                normalize(&result.front);
                 cross(&result.right, up, &result.front);
                 normalize(&result.right);
                 cross(&result.up, &result.front, &result.right);

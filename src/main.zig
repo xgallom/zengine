@@ -1,17 +1,17 @@
 const std = @import("std");
-const sdl = @import("ext/sdl.zig");
-const math = @import("math.zig");
-const ecs = @import("ecs.zig");
-const Engine = @import("engine.zig").Engine;
-const gfx = @import("gfx.zig");
+const zengine = @import("zengine");
+const allocators = zengine.allocators;
+const ecs = zengine.ecs;
+const gfx = zengine.gfx;
+const math = zengine.math;
+const sdl = zengine.ext.sdl;
+const Engine = zengine.Engine;
 
 const assert = std.debug.assert;
 
 pub const std_options = .{
     .log_level = .info,
 };
-
-const memory_size = 2 << 30; // 2GB
 
 const Position = struct {
     x: f32,
@@ -20,11 +20,10 @@ const Position = struct {
 };
 
 pub fn main() !void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{ .enable_memory_limit = true }){ .requested_memory_limit = memory_size };
-    var arena = std.heap.ArenaAllocator.init(gpa.allocator());
-    defer arena.deinit();
+    allocators.init(std.heap.c_allocator, 2 << 30); // Memory limit: 2GB
+    defer allocators.deinit();
 
-    const engine = try Engine.init(arena.allocator());
+    const engine = try Engine.init(allocators.arena());
     defer engine.deinit();
 
     var component_manager = try ecs.ComponentManager.init(engine.allocator);
@@ -67,7 +66,7 @@ pub fn main() !void {
         }
         framerate_index = (framerate_index + 1) % 512;
         framerate_buffer[framerate_index] = now;
-        std.log.info("Framerate: {}", .{framerate});
+        // std.log.info("Framerate: {}", .{framerate});
 
         var sdl_event: sdl.SDL_Event = undefined;
         while (sdl.SDL_PollEvent(&sdl_event)) {
@@ -104,13 +103,17 @@ pub fn main() !void {
             }
         }
 
-        const camera_step = @as(f32, @floatFromInt(now - last_update_time)) / 500.0;
+        var global_up = math.Vector3{ 0, 1, 0 };
         var coordinates: math.vector3.Coordinates = undefined;
-        math.vector3.local_coordinates(&coordinates, &renderer.camera_direction, &.{ 0, 1, 0 });
+        math.vector3.local_coordinates(&coordinates, &renderer.camera_direction, &global_up);
+
+        const delta: f32 = @floatFromInt(now - last_update_time);
+        const camera_step = delta / 500.0;
 
         math.vector3.scale(&coordinates.front, camera_step);
         math.vector3.scale(&coordinates.right, camera_step);
         math.vector3.scale(&coordinates.up, camera_step);
+        math.vector3.scale(&global_up, camera_step);
 
         if (key_matrix & 0x01 != 0)
             math.vector3.mul_sub(&renderer.camera_direction, &coordinates.right, 1);
@@ -121,16 +124,17 @@ pub fn main() !void {
         if (key_matrix & 0x08 != 0)
             math.vector3.mul_add(&renderer.camera_direction, &coordinates.up, 1);
         if (key_matrix & 0x10 != 0)
-            math.vector3.mul_sub(&renderer.camera_position, &coordinates.front, -5);
+            math.vector3.mul_sub(&renderer.camera_position, &coordinates.front, -8);
         if (key_matrix & 0x20 != 0)
-            math.vector3.mul_add(&renderer.camera_position, &coordinates.front, -5);
+            math.vector3.mul_add(&renderer.camera_position, &coordinates.front, -8);
         if (key_matrix & 0x40 != 0)
-            math.vector3.mul_sub(&renderer.camera_position, &.{0, 1, 0}, 5);
+            math.vector3.mul_sub(&renderer.camera_position, &global_up, -8);
         if (key_matrix & 0x80 != 0)
-            math.vector3.mul_add(&renderer.camera_position, &.{0, 1, 0}, 5);
+            math.vector3.mul_add(&renderer.camera_position, &global_up, -8);
 
         if (key_matrix != 0) {
-            std.log.info("{any}", .{renderer.camera_position});
+            math.vector3.normalize(&renderer.camera_direction);
+            std.log.info("{}: {any} {any}", .{delta, renderer.camera_position, renderer.camera_direction});
         }
 
         try renderer.draw(engine, now - start_time);

@@ -48,6 +48,7 @@ pub const matrix4x4 = struct {
     pub fn look_at(result: *Self, position: *const Vector3, target: *const Vector3, up: *const Vector3) void {
         var direction = target.*;
         vector3.sub(&direction, position);
+        vector3.normalize(&direction);
         camera(result, position, &direction, up);
     }
 
