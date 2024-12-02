@@ -1,186 +1,140 @@
 const std = @import("std");
 const sdl = @import("ext/sdl.zig");
+const math = @import("math.zig");
+const ecs = @import("ecs.zig");
+const Engine = @import("engine.zig").Engine;
+const gfx = @import("gfx.zig");
 
 const assert = std.debug.assert;
 
+pub const std_options = .{
+    .log_level = .info,
+};
+
+const memory_size = 2 << 30; // 2GB
+
+const Position = struct {
+    x: f32,
+    y: f32,
+    z: f32,
+};
+
 pub fn main() !void {
-    var arena = std.heap.ArenaAllocator.init(std.heap.c_allocator);
+    var gpa = std.heap.GeneralPurposeAllocator(.{ .enable_memory_limit = true }){ .requested_memory_limit = memory_size };
+    var arena = std.heap.ArenaAllocator.init(gpa.allocator());
     defer arena.deinit();
 
-    var allocator = arena.allocator();
+    const engine = try Engine.init(arena.allocator());
+    defer engine.deinit();
 
-    if (!sdl.SDL_Init(sdl.SDL_INIT_VIDEO)) {
-        std.debug.print("Failed init: {s}", .{sdl.SDL_GetError()});
-        return;
-    }
-    defer sdl.SDL_Quit();
+    var component_manager = try ecs.ComponentManager.init(engine.allocator);
+    try component_manager.register(Position, engine.allocator, engine.allocator, 512);
+    defer component_manager.unregister(Position, engine.allocator);
 
-    const window = sdl.SDL_CreateWindow("hello gamedev", 640, 400, 0);
-    if (window == null) {
-        std.debug.print("Failed creating window: {s}", .{sdl.SDL_GetError()});
-        return;
-    }
-    defer sdl.SDL_DestroyWindow(window);
-
-    // const renderer = sdl.SDL_CreateRenderer(window, undefined);
-    // defer sdl.SDL_DestroyRenderer(renderer);
-
-    const gpu_device = sdl.SDL_CreateGPUDevice(sdl.SDL_GPU_SHADERFORMAT_SPIRV, true, null);
-    if (gpu_device == null) {
-        std.debug.print("Failed creating gpu_device: {s}", .{sdl.SDL_GetError()});
-        return;
-    }
-    defer sdl.SDL_DestroyGPUDevice(gpu_device);
-
-    const shader_formats = sdl.SDL_GetGPUShaderFormats(gpu_device);
-    if (shader_formats & sdl.SDL_GPU_SHADERFORMAT_SPIRV == 0) {
-        std.debug.print("Unsupported SPIRV shader format", .{});
-        return;
-    }
-
-    const dir = std.fs.cwd();
-
-    const vertex_shader_file = dir.openFile("shaders/bin/triangle_raw.vert.spv", .{}) catch |err| {
-        std.debug.print("Failed opening vertex_file: {s}", .{@errorName(err)});
-        return;
-    };
-
-    var vertex_code_size = (try vertex_shader_file.stat()).size;
-    const vertex_code = try allocator.alloc(u8, vertex_code_size);
-    vertex_code_size = vertex_shader_file.readAll(vertex_code) catch |err| {
-        std.debug.print("Failed reading vertex_file: {s}", .{@errorName(err)});
-        vertex_shader_file.close();
-        return;
-    };
-    vertex_shader_file.close();
-
-    const vertex_shader = sdl.SDL_CreateGPUShader(gpu_device, &sdl.SDL_GPUShaderCreateInfo{
-        .code_size = vertex_code_size,
-        .code = vertex_code.ptr,
-        .entrypoint = "main",
-        .format = sdl.SDL_GPU_SHADERFORMAT_SPIRV,
-        .stage = sdl.SDL_GPU_SHADERSTAGE_VERTEX,
-        .num_samplers = 0,
-        .num_storage_textures = 0,
-        .num_storage_buffers = 0,
-        .num_uniform_buffers = 0,
-        .props = 0,
+    var position_array_list = component_manager.getComponentArrayList(Position).components;
+    const index = try position_array_list.addOne(engine.allocator);
+    position_array_list.set(index, .{
+        .x = 4.0,
+        .y = 9.0,
+        .z = -10.0,
     });
-    if (vertex_shader == null) {
-        std.debug.print("Failed creating vertex_shader: {s}", .{sdl.SDL_GetError()});
-        return;
-    }
-    defer sdl.SDL_ReleaseGPUShader(gpu_device, vertex_shader);
+    std.log.info("position[{}] = {}", .{ index, position_array_list });
 
-    const fragment_shader_file = dir.openFile("shaders/bin/solid_color.frag.spv", .{}) catch |err| {
-        std.debug.print("Failed opening fragment_file: {s}", .{@errorName(err)});
-        return;
-    };
+    var renderer = try gfx.Renderer.init(engine);
+    defer renderer.deinit(engine);
 
-    var fragment_code_size = (try fragment_shader_file.stat()).size;
-    const fragment_code = try allocator.alloc(u8, fragment_code_size);
-    fragment_code_size = fragment_shader_file.readAll(fragment_code) catch |err| {
-        std.debug.print("Failed reading fragment_file: {s}", .{@errorName(err)});
-        fragment_shader_file.close();
-        return;
-    };
-    fragment_shader_file.close();
+    std.log.info("Window size: {}", .{engine.window_size});
 
-    const fragment_shader = sdl.SDL_CreateGPUShader(gpu_device, &sdl.SDL_GPUShaderCreateInfo{
-        .code_size = fragment_code_size,
-        .code = fragment_code.ptr,
-        .entrypoint = "main",
-        .format = sdl.SDL_GPU_SHADERFORMAT_SPIRV,
-        .stage = sdl.SDL_GPU_SHADERSTAGE_FRAGMENT,
-        .num_samplers = 0,
-        .num_storage_textures = 0,
-        .num_storage_buffers = 0,
-        .num_uniform_buffers = 0,
-        .props = 0,
-    });
-    if (fragment_shader == null) {
-        std.debug.print("Failed creating fragment_shader: {s}", .{sdl.SDL_GetError()});
-        return;
-    }
-    defer sdl.SDL_ReleaseGPUShader(gpu_device, fragment_shader);
+    const start_time = sdl.SDL_GetTicks();
+    var last_update_time = start_time;
 
-    if (!sdl.SDL_ClaimWindowForGPUDevice(gpu_device, window)) {
-        std.debug.print("Failed claiming window for gpu_device: {s}", .{sdl.SDL_GetError()});
-        return;
-    }
-    defer sdl.SDL_ReleaseWindowFromGPUDevice(gpu_device, window);
+    var framerate_buffer: [512]u64 = [_]u64{0} ** 512;
+    var framerate_index: usize = 0;
 
-    const pipeline = sdl.SDL_CreateGPUGraphicsPipeline(gpu_device, &sdl.SDL_GPUGraphicsPipelineCreateInfo{
-        .vertex_shader = vertex_shader,
-        .fragment_shader = fragment_shader,
-        .primitive_type = sdl.SDL_GPU_PRIMITIVETYPE_TRIANGLELIST,
-        .rasterizer_state = .{
-            .fill_mode = sdl.SDL_GPU_FILLMODE_FILL,
-        },
-        .target_info = .{
-            .num_color_targets = 1,
-            .color_target_descriptions = &sdl.SDL_GPUColorTargetDescription{
-                .format = sdl.SDL_GetGPUSwapchainTextureFormat(gpu_device, window)
+    var key_matrix: u32 = 0;
+    return mainloop: while (true) {
+        const now = sdl.SDL_GetTicks();
+
+        const framerate_end_time = if (now < 1000) 0 else now - 1000;
+        var framerate: u32 = 1;
+        for (0..framerate_buffer.len) |n| {
+            if (framerate_buffer[n] < framerate_end_time) {
+                framerate_buffer[n] = 0;
+            }
+            if (framerate_buffer[n] != 0) {
+                framerate += 1;
             }
         }
-    });
-    if (pipeline == null) {
-        std.debug.print("Failed creating pipeline: {s}", .{sdl.SDL_GetError()});
-        return;
-    }
-    defer sdl.SDL_ReleaseGPUGraphicsPipeline(gpu_device, pipeline);
+        framerate_index = (framerate_index + 1) % 512;
+        framerate_buffer[framerate_index] = now;
+        std.log.info("Framerate: {}", .{framerate});
 
-    const viewport = sdl.SDL_GPUViewport{
-        .x = 160,
-        .y = 120,
-        .w = 320,
-        .h = 240,
-        .min_depth = 0.1,
-        .max_depth = 1.0,
-    };
-
-    return mainloop: while (true) {
         var sdl_event: sdl.SDL_Event = undefined;
         while (sdl.SDL_PollEvent(&sdl_event)) {
             switch (sdl_event.type) {
                 sdl.SDL_EVENT_QUIT => break :mainloop,
-                sdl.SDL_EVENT_KEY_DOWN => break :mainloop,
+                sdl.SDL_EVENT_KEY_DOWN => {
+                    switch (sdl_event.key.key) {
+                        sdl.SDLK_A => key_matrix |= 0x01,
+                        sdl.SDLK_D => key_matrix |= 0x02,
+                        sdl.SDLK_Q => key_matrix |= 0x04,
+                        sdl.SDLK_E => key_matrix |= 0x08,
+                        sdl.SDLK_S => key_matrix |= 0x10,
+                        sdl.SDLK_W => key_matrix |= 0x20,
+                        sdl.SDLK_X => key_matrix |= 0x40,
+                        sdl.SDLK_SPACE => key_matrix |= 0x80,
+                        sdl.SDLK_ESCAPE => break :mainloop,
+                        else => {},
+                    }
+                },
+                sdl.SDL_EVENT_KEY_UP => {
+                    switch (sdl_event.key.key) {
+                        sdl.SDLK_A => key_matrix &= ~@as(u32, 0x01),
+                        sdl.SDLK_D => key_matrix &= ~@as(u32, 0x02),
+                        sdl.SDLK_Q => key_matrix &= ~@as(u32, 0x04),
+                        sdl.SDLK_E => key_matrix &= ~@as(u32, 0x08),
+                        sdl.SDLK_S => key_matrix &= ~@as(u32, 0x10),
+                        sdl.SDLK_W => key_matrix &= ~@as(u32, 0x20),
+                        sdl.SDLK_X => key_matrix &= ~@as(u32, 0x40),
+                        sdl.SDLK_SPACE => key_matrix &= ~@as(u32, 0x80),
+                        else => {},
+                    }
+                },
                 else => {},
             }
         }
 
-        if (sdl.SDL_AcquireGPUCommandBuffer(gpu_device)) |command_buffer| {
-            var swapchain_texture: ?*sdl.SDL_GPUTexture = undefined;
-            if (!sdl.SDL_AcquireGPUSwapchainTexture(command_buffer, window, &swapchain_texture, null, null)) {
-                std.debug.print("Failed acquiring swapchain_texture: {s}", .{sdl.SDL_GetError()});
-            }
-            if (swapchain_texture != null) {
-                const color_target_info = sdl.SDL_GPUColorTargetInfo{
-                    .texture = swapchain_texture,
-                    .clear_color = sdl.SDL_FColor{ .a = 1 },
-                    .load_op = sdl.SDL_GPU_LOADOP_CLEAR,
-                    .store_op = sdl.SDL_GPU_STOREOP_STORE,
-                };
+        const camera_step = @as(f32, @floatFromInt(now - last_update_time)) / 500.0;
+        var coordinates: math.vector3.Coordinates = undefined;
+        math.vector3.local_coordinates(&coordinates, &renderer.camera_direction, &.{ 0, 1, 0 });
 
-                const render_pass = sdl.SDL_BeginGPURenderPass(command_buffer, &color_target_info, 1, null);
-                if (render_pass == null) {
-                    std.debug.print("render_pass is null", .{});
-                }
+        math.vector3.scale(&coordinates.front, camera_step);
+        math.vector3.scale(&coordinates.right, camera_step);
+        math.vector3.scale(&coordinates.up, camera_step);
 
-                sdl.SDL_BindGPUGraphicsPipeline(render_pass, pipeline);
-                sdl.SDL_SetGPUViewport(render_pass, &viewport);
-                sdl.SDL_DrawGPUPrimitives(render_pass, 3, 1, 0, 0);
-                sdl.SDL_EndGPURenderPass(render_pass);
-            } else {
-                std.debug.print("swapchain_texture is null", .{});
-            }
+        if (key_matrix & 0x01 != 0)
+            math.vector3.mul_sub(&renderer.camera_direction, &coordinates.right, 1);
+        if (key_matrix & 0x02 != 0)
+            math.vector3.mul_add(&renderer.camera_direction, &coordinates.right, 1);
+        if (key_matrix & 0x04 != 0)
+            math.vector3.mul_sub(&renderer.camera_direction, &coordinates.up, 1);
+        if (key_matrix & 0x08 != 0)
+            math.vector3.mul_add(&renderer.camera_direction, &coordinates.up, 1);
+        if (key_matrix & 0x10 != 0)
+            math.vector3.mul_sub(&renderer.camera_position, &coordinates.front, -5);
+        if (key_matrix & 0x20 != 0)
+            math.vector3.mul_add(&renderer.camera_position, &coordinates.front, -5);
+        if (key_matrix & 0x40 != 0)
+            math.vector3.mul_sub(&renderer.camera_position, &.{0, 1, 0}, 5);
+        if (key_matrix & 0x80 != 0)
+            math.vector3.mul_add(&renderer.camera_position, &.{0, 1, 0}, 5);
 
-            if (!sdl.SDL_SubmitGPUCommandBuffer(command_buffer)) {
-                std.debug.print("Failed submitting command_buffer: {s}", .{sdl.SDL_GetError()});
-            }
-        } else {
-            std.debug.print("Failed to acquire gpu_command_buffer: {s}", .{sdl.SDL_GetError()});
+        if (key_matrix != 0) {
+            std.log.info("{any}", .{renderer.camera_position});
         }
+
+        try renderer.draw(engine, now - start_time);
+        last_update_time = now;
     };
 }
 

@@ -1,0 +1,9 @@
+pub const Scalar = f32;
+pub const batch_count = 16;
+pub const Batch = @Vector(batch_count, Scalar);
+pub const Vector3 = [3]*Batch;
+pub const ConstVector3 = [3]*const Batch;
+pub const Vector4 = [4]*Batch;
+pub const ConstVector4 = [4]*const Batch;
+pub const Matrix4x4 = [4][4]*Batch;
+pub const ConstMatrix4x4 = [4][4]*const Batch;
