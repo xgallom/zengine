@@ -1,3 +1,7 @@
+//!
+//! The zengine renderer implementation
+//!
+
 const std = @import("std");
 const sdl = @import("../ext.zig").sdl;
 const math = @import("../math.zig");
@@ -15,8 +19,8 @@ pub const Renderer = struct {
     texture: ?*sdl.SDL_GPUTexture,
     stencil_texture: ?*sdl.SDL_GPUTexture,
     sampler: ?*sdl.SDL_GPUSampler,
-    camera_position: math.Position,
-    camera_direction: math.Displacement,
+    camera_position: math.Vector3,
+    camera_direction: math.Vector3,
 
     const InitError = error{
         GpuFailed,
@@ -107,7 +111,7 @@ pub const Renderer = struct {
                         .slot = 0,
                         .input_rate = sdl.SDL_GPU_VERTEXINPUTRATE_VERTEX,
                         .instance_step_rate = 0,
-                        .pitch = @sizeOf(math.Position),
+                        .pitch = @sizeOf(math.Vertex),
                     },
                 },
                 .num_vertex_buffers = 1,
@@ -124,7 +128,7 @@ pub const Renderer = struct {
             .primitive_type = sdl.SDL_GPU_PRIMITIVETYPE_TRIANGLELIST,
             .rasterizer_state = .{
                 .fill_mode = sdl.SDL_GPU_FILLMODE_FILL,
-                .cull_mode = sdl.SDL_GPU_CULLMODE_BACK,
+                .cull_mode = sdl.SDL_GPU_CULLMODE_NONE,
                 .front_face = sdl.SDL_GPU_FRONTFACE_COUNTER_CLOCKWISE,
                 .enable_depth_clip = true,
             },
@@ -155,7 +159,7 @@ pub const Renderer = struct {
 
         const vertex_buffer = sdl.SDL_CreateGPUBuffer(gpu_device, &sdl.SDL_GPUBufferCreateInfo{
             .usage = sdl.SDL_GPU_BUFFERUSAGE_VERTEX,
-            .size = @sizeOf(math.Position) * 24,
+            .size = @sizeOf(math.Vertex) * 24,
         });
         if (vertex_buffer == null) {
             std.log.err("Failed creating vertex_buffer: {s}", .{sdl.SDL_GetError()});
@@ -175,7 +179,7 @@ pub const Renderer = struct {
 
         const transfer_buffer = sdl.SDL_CreateGPUTransferBuffer(gpu_device, &sdl.SDL_GPUTransferBufferCreateInfo{
             .usage = sdl.SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD,
-            .size = (@sizeOf(math.Position) * 24) + (@sizeOf(u16) * 36),
+            .size = (@sizeOf(math.Vertex) * 24) + (@sizeOf(u16) * 36),
         });
         if (transfer_buffer == null) {
             std.log.err("Failed creating transfer_bugffer: {s}", .{sdl.SDL_GetError()});
@@ -190,7 +194,7 @@ pub const Renderer = struct {
                 return InitError.BufferFailed;
             }
 
-            const vertex_data = @as([*]math.Position, @ptrCast(@alignCast(transfer_buffer_ptr)))[0..25];
+            const vertex_data = @as([*]math.Vertex, @ptrCast(@alignCast(transfer_buffer_ptr)))[0..25];
 
             vertex_data[0] = .{ -10, -10, -10 };
             vertex_data[1] = .{ 10, -10, -10 };
@@ -240,6 +244,9 @@ pub const Renderer = struct {
                 // 20, 21, 22, 20, 22, 23,
             };
             @memcpy(index_data, indices);
+            for (0..indices.len) |n| {
+                std.log.info("{}: {any}", .{n, vertex_data[indices[n]]});
+            }
 
             sdl.SDL_UnmapGPUTransferBuffer(gpu_device, transfer_buffer);
         }
@@ -308,12 +315,12 @@ pub const Renderer = struct {
         }, &sdl.SDL_GPUBufferRegion{
             .buffer = vertex_buffer,
             .offset = 0,
-            .size = @sizeOf(math.Position) * 24,
+            .size = @sizeOf(math.Vertex) * 24,
         }, false);
 
         sdl.SDL_UploadToGPUBuffer(copy_pass, &sdl.SDL_GPUTransferBufferLocation{
             .transfer_buffer = transfer_buffer,
-            .offset = @sizeOf(math.Position) * 24,
+            .offset = @sizeOf(math.Vertex) * 24,
         }, &sdl.SDL_GPUBufferRegion{
             .buffer = index_buffer,
             .offset = 0,
@@ -323,12 +330,15 @@ pub const Renderer = struct {
         sdl.SDL_EndGPUCopyPass(copy_pass);
 
         const clear_colors = [_]sdl.SDL_FColor{
-            .{ .r = 0, .g = 1, .b = 1, .a = 1 },
             .{ .r = 1, .g = 0, .b = 0, .a = 1 },
+            .{ .r = 0, .g = 1, .b = 1, .a = 1 },
+            // .{ .r = 0, .g = 0, .b = 0, .a = 1 },
             .{ .r = 0, .g = 1, .b = 0, .a = 1 },
             .{ .r = 1, .g = 0, .b = 1, .a = 1 },
+            // .{ .r = 0, .g = 0, .b = 0, .a = 1 },
             .{ .r = 0, .g = 0, .b = 1, .a = 1 },
             .{ .r = 1, .g = 1, .b = 0, .a = 1 },
+            // .{ .r = 0, .g = 0, .b = 0, .a = 1 },
         };
 
         inline for (0..clear_colors.len) |layer| {
@@ -378,8 +388,8 @@ pub const Renderer = struct {
             .texture = texture,
             .stencil_texture = stencil_texture,
             .sampler = sampler,
-            .camera_position = .{ 0, 0, 0.1 },
-            .camera_direction = .{ 0, 0, 1 },
+            .camera_position = .{ 0, 0, 0 },
+            .camera_direction = .{ 1, 1, 1 },
         };
     }
 
@@ -400,6 +410,7 @@ pub const Renderer = struct {
     };
 
     pub fn draw(self: Renderer, engine: Engine, time: u64) DrawError!void {
+        _ = time;
         const gpu_device = self.gpu_device;
         const window = engine.window;
         const graphics_pipeline = self.graphics_pipeline;
@@ -448,26 +459,50 @@ pub const Renderer = struct {
         var projection: math.Matrix4x4 = undefined;
         math.matrix4x4.perspective_fov(
             &projection,
-            90.0 / std.math.pi * 180.0,
-            16 / 9,
-            0.01,
+            39.5978 * std.math.pi / 180.0,
+            @as(f32, @floatFromInt(engine.window_size.w)),
+            @as(f32, @floatFromInt(engine.window_size.h)),
+            // 16,
+            // 9,
+            0.1,
             100.0,
         );
 
-        var view: math.Matrix4x4 = undefined;
+        var camera: math.Matrix4x4 = undefined;
         math.matrix4x4.camera(
-            &view,
+            &camera,
             &self.camera_position,
             &self.camera_direction,
             &.{ 0, 1, 0 },
         );
 
-        var transform: math.Matrix4x4 = undefined;
-        math.matrix4x4.multiply(&transform, &view, &projection);
+        var world: math.Matrix4x4 = undefined;
+        math.matrix4x4.world_transform(&world);
 
-        var uniform_buffer: [17]f32 = undefined;
-        @memcpy(uniform_buffer[0..16], math.matrix4x4.slice(&transform));
-        uniform_buffer[16] = @floatFromInt(time);
+        var view: math.Matrix4x4 = undefined;
+        math.matrix4x4.dot(&view, &world, &camera);
+
+        var view_projection: math.Matrix4x4 = undefined;
+        math.matrix4x4.dot(&view_projection, &view, &projection);
+
+        var model = math.Matrix4x4{
+            .{ 1, 0, 0, 0 },
+            .{ 0, 1, 0, 0 },
+            .{ 0, 0, 1, 0 },
+            .{ 0, 0, 0, 1 },
+        };
+
+        std.log.info("xform: {any}, {any}", .{camera, projection});
+        std.log.info("vertices:", .{});
+        var vertex : math.Vector4 = undefined;
+        var vp = view_projection;
+        math.matrix4x4.transpose(&vp);
+        math.matrix4x4.apply(&vertex, &vp, &.{-10, -10, -10, 1});
+        std.log.info("{}: {any}", .{0, vertex});
+
+        var uniform_buffer: [32]f32 = undefined;
+        @memcpy(uniform_buffer[0..16], math.matrix4x4.slice_len_const(&projection));
+        @memcpy(uniform_buffer[16..32], math.matrix4x4.slice_len_const(&model));
 
         sdl.SDL_BindGPUVertexBuffers(render_pass, 0, &sdl.SDL_GPUBufferBinding{
             .buffer = self.vertex_buffer,

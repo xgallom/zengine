@@ -79,7 +79,7 @@ pub fn main() !void {
     while (try iterator.next()) |file| {
         const input_filename = file.name;
         const input_extension = std.fs.path.extension(input_filename);
-        const input_basename = input_filename[0..input_filename.len - input_extension.len];
+        const input_basename = input_filename[0 .. input_filename.len - input_extension.len];
 
         if (!std.mem.eql(u8, ".hlsl", input_extension)) {
             std.log.info("skipping {s}", .{input_filename});
@@ -108,7 +108,7 @@ pub fn main() !void {
             switch (result.term) {
                 .Exited => {
                     if (result.term.Exited != 0) {
-                        fatal("failed conversion for {s}: {}", .{output_filename, result.term.Exited});
+                        fatal("failed conversion for {s}: {s}", .{ output_filename, result.stderr });
                     } else {
                         std.log.info("processed file {s}", .{output_filename});
                     }

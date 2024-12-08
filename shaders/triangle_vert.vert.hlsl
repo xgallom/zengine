@@ -1,7 +1,7 @@
 cbuffer UniformBuffer : register(b0, space1)
 {
-    float4x4 TransformMatrix;
-    float Time;
+    float4x4 TransformViewProjection;
+    float4x4 TransformModel;
 };
 
 struct SPIRV_Cross_Input
@@ -19,8 +19,10 @@ Output main(float3 Coords : TEXCOORD0)
 {
     Output output;
 
+    const float4x4 Transform = mul(TransformViewProjection, TransformModel);
+
     output.TexCoord = Coords;
-    output.Position = mul(TransformMatrix, float4(Coords, 1.0));
+    output.Position = mul(Transform, float4(Coords, 1.0));
 
     return output;
 }

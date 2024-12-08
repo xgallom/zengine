@@ -1,4 +1,9 @@
-pub usingnamespace @cImport({
+//!
+//! The SDL3 library
+//!
+
+pub const c = @cImport({
     @cInclude("SDL3/SDL.h");
-    @cInclude("SDL3/SDL_main.h");
 });
+
+pub usingnamespace c;

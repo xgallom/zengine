@@ -1,3 +1,9 @@
+//!
+//! The zengine engine implementation
+//!
+//! These are also available in the top-level zengine module
+//!
+
 const std = @import("std");
 const sdl = @import("ext/sdl.zig");
 
@@ -14,8 +20,8 @@ pub const Engine = struct {
     window_size: WindowSize,
 
     const InitError = error{
-    InitFailed,
-    WindowFailed,
+        InitFailed,
+        WindowFailed,
     };
 
     pub fn init(allocator: std.mem.Allocator) InitError!Engine {
@@ -48,4 +54,3 @@ pub const Engine = struct {
         defer sdl.SDL_DestroyWindow(self.window);
     }
 };
-

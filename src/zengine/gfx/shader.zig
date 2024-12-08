@@ -1,3 +1,7 @@
+//!
+//! The zengine shader implementation
+//!
+
 const std = @import("std");
 const builtin = @import("builtin");
 const sdl = @import("../ext.zig").sdl;

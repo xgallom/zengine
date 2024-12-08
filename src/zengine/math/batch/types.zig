@@ -1,9 +1,90 @@
-pub const Scalar = f32;
-pub const batch_count = 16;
-pub const Batch = @Vector(batch_count, Scalar);
-pub const Vector3 = [3]*Batch;
-pub const ConstVector3 = [3]*const Batch;
-pub const Vector4 = [4]*Batch;
-pub const ConstVector4 = [4]*const Batch;
-pub const Matrix4x4 = [4][4]*Batch;
-pub const ConstMatrix4x4 = [4][4]*const Batch;
+//!
+//! The zengine batching math types
+//!
+//! These are also available in the top-level math.batch module
+//!
+
+const std = @import("std");
+const types = @import("../types.zig");
+pub const Scalar = types.Scalar;
+pub const Scalar64 = types.Scalar64;
+
+/// optimal length of a vector for type f32,
+/// defaults to 16 (512b - AVX 512b, ARM 128b - 1024b)
+pub const batch_len: usize = std.simd.suggestVectorLength(Scalar) orelse 16;
+/// optimal length of a vector for type f64,
+/// defaults to 8 (512b - AVX 512b, ARM 128b - 1024b)
+pub const batch_len64: usize = std.simd.suggestVectorLength(Scalar64) orelse 8;
+
+/// batch of N elements of type T
+pub fn BatchNT(comptime N: usize, comptime T: type) type {
+    return @Vector(N, T);
+}
+
+/// mutable pointer to a batch of N elements of type T
+pub fn PrimitiveNT(comptime N: usize, comptime T: type) type {
+    return *BatchNT(N, T);
+}
+/// const pointer to a batch of N elements of type T
+pub fn CPrimitiveNT(comptime N: usize, comptime T: type) type {
+    return *const BatchNT(N, T);
+}
+
+/// underlying type of a vector of N mutable pointers to batches of NB elements of type T
+pub fn VectorNBT(comptime N: usize, comptime NB: usize, comptime T: type) type {
+    return types.VectorNT(N, PrimitiveNT(NB, T));
+}
+/// underlying type of a vector of N const pointers to batches of NB elements of type T
+pub fn CVectorNBT(comptime N: usize, comptime NB: usize, comptime T: type) type {
+    return types.VectorNT(N, CPrimitiveNT(NB, T));
+}
+
+pub fn Vector2BT(comptime NB: usize, comptime T: type) type {
+    return VectorNBT(2, NB, T);
+}
+pub fn CVector2BT(comptime NB: usize, comptime T: type) type {
+    return CVectorNBT(2, NB, T);
+}
+pub fn Vector3BT(comptime NB: usize, comptime T: type) type {
+    return VectorNBT(3, NB, T);
+}
+pub fn CVector3BT(comptime NB: usize, comptime T: type) type {
+    return CVectorNBT(3, NB, T);
+}
+pub fn Vector4BT(comptime NB: usize, comptime T: type) type {
+    return VectorNBT(4, NB, T);
+}
+pub fn CVector4BT(comptime NB: usize, comptime T: type) type {
+    return CVectorNBT(4, NB, T);
+}
+
+/// underlying type of a matrix of M rows and N columns of mutable pointers to batches of NB elements of type T
+pub fn MatrixMxNBT(comptime M: usize, comptime N: usize, comptime NB: usize, comptime T: type) type {
+    return types.MatrixMxNT(M, N, PrimitiveNT(NB, T));
+}
+/// underlying type of a matrix of M rows and N columns of const pointers to batches of NB elements of type T
+pub fn CMatrixMxNBT(comptime M: usize, comptime N: usize, comptime NB: usize, comptime T: type) type {
+    return types.MatrixMxNT(M, N, CPrimitiveNT(NB, T));
+}
+
+pub fn Matrix4x4BT(comptime NB: usize, comptime T: type) type {
+    return MatrixMxNBT(4, 4, NB, T);
+}
+pub fn CMatrix4x4BT(comptime NB: usize, comptime T: type) type {
+    return CMatrixMxNBT(4, 4, NB, T);
+}
+
+pub const Batch = BatchNT(batch_len, Scalar);
+pub const Batch64 = BatchNT(batch_len64, Scalar64);
+pub const Vector3 = VectorNBT(3, batch_len, Scalar);
+pub const CVector3 = CVectorNBT(3, batch_len, Scalar);
+pub const Vector3f64 = VectorNBT(3, batch_len64, Scalar64);
+pub const CVector3f64 = CVectorNBT(3, batch_len64, Scalar64);
+pub const Vector4 = VectorNBT(4, batch_len, Scalar);
+pub const CVector4 = CVectorNBT(4, batch_len, Scalar);
+pub const Vector4f64 = VectorNBT(4, batch_len64, Scalar64);
+pub const CVector4f64 = CVectorNBT(4, batch_len64, Scalar64);
+pub const Matrix4x4 = MatrixMxNBT(4, 4, batch_len, Scalar);
+pub const CMatrix4x4 = CMatrixMxNBT(4, 4, batch_len, Scalar);
+pub const Matrix4x4f64 = MatrixMxNBT(4, 4, batch_len64, Scalar64);
+pub const CMatrix4x4f64 = CMatrixMxNBT(4, 4, batch_len64, Scalar64);

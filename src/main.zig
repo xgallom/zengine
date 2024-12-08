@@ -14,12 +14,16 @@ pub const std_options = .{
 };
 
 const Position = struct {
-    x: f32,
-    y: f32,
-    z: f32,
+    x: f32 align(@alignOf(math.batch.Batch)),
+    y: f32 align(@alignOf(math.batch.Batch)),
+    z: f32 align(@alignOf(math.batch.Batch)),
 };
 
 pub fn main() !void {
+    return main_impl();
+}
+
+fn main_impl() !void {
     allocators.init(std.heap.c_allocator, 2 << 30); // Memory limit: 2GB
     defer allocators.deinit();
 
@@ -27,17 +31,27 @@ pub fn main() !void {
     defer engine.deinit();
 
     var component_manager = try ecs.ComponentManager.init(engine.allocator);
-    try component_manager.register(Position, engine.allocator, engine.allocator, 512);
-    defer component_manager.unregister(Position, engine.allocator);
+    defer component_manager.deinit();
 
-    var position_array_list = component_manager.getComponentArrayList(Position).components;
-    const index = try position_array_list.addOne(engine.allocator);
-    position_array_list.set(index, .{
+    try component_manager.register(Position, engine.allocator, 512);
+    defer component_manager.unregister(Position);
+
+    var positions = component_manager.getComponentArrayList(Position).components;
+    const index = try positions.addOne(engine.allocator);
+    positions.set(index, .{
         .x = 4.0,
         .y = 9.0,
         .z = -10.0,
     });
-    std.log.info("position[{}] = {}", .{ index, position_array_list });
+    const slice = positions.slice();
+    const position_vector = math.batch.Vector3{
+        @ptrCast(@alignCast(slice.items(.x).ptr)),
+        @ptrCast(@alignCast(slice.items(.y  ).ptr)),
+        @ptrCast(@alignCast(slice.items(.z).ptr)),
+    };
+    var result = math.batch.batch.zero;
+    math.batch.vector3.dot(&result, &position_vector, &position_vector);
+    std.log.info("position[{}] = {}", .{ index, result });
 
     var renderer = try gfx.Renderer.init(engine);
     defer renderer.deinit(engine);
@@ -54,15 +68,13 @@ pub fn main() !void {
     return mainloop: while (true) {
         const now = sdl.SDL_GetTicks();
 
-        const framerate_end_time = if (now < 1000) 0 else now - 1000;
+        const framerate_end_time = now -| 1000;
         var framerate: u32 = 1;
         for (0..framerate_buffer.len) |n| {
-            if (framerate_buffer[n] < framerate_end_time) {
+            if (framerate_buffer[n] < framerate_end_time)
                 framerate_buffer[n] = 0;
-            }
-            if (framerate_buffer[n] != 0) {
-                framerate += 1;
-            }
+
+            framerate += if (framerate_buffer[n] != 0) 1 else 0;
         }
         framerate_index = (framerate_index + 1) % 512;
         framerate_buffer[framerate_index] = now;
@@ -103,38 +115,38 @@ pub fn main() !void {
             }
         }
 
-        var global_up = math.Vector3{ 0, 1, 0 };
+        var global_up = math.Vector3{ 0, 0, 1 };
         var coordinates: math.vector3.Coordinates = undefined;
-        math.vector3.local_coordinates(&coordinates, &renderer.camera_direction, &global_up);
+        math.vector3.inverse_local_coordinates(&coordinates, &renderer.camera_direction, &global_up);
 
         const delta: f32 = @floatFromInt(now - last_update_time);
         const camera_step = delta / 500.0;
 
-        math.vector3.scale(&coordinates.front, camera_step);
-        math.vector3.scale(&coordinates.right, camera_step);
-        math.vector3.scale(&coordinates.up, camera_step);
+        math.vector3.scale(&coordinates.x, camera_step);
+        math.vector3.scale(&coordinates.y, camera_step);
+        math.vector3.scale(&coordinates.z, camera_step);
         math.vector3.scale(&global_up, camera_step);
 
         if (key_matrix & 0x01 != 0)
-            math.vector3.mul_sub(&renderer.camera_direction, &coordinates.right, 1);
+            math.vector3.rotate_direction_scale(&renderer.camera_direction, &coordinates.x, -1);
         if (key_matrix & 0x02 != 0)
-            math.vector3.mul_add(&renderer.camera_direction, &coordinates.right, 1);
+            math.vector3.rotate_direction_scale(&renderer.camera_direction, &coordinates.x, 1);
         if (key_matrix & 0x04 != 0)
-            math.vector3.mul_sub(&renderer.camera_direction, &coordinates.up, 1);
+            math.vector3.rotate_direction_scale(&renderer.camera_direction, &coordinates.y, -1);
         if (key_matrix & 0x08 != 0)
-            math.vector3.mul_add(&renderer.camera_direction, &coordinates.up, 1);
+            math.vector3.rotate_direction_scale(&renderer.camera_direction, &coordinates.y, 1);
         if (key_matrix & 0x10 != 0)
-            math.vector3.mul_sub(&renderer.camera_position, &coordinates.front, -8);
+            math.vector3.translate_direction_scale(&renderer.camera_position, &coordinates.z, -8);
         if (key_matrix & 0x20 != 0)
-            math.vector3.mul_add(&renderer.camera_position, &coordinates.front, -8);
+            math.vector3.translate_direction_scale(&renderer.camera_position, &coordinates.z, 8);
         if (key_matrix & 0x40 != 0)
-            math.vector3.mul_sub(&renderer.camera_position, &global_up, -8);
+            math.vector3.translate_scale(&renderer.camera_position, &global_up, -8);
         if (key_matrix & 0x80 != 0)
-            math.vector3.mul_add(&renderer.camera_position, &global_up, -8);
+            math.vector3.translate_scale(&renderer.camera_position, &global_up, 8);
 
         if (key_matrix != 0) {
             math.vector3.normalize(&renderer.camera_direction);
-            std.log.info("{}: {any} {any}", .{delta, renderer.camera_position, renderer.camera_direction});
+            std.log.info("{}: {any} {any}", .{ delta, renderer.camera_position, renderer.camera_direction });
         }
 
         try renderer.draw(engine, now - start_time);

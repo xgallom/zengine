@@ -1,70 +1,157 @@
+//!
+//! Generic vector implementation
+//!
+//! Vector is N columns,
+//! Contains pointers to batches of NB sized vectors of T
+//!
+//! The underlying type is `[N]* @Vector(NB, T)`
+//!
+//! This interface is intended for batching, first you construct
+//! the matrix by setting all the pointers to the beginning of the batches,
+//! then use increment() to advance and reuse the object for the next iteration
+//!
+//! Example usage:
+//! ```
+//! var vector = Vector3{ &batch_x, &batch_y, &batch_z };
+//!
+//! // assumes len is a multiple of batch_len
+//! for (0..(len / vector3.batch_len)) {
+//!     do_operation(&vector);
+//!     vector3.advance(&vector);
+//! }
+//! ```
+//!
+
+const std = @import("std");
+const assert = std.debug.assert;
+
 const types = @import("types.zig");
-const Batch = types.Batch;
+const batchNT = @import("scalar.zig").batchNT;
 
-fn VectorMath(comptime N: usize) type {
+pub fn vectorNBT(comptime N: usize, comptime NB: usize, comptime T: type) type {
     return struct {
-        const Self = [N]*Batch;
-        const ConstSelf = [N]*const Batch;
-        const len = N;
+        pub const Self = types.VectorNBT(N, NB, T);
+        pub const CSelf = types.CVectorNBT(N, NB, T);
+        pub const Item = types.PrimitiveNT(NB, T);
+        pub const CItem = types.CPrimitiveNT(NB, T);
+        pub const Scalar = scalar.Self;
+        pub const len = N;
+        pub const batch_len = scalar.len;
 
-        pub fn add(result: *const Self, lhs: *const ConstSelf, rhs: *const ConstSelf) void {
-            for (0..N) |n| {
+        const scalar = batchNT(NB, T);
+
+        /// advances the vector in address space to next batch,
+        /// assumes bounds checking
+        pub fn increment(self: *CSelf) void {
+            const s = slice_len_const(self);
+            for (0..len) |n| {
+                s[n] += 1;
+            }
+        }
+
+        /// moves the vector in address space to previous batch,
+        /// assumes bounds checking
+        pub fn decrement(self: *CSelf) void {
+            const s = slice_len_const(self);
+            for (0..len) |n| {
+                s[n] += 1;
+            }
+        }
+
+        pub fn slice(comptime L: usize, self: *const Self) []Item {
+            comptime assert(L <= len);
+            return self[0..L];
+        }
+
+        pub fn slice_const(comptime L: usize, self: *const CSelf) []CItem {
+            comptime assert(L <= len);
+            return self[0..L];
+        }
+
+        pub fn slice_len(self: *const Self) []Item {
+            return slice(len, self);
+        }
+
+        pub fn slice_len_const(self: *const CSelf) []CItem {
+            return slice_const(len, self);
+        }
+
+        /// Y_n = L_n + R_n
+        pub fn add(result: *const Self, lhs: *const CSelf, rhs: *const CSelf) void {
+            for (0..len) |n| {
                 result[n].* = lhs[n].* + rhs[n].*;
             }
         }
 
-        pub fn sub(result: *const Self, lhs: *const ConstSelf, rhs: *const ConstSelf) void {
-            for (0..N) |n| {
+        /// Y_n = L_n - R_n
+        pub fn sub(result: *const Self, lhs: *const CSelf, rhs: *const CSelf) void {
+            for (0..len) |n| {
                 result[n].* = lhs[n].* - rhs[n].*;
             }
         }
 
-        pub fn mul(result: *const Self, lhs: *const ConstSelf, rhs: *const ConstSelf) void {
-            for (0..N) |n| {
+        /// Y_n = L_n * R_n
+        pub fn mul(result: *const Self, lhs: *const CSelf, rhs: *const CSelf) void {
+            for (0..len) |n| {
                 result[n].* = lhs[n].* * rhs[n].*;
             }
         }
 
-        pub fn div(result: *const Self, lhs: *const ConstSelf, rhs: *const ConstSelf) void {
-            for (0..N) |n| {
+        /// Y_n = L_n / R_n
+        pub fn div(result: *const Self, lhs: *const CSelf, rhs: *const CSelf) void {
+            for (0..len) |n| {
                 result[n].* = lhs[n].* / rhs[n].*;
             }
         }
 
-        pub fn scale(result: *const Self, vector: *const ConstSelf, multiplier: *const Batch) void {
-            for (0..N) |n| {
-                result[n].* = vector[n].* * multiplier;
+        /// Y_n = L_n * R_n + C_n
+        pub fn mul_add(result: *const Self, lhs: *const CSelf, rhs: *const CSelf, constant: *const CSelf) void {
+            for (0..len) |n| {
+                result[n].* = @mulAdd(Scalar, lhs[n].*, rhs[n].*, constant[n].*);
             }
         }
 
-        pub fn normalize(result: *const Self, vector: *const ConstSelf) void {
-            var length: Batch = undefined;
+        /// Y_n = X_n * C
+        pub fn scale(result: *const Self, vector: *const CSelf, multiplier: CItem) void {
+            for (0..len) |n| {
+                result[n].* = vector[n].* * multiplier.*;
+            }
+        }
+
+        /// Y_n = X_n * (1 / C)
+        pub fn scale_recip(result: *const Self, vector: *const CSelf, multiplier: CItem) void {
+            const recip = scalar.one / multiplier.*;
+            for (0..len) |n| {
+                result[n].* = vector[n].* * recip;
+            }
+        }
+
+        /// Y_n = X_n / |X|
+        pub fn normalize(result: *const Self, vector: *const CSelf) void {
+            var length: Scalar = undefined;
             dot(&length, vector, vector);
             length = @sqrt(length);
 
-            for (0..N) |n| {
+            for (0..len) |n| {
                 result[n].* = vector[n].* / length;
             }
         }
 
-        pub fn dot(result: *Batch, lhs: *const ConstSelf, rhs: *const ConstSelf) void {
-            result.* = @splat(0);
-            for (0..N) |n| {
-                result.* += lhs[n].* * rhs[n].*;
+        /// Y = L . R
+        pub fn dot(result: Item, lhs: *const CSelf, rhs: *const CSelf) void {
+            result.* = scalar.zero;
+            for (0..len) |n| {
+                result.* = @mulAdd(Scalar, lhs[n].*, rhs[n].*, result.*);
             }
         }
 
         pub usingnamespace if (N == 3) struct {
-            pub fn cross(result: *Self, lhs: *const ConstSelf, rhs: *const ConstSelf) void {
-                result.* = .{
-                    lhs[1].* * rhs[2].* - lhs[2].* * rhs[1].*,
-                    -lhs[0].* * rhs[2].* + lhs[2].* * rhs[0].*,
-                    lhs[0].* * rhs[1].* - lhs[1].* * rhs[0].*,
-                };
+            /// Y = L x R
+            pub fn cross(result: *Self, lhs: *const CSelf, rhs: *const CSelf) void {
+                result[0].* = lhs[1].* * rhs[2].* - lhs[2].* * rhs[1].*;
+                result[1].* = lhs[2].* * rhs[0].* - lhs[0].* * rhs[2].*;
+                result[2].* = lhs[0].* * rhs[1].* - lhs[1].* * rhs[0].*;
             }
         } else struct {};
     };
 }
-
-pub const vector3 = VectorMath(3);
-pub const vector4 = VectorMath(4);

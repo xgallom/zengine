@@ -6,23 +6,25 @@ const Entity = entity.Entity;
 
 pub fn ComponentArrayList(comptime C: type) type {
     return struct {
+        allocator: std.mem.Allocator,
         components: ArrayList,
 
-        const Self = @This();
-        pub const ArrayList = std.MultiArrayList(C);
+        pub const Self = @This();
+        pub const Item = C;
+        pub const ArrayList = std.MultiArrayList(Item);
 
         pub fn init(allocator: std.mem.Allocator, capacity: usize) !Self {
-            var self = Self{ .components = .{} };
+            var self = Self{ .allocator = allocator, .components = .{} };
             try self.components.ensureTotalCapacity(allocator, capacity);
             return self;
         }
 
-        pub fn push(self: *Self, value: C) u32 {
-            if (self.components.len >= self.components.capacity - 1) {
-                return 0;
-            }
+        pub fn deinit(self: *Self) void {
+            self.components.deinit(self.allocator);
+        }
 
-            const index = self.components.addOneAssumeCapacity();
+        pub fn push(self: *Self, value: C) !u32 {
+            const index = try self.components.addOne(self.allocator);
             self.components.set(index, value);
         }
     };
@@ -30,24 +32,30 @@ pub fn ComponentArrayList(comptime C: type) type {
 
 pub fn PrimitiveComponentArrayList(comptime C: type) type {
     return struct {
+        allocator: std.mem.Allocator,
         components: ArrayList,
 
         const Self = @This();
         pub const ArrayList = std.ArrayListUnmanaged(C);
 
         pub fn init(allocator: std.mem.Allocator, capacity: usize) !Self {
-            var self = Self{ .components = .{} };
+            var self = Self{ .allocator = allocator, .components = .{} };
             try self.components.ensureTotalCapacity(allocator, capacity);
             return self;
+        }
+
+        pub fn deinit(self: *Self) void {
+            self.components.deinit(self.allocator);
         }
     };
 }
 
 pub const OpaqueComponentArrayList = ComponentArrayList(struct {});
 pub const OpaquePrimitiveComponentArrayList = PrimitiveComponentArrayList(u64);
-pub const FlagsBitSet = std.bit_set.ArrayBitSet(u32, 512);
+pub const FlagsBitSet = std.DynamicBitSetUnmanaged;
 
 pub const ComponentManager = struct {
+    allocator: std.mem.Allocator,
     components: ComponentsHashMap,
     primitive_components: PrimitiveComponentsHashMap,
     flags: FlagsBitSet,
@@ -64,13 +72,19 @@ pub const ComponentManager = struct {
         try primitive_components.ensureTotalCapacity(allocator, 512);
 
         return .{
+            .allocator = allocator,
             .components = components,
             .primitive_components = primitive_components,
-            .flags = FlagsBitSet.initEmpty(),
+            .flags = try FlagsBitSet.initEmpty(allocator, 512),
         };
     }
 
-    pub fn register(self: *Self, C: type, allocator: std.mem.Allocator, component_allocator: std.mem.Allocator, component_capacity: usize) !void {
+    pub fn deinit(self: *Self) void {
+        _ = self;
+        // TODO: Implement
+    }
+
+    pub fn register(self: *Self, C: type, component_allocator: std.mem.Allocator, component_capacity: usize) !void {
         const type_info = @typeInfo(C);
         const key = @typeName(C);
 
@@ -81,7 +95,7 @@ pub const ComponentManager = struct {
                 var item = try ComponentArrayList(C).init(component_allocator, component_capacity);
                 const ptr: *OpaqueComponentArrayList = @ptrCast(&item);
                 try self.components.put(
-                    allocator,
+                    self.allocator,
                     key,
                     ptr.*,
                 );
@@ -92,7 +106,7 @@ pub const ComponentManager = struct {
                 var item = try PrimitiveComponentArrayList(C).init(component_allocator, component_capacity);
                 const ptr: *OpaquePrimitiveComponentArrayList = @ptrCast(&item);
                 try self.primitive_components.put(
-                    allocator,
+                    self.allocator,
                     key,
                     ptr.*,
                 );
@@ -120,19 +134,19 @@ pub const ComponentManager = struct {
         }
     }
 
-    pub fn unregister(self: *Self, C: type, component_allocator: std.mem.Allocator) void {
+    pub fn unregister(self: *Self, C: type) void {
         switch (@typeInfo(C)) {
             .Struct, .Union => {
                 assert(self.components.contains(@typeName(C)));
 
                 const item = self.getComponentArrayList(C);
-                item.components.deinit(component_allocator);
+                item.components.deinit(item.allocator);
             },
             else => {
                 assert(self.primitive_components.contains(@typeName(C)));
 
                 const item = self.getPrimitiveComponentArrayList(C);
-                item.components.deinit(component_allocator);
+                item.components.deinit(item.allocator);
             },
         }
     }

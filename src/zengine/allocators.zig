@@ -1,12 +1,13 @@
 const std = @import("std");
+const sdl = @import("ext/sdl.zig");
 const assert = std.debug.assert;
 
-const GPA = std.heap.GeneralPurposeAllocator(.{
+pub const GPA = std.heap.GeneralPurposeAllocator(.{
     .enable_memory_limit = true,
     .thread_safe = false,
 });
 
-const Arena = std.heap.ArenaAllocator;
+pub const Arena = std.heap.ArenaAllocator;
 
 pub const Allocators = struct {
     core: std.mem.Allocator = undefined,
