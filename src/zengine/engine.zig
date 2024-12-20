@@ -30,7 +30,7 @@ pub const Engine = struct {
             return InitError.InitFailed;
         }
 
-        const window = sdl.SDL_CreateWindow("hello gamedev", 1920, 1080, sdl.SDL_WINDOW_MAXIMIZED | sdl.SDL_WINDOW_RESIZABLE);
+        const window = sdl.SDL_CreateWindow("hello gamedev", 1920, 1080, sdl.SDL_WINDOW_MAXIMIZED);
         if (window == null) {
             std.log.err("Failed creating window: {s}", .{sdl.SDL_GetError()});
             return InitError.WindowFailed;

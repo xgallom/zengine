@@ -60,6 +60,7 @@ pub fn build(b: *std.Build) void {
     compile_shaders_cmd.addArg("--input-dir");
     compile_shaders_cmd.addDirectoryArg(b.path("shaders"));
     compile_shaders_cmd.addArg("--output-dir");
+
     const shaders_output = compile_shaders_cmd.addOutputDirectoryArg("shaders");
 
     compile_shaders_cmd.step.dependOn(&b.addRemoveDirTree(b.getInstallPath(.prefix, "shaders")).step);
@@ -86,7 +87,7 @@ pub fn build(b: *std.Build) void {
     run_step.dependOn(&run_cmd.step);
 
     const lib_unit_tests = b.addTest(.{
-        .root_source_file = b.path("src/zengine.zig"),
+        .root_source_file = b.path("src/zengine/zengine.zig"),
         .target = target,
         .optimize = optimize,
     });

@@ -14,7 +14,17 @@ pub fn vectorNT(comptime N: usize, comptime T: type) type {
         pub const Scalar = T;
         pub const len = N;
 
-        const scalar = scalarT(T);
+        pub const scalar = scalarT(T);
+
+        pub const zero = splat(0);
+        pub const one = splat(1);
+        pub const neg_one = splat(-1);
+
+        pub fn splat(value: Scalar) Self {
+            var result: Self = undefined;
+            for (0..len) |n| result[n] = value;
+            return result;
+        }
 
         pub fn slice(comptime L: usize, self: *Self) []Scalar {
             comptime assert(L <= len);
@@ -125,15 +135,15 @@ pub fn vectorNT(comptime N: usize, comptime T: type) type {
             };
 
             pub fn translate_scale(direction: *Self, rotation: *const Self, multiplier: Scalar) void {
-                mul_add(direction, rotation, multiplier);
-            }
-
-            pub fn rotate_direction_scale(direction: *Self, rotation: *const Self, multiplier: Scalar) void {
                 mul_sub(direction, rotation, multiplier);
             }
 
-            pub fn translate_direction_scale(direction: *Self, rotation: *const Self, multiplier: Scalar) void {
+            pub fn rotate_direction_scale(direction: *Self, rotation: *const Self, multiplier: Scalar) void {
                 mul_add(direction, rotation, multiplier);
+            }
+
+            pub fn translate_direction_scale(direction: *Self, rotation: *const Self, multiplier: Scalar) void {
+                mul_sub(direction, rotation, multiplier);
             }
 
             pub fn cross(result: *Self, lhs: *const Self, rhs: *const Self) void {
@@ -143,6 +153,8 @@ pub fn vectorNT(comptime N: usize, comptime T: type) type {
             }
 
             pub fn local_coordinates(result: *Coordinates, direction: *const Self, up: *const Self) void {
+                assert(length(up) == 1);
+
                 result.z = direction.*;
                 cross(&result.x, up, &result.z);
                 normalize(&result.x);
@@ -150,6 +162,8 @@ pub fn vectorNT(comptime N: usize, comptime T: type) type {
             }
 
             pub fn inverse_local_coordinates(result: *Coordinates, direction: *const Self, up: *const Self) void {
+                assert(length(up) == 1);
+
                 result.z = direction.*;
                 scale(&result.z, -1);
                 cross(&result.x, up, &result.z);
@@ -158,4 +172,126 @@ pub fn vectorNT(comptime N: usize, comptime T: type) type {
             }
         } else struct {};
     };
+}
+
+test "vector3" {
+    const ns = vectorNT(3, types.Scalar);
+    const lhs = ns.Self{ 2, 4, 6 };
+    const rhs = ns.Self{ 1, 2, 3 };
+
+    var result = lhs;
+    ns.add(&result, &rhs);
+    try std.testing.expectEqualSlices(ns.Scalar, &.{ 3, 6, 9 }, ns.slice_len_const(&result));
+    result = lhs;
+    ns.sub(&result, &rhs);
+    try std.testing.expectEqualSlices(ns.Scalar, &.{ 1, 2, 3 }, ns.slice_len_const(&result));
+    result = lhs;
+    ns.mul(&result, &rhs);
+    try std.testing.expectEqualSlices(ns.Scalar, &.{ 2, 8, 18 }, ns.slice_len_const(&result));
+    result = lhs;
+    ns.div(&result, &rhs);
+    try std.testing.expectEqualSlices(ns.Scalar, &.{ 2, 2, 2 }, ns.slice_len_const(&result));
+    result = lhs;
+    ns.mul_add(&result, &rhs, 2);
+    try std.testing.expectEqualSlices(ns.Scalar, &.{ 4, 8, 12 }, ns.slice_len_const(&result));
+    result = lhs;
+    ns.mul_sub(&result, &rhs, 2);
+    try std.testing.expectEqualSlices(ns.Scalar, &.{ 0, 0, 0 }, ns.slice_len_const(&result));
+    result = lhs;
+    ns.scale(&result, 2);
+    try std.testing.expectEqualSlices(ns.Scalar, &.{ 4, 8, 12 }, ns.slice_len_const(&result));
+    result = lhs;
+    ns.scale_recip(&result, 2);
+    try std.testing.expectEqualSlices(ns.Scalar, &.{ 1, 2, 3 }, ns.slice_len_const(&result));
+    result = lhs;
+    try std.testing.expect(ns.square_length(&result) == 56);
+    result = ns.Self{ 2, 2, 1 };
+    try std.testing.expect(ns.length(&result) == 3);
+    result = ns.Self{ 2, 2, 1 };
+    ns.normalize(&result);
+    {
+        const len = @sqrt(2.0 * 2.0 + 2.0 * 2.0 + 1.0 * 1.0);
+        try std.testing.expectEqualSlices(ns.Scalar, &.{ 2.0 / len, 2.0 / len, 1.0 / len }, ns.slice_len_const(&result));
+    }
+    try std.testing.expect(ns.dot(&lhs, &rhs) == (2 * 1 + 4 * 2 + 6 * 3));
+    {
+        var dot: ns.Scalar = undefined;
+        ns.dot_into(&dot, &lhs, &rhs);
+    }
+    ns.cross(&result, &lhs, &rhs);
+    try std.testing.expectEqualSlices(ns.Scalar, &ns.zero, &result);
+    ns.cross(&result, &lhs, &.{ 6, 2, 4 });
+    try std.testing.expectEqualSlices(ns.Scalar, &.{ 4, 28, -20 }, &result);
+    {
+        var coords: ns.Coordinates = undefined;
+        ns.local_coordinates(&coords, &.{ 0, 0, 1 }, &.{ 0, 1, 0 });
+        try std.testing.expectEqualSlices(ns.Scalar, &.{ 1, 0, 0 }, &coords.x);
+        try std.testing.expectEqualSlices(ns.Scalar, &.{ 0, 1, 0 }, &coords.y);
+        try std.testing.expectEqualSlices(ns.Scalar, &.{ 0, 0, 1 }, &coords.z);
+        ns.inverse_local_coordinates(&coords, &.{ 0, 0, 1 }, &.{ 0, 1, 0 });
+        try std.testing.expectEqualSlices(ns.Scalar, &.{ -1, 0, 0 }, &coords.x);
+        try std.testing.expectEqualSlices(ns.Scalar, &.{ 0, 1, 0 }, &coords.y);
+        try std.testing.expectEqualSlices(ns.Scalar, &.{ 0, 0, -1 }, &coords.z);
+    }
+}
+
+test "vector3f64" {
+    const ns = vectorNT(3, types.Scalar64);
+    const lhs = ns.Self{ 2, 4, 6 };
+    const rhs = ns.Self{ 1, 2, 3 };
+
+    var result = lhs;
+    ns.add(&result, &rhs);
+    try std.testing.expectEqualSlices(ns.Scalar, &.{ 3, 6, 9 }, ns.slice_len_const(&result));
+    result = lhs;
+    ns.sub(&result, &rhs);
+    try std.testing.expectEqualSlices(ns.Scalar, &.{ 1, 2, 3 }, ns.slice_len_const(&result));
+    result = lhs;
+    ns.mul(&result, &rhs);
+    try std.testing.expectEqualSlices(ns.Scalar, &.{ 2, 8, 18 }, ns.slice_len_const(&result));
+    result = lhs;
+    ns.div(&result, &rhs);
+    try std.testing.expectEqualSlices(ns.Scalar, &.{ 2, 2, 2 }, ns.slice_len_const(&result));
+    result = lhs;
+    ns.mul_add(&result, &rhs, 2);
+    try std.testing.expectEqualSlices(ns.Scalar, &.{ 4, 8, 12 }, ns.slice_len_const(&result));
+    result = lhs;
+    ns.mul_sub(&result, &rhs, 2);
+    try std.testing.expectEqualSlices(ns.Scalar, &.{ 0, 0, 0 }, ns.slice_len_const(&result));
+    result = lhs;
+    ns.scale(&result, 2);
+    try std.testing.expectEqualSlices(ns.Scalar, &.{ 4, 8, 12 }, ns.slice_len_const(&result));
+    result = lhs;
+    ns.scale_recip(&result, 2);
+    try std.testing.expectEqualSlices(ns.Scalar, &.{ 1, 2, 3 }, ns.slice_len_const(&result));
+    result = lhs;
+    try std.testing.expect(ns.square_length(&result) == 56);
+    result = ns.Self{ 2, 2, 1 };
+    try std.testing.expect(ns.length(&result) == 3);
+    result = ns.Self{ 2, 2, 1 };
+    ns.normalize(&result);
+    {
+        const len = @sqrt(2.0 * 2.0 + 2.0 * 2.0 + 1.0 * 1.0);
+        try std.testing.expectEqualSlices(ns.Scalar, &.{ 2.0 / len, 2.0 / len, 1.0 / len }, ns.slice_len_const(&result));
+    }
+    try std.testing.expect(ns.dot(&lhs, &rhs) == (2 * 1 + 4 * 2 + 6 * 3));
+    {
+        var dot: ns.Scalar = undefined;
+        ns.dot_into(&dot, &lhs, &rhs);
+    }
+    ns.cross(&result, &lhs, &rhs);
+    try std.testing.expectEqualSlices(ns.Scalar, &ns.zero, &result);
+    ns.cross(&result, &lhs, &.{ 6, 2, 4 });
+    try std.testing.expectEqualSlices(ns.Scalar, &.{ 4, 28, -20 }, &result);
+    {
+        var coords: ns.Coordinates = undefined;
+        ns.local_coordinates(&coords, &.{ 0, 0, 1 }, &.{ 0, 1, 0 });
+        try std.testing.expectEqualSlices(ns.Scalar, &.{ 1, 0, 0 }, &coords.x);
+        try std.testing.expectEqualSlices(ns.Scalar, &.{ 0, 1, 0 }, &coords.y);
+        try std.testing.expectEqualSlices(ns.Scalar, &.{ 0, 0, 1 }, &coords.z);
+        ns.inverse_local_coordinates(&coords, &.{ 0, 0, 1 }, &.{ 0, 1, 0 });
+        try std.testing.expectEqualSlices(ns.Scalar, &.{ -1, 0, 0 }, &coords.x);
+        try std.testing.expectEqualSlices(ns.Scalar, &.{ 0, 1, 0 }, &coords.y);
+        try std.testing.expectEqualSlices(ns.Scalar, &.{ 0, 0, -1 }, &coords.z);
+    }
 }

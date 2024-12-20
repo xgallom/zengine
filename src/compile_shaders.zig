@@ -86,7 +86,7 @@ pub fn main() !void {
             continue;
         }
 
-        std.log.info("processing file {s}", .{input_filename});
+        std.log.info("processing input file {s}", .{input_filename});
 
         for (output_configs) |output_config| {
             const output_extension = output_config.extension;
@@ -110,7 +110,7 @@ pub fn main() !void {
                     if (result.term.Exited != 0) {
                         fatal("failed conversion for {s}: {s}", .{ output_filename, result.stderr });
                     } else {
-                        std.log.info("processed file {s}", .{output_filename});
+                        std.log.info("processed output file {s}", .{output_filename});
                     }
                 },
                 else => fatal("shadercross run failed for {s}", .{output_filename}),

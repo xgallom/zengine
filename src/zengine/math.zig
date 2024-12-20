@@ -26,3 +26,8 @@ pub const vector3 = vectorNT(3, types.Scalar);
 pub const vector3f64 = vectorNT(3, types.Scalar64);
 pub const vector4 = vectorNT(4, types.Scalar);
 pub const vector4f64 = vectorNT(4, types.Scalar64);
+
+const std = @import("std");
+test {
+    std.testing.refAllDecls(@This());
+}

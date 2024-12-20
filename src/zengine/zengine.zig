@@ -10,3 +10,8 @@ pub const math = @import("math.zig");
 
 pub const engine = @import("engine.zig");
 pub usingnamespace engine;
+
+const std = @import("std");
+test {
+    std.testing.refAllDecls(@This());
+}

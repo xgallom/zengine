@@ -233,19 +233,11 @@ pub const Renderer = struct {
                 8,  9,  10, 8,  10, 11,
                 14, 13, 12, 15, 14, 12,
                 16, 17, 18, 16, 18, 19,
-                22, 21, 20, 23, 22,
-                20,
-
-                // 2,  1,  0,  3,  2,  0,
-                // 4,  5,  6,  4,  6,  7,
-                // 10, 9,  8,  11, 10, 8,
-                // 12, 13, 14, 12, 14, 15,
-                // 18, 17, 16, 19, 18, 16,
-                // 20, 21, 22, 20, 22, 23,
+                22, 21, 20, 23, 22, 20,
             };
             @memcpy(index_data, indices);
             for (0..indices.len) |n| {
-                std.log.info("{}: {any}", .{n, vertex_data[indices[n]]});
+                std.log.info("{}: {any}", .{ n, vertex_data[indices[n]] });
             }
 
             sdl.SDL_UnmapGPUTransferBuffer(gpu_device, transfer_buffer);
@@ -288,7 +280,7 @@ pub const Renderer = struct {
             .mipmap_mode = sdl.SDL_GPU_SAMPLERMIPMAPMODE_NEAREST,
             .address_mode_u = sdl.SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE,
             .address_mode_v = sdl.SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE,
-            .address_mode_w = sdl.SDL_GPU_SAMPLERADDRESSMODE_REPEAT,
+            .address_mode_w = sdl.SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE,
         });
         if (sampler == null) {
             std.log.err("Failed creating sampler: {s}", .{sdl.SDL_GetError()});
@@ -332,13 +324,10 @@ pub const Renderer = struct {
         const clear_colors = [_]sdl.SDL_FColor{
             .{ .r = 1, .g = 0, .b = 0, .a = 1 },
             .{ .r = 0, .g = 1, .b = 1, .a = 1 },
-            // .{ .r = 0, .g = 0, .b = 0, .a = 1 },
             .{ .r = 0, .g = 1, .b = 0, .a = 1 },
             .{ .r = 1, .g = 0, .b = 1, .a = 1 },
-            // .{ .r = 0, .g = 0, .b = 0, .a = 1 },
             .{ .r = 0, .g = 0, .b = 1, .a = 1 },
             .{ .r = 1, .g = 1, .b = 0, .a = 1 },
-            // .{ .r = 0, .g = 0, .b = 0, .a = 1 },
         };
 
         inline for (0..clear_colors.len) |layer| {
@@ -368,11 +357,9 @@ pub const Renderer = struct {
             return InitError.CommandBufferFailed;
         }
 
-        // const w = @as(f32, @floatFromInt(engine.window_size.w));
-        // const h = @as(f32, @floatFromInt(engine.window_size.h));
         const viewport = sdl.SDL_GPUViewport{
-            .x = 0,
-            .y = 0,
+            .x = -1,
+            .y = -1,
             .w = 2,
             .h = 2,
             .min_depth = 0,
@@ -462,8 +449,6 @@ pub const Renderer = struct {
             39.5978 * std.math.pi / 180.0,
             @as(f32, @floatFromInt(engine.window_size.w)),
             @as(f32, @floatFromInt(engine.window_size.h)),
-            // 16,
-            // 9,
             0.1,
             100.0,
         );
@@ -473,7 +458,7 @@ pub const Renderer = struct {
             &camera,
             &self.camera_position,
             &self.camera_direction,
-            &.{ 0, 1, 0 },
+            &.{ 0, 0, 1 },
         );
 
         var world: math.Matrix4x4 = undefined;
@@ -491,17 +476,14 @@ pub const Renderer = struct {
             .{ 0, 0, 1, 0 },
             .{ 0, 0, 0, 1 },
         };
+        // _ = &model;
 
-        std.log.info("xform: {any}, {any}", .{camera, projection});
-        std.log.info("vertices:", .{});
-        var vertex : math.Vector4 = undefined;
-        var vp = view_projection;
-        math.matrix4x4.transpose(&vp);
-        math.matrix4x4.apply(&vertex, &vp, &.{-10, -10, -10, 1});
-        std.log.info("{}: {any}", .{0, vertex});
+        std.log.info("xform: {any}", .{camera});
+        std.log.info("camera_position: {any}", .{self.camera_position});
+        std.log.info("camera_direction: {any}", .{self.camera_direction});
 
         var uniform_buffer: [32]f32 = undefined;
-        @memcpy(uniform_buffer[0..16], math.matrix4x4.slice_len_const(&projection));
+        @memcpy(uniform_buffer[0..16], math.matrix4x4.slice_len_const(&view_projection));
         @memcpy(uniform_buffer[16..32], math.matrix4x4.slice_len_const(&model));
 
         sdl.SDL_BindGPUVertexBuffers(render_pass, 0, &sdl.SDL_GPUBufferBinding{
@@ -518,9 +500,9 @@ pub const Renderer = struct {
         }, 1);
         sdl.SDL_PushGPUVertexUniformData(command_buffer, 0, &uniform_buffer, @sizeOf(@TypeOf(uniform_buffer)));
 
+        // sdl.SDL_SetGPUViewport(render_pass, &self.viewport);
         sdl.SDL_BindGPUGraphicsPipeline(render_pass, graphics_pipeline);
         sdl.SDL_DrawGPUIndexedPrimitives(render_pass, 36, 1, 0, 0, 0);
-
         sdl.SDL_EndGPURenderPass(render_pass);
         if (!sdl.SDL_SubmitGPUCommandBuffer(command_buffer)) {
             std.log.err("Failed submitting command_buffer: {s}", .{sdl.SDL_GetError()});

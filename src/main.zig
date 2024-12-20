@@ -1,7 +1,7 @@
 const std = @import("std");
 const zengine = @import("zengine");
 const allocators = zengine.allocators;
-const ecs = zengine.ecs;
+const ecs_mod = zengine.ecs;
 const gfx = zengine.gfx;
 const math = zengine.math;
 const sdl = zengine.ext.sdl;
@@ -14,9 +14,9 @@ pub const std_options = .{
 };
 
 const Position = struct {
-    x: f32 align(@alignOf(math.batch.Batch)),
-    y: f32 align(@alignOf(math.batch.Batch)),
-    z: f32 align(@alignOf(math.batch.Batch)),
+    x: f32,
+    y: f32,
+    z: f32,
 };
 
 pub fn main() !void {
@@ -30,33 +30,39 @@ fn main_impl() !void {
     const engine = try Engine.init(allocators.arena());
     defer engine.deinit();
 
-    var component_manager = try ecs.ComponentManager.init(engine.allocator);
-    defer component_manager.deinit();
-
-    try component_manager.register(Position, engine.allocator, 512);
-    defer component_manager.unregister(Position);
-
-    var positions = component_manager.getComponentArrayList(Position).components;
-    const index = try positions.addOne(engine.allocator);
-    positions.set(index, .{
-        .x = 4.0,
-        .y = 9.0,
-        .z = -10.0,
-    });
-    const slice = positions.slice();
-    const position_vector = math.batch.Vector3{
-        @ptrCast(@alignCast(slice.items(.x).ptr)),
-        @ptrCast(@alignCast(slice.items(.y  ).ptr)),
-        @ptrCast(@alignCast(slice.items(.z).ptr)),
-    };
-    var result = math.batch.batch.zero;
-    math.batch.vector3.dot(&result, &position_vector, &position_vector);
-    std.log.info("position[{}] = {}", .{ index, result });
-
     var renderer = try gfx.Renderer.init(engine);
     defer renderer.deinit(engine);
 
     std.log.info("Window size: {}", .{engine.window_size});
+
+    {
+        var ecs = try ecs_mod.ECS(.{}).init(allocators.gpa());
+        defer ecs.deinit();
+
+        try ecs.register(Position, allocators.gpa(), 512);
+        defer ecs.unregister(Position);
+
+        // try ecs.register_primitive(Position, allocators.gpa(), 512);
+        // defer ecs.unregister_primitive(Position);
+
+        const positions = ecs.componentArrayListCast(Position);
+        const entity = try positions.push(.{ .x = 10, .y = 15, .z = 22 });
+        const position = positions.components.get(entity);
+        std.log.info("positions[{}]: {any}", .{ entity, position });
+
+        // const primitive_positions = ecs.primitiveComponentArrayListCast(Position);
+        // const primitive_entity = try primitive_positions.push(.{ .x = 10, .y = 15, .z = 22 });
+        // const primitive_position = primitive_positions.components.items[primitive_entity];
+        // std.log.info("primitive_positions[{}]: {any}", .{ entity, primitive_position });
+    }
+    {
+        var positions = try ecs_mod.ComponentManager(Position).init(allocators.gpa(), 512);
+        defer positions.deinit();
+
+        const entity = try positions.push(.{ .x = 10, .y = 15, .z = 22 });
+        const position = positions.components.components.get(entity);
+        std.log.info("positions[{}]: {any}", .{ entity, position });
+    }
 
     const start_time = sdl.SDL_GetTicks();
     var last_update_time = start_time;
@@ -122,10 +128,15 @@ fn main_impl() !void {
         const delta: f32 = @floatFromInt(now - last_update_time);
         const camera_step = delta / 500.0;
 
+        std.log.info("camera_step: {}", .{camera_step});
+
+        std.log.info("coords_norm: {any}", .{coordinates});
         math.vector3.scale(&coordinates.x, camera_step);
         math.vector3.scale(&coordinates.y, camera_step);
         math.vector3.scale(&coordinates.z, camera_step);
         math.vector3.scale(&global_up, camera_step);
+
+        std.log.info("coords: {any}", .{coordinates});
 
         if (key_matrix & 0x01 != 0)
             math.vector3.rotate_direction_scale(&renderer.camera_direction, &coordinates.x, -1);
@@ -145,8 +156,8 @@ fn main_impl() !void {
             math.vector3.translate_scale(&renderer.camera_position, &global_up, 8);
 
         if (key_matrix != 0) {
+            std.log.info("cp: {any} cd: {any}", .{ renderer.camera_position, renderer.camera_direction });
             math.vector3.normalize(&renderer.camera_direction);
-            std.log.info("{}: {any} {any}", .{ delta, renderer.camera_position, renderer.camera_direction });
         }
 
         try renderer.draw(engine, now - start_time);
