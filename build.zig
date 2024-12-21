@@ -4,6 +4,8 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
+    const install_shaders = b.option(bool, "install_shaders", "Force shaders update");
+
     const zengine = b.addModule("zengine", .{
         .root_source_file = b.path("src/zengine/zengine.zig"),
         .target = target,
@@ -45,36 +47,34 @@ pub fn build(b: *std.Build) void {
 
     b.installArtifact(exe);
 
-    switch (target.result.os.tag) {
-        .macos => b.installBinFile("lib/libSDL3.0.dylib", "SDL3.dylib"),
-        else => unreachable, // Unsupported target OS
-    }
-
     const compile_shaders = b.addExecutable(.{
         .name = "compile_shaders",
         .root_source_file = b.path("src/compile_shaders.zig"),
         .target = b.host,
     });
 
+    switch (target.result.os.tag) {
+        .macos => b.installBinFile("lib/libSDL3.0.dylib", "SDL3.dylib"),
+        else => unreachable, // Unsupported target OS
+    }
+
     const compile_shaders_cmd = b.addRunArtifact(compile_shaders);
     compile_shaders_cmd.addArg("--input-dir");
     compile_shaders_cmd.addDirectoryArg(b.path("shaders"));
     compile_shaders_cmd.addArg("--output-dir");
 
-    const shaders_output = compile_shaders_cmd.addOutputDirectoryArg("shaders");
-
-    compile_shaders_cmd.step.dependOn(&b.addRemoveDirTree(b.getInstallPath(.prefix, "shaders")).step);
-
-    const install_shaders_directory = b.addInstallDirectory(.{
-        .source_dir = shaders_output,
-        .install_dir = .prefix,
-        .install_subdir = "shaders",
-    });
-
-    b.getInstallStep().dependOn(&install_shaders_directory.step);
-
-    const compile_shaders_step = b.step("compile_shaders", "Compile shaders");
-    compile_shaders_step.dependOn(&compile_shaders_cmd.step);
+    if (install_shaders orelse false) {
+        compile_shaders_cmd.addArg(b.getInstallPath(.prefix, "shaders"));
+        b.getInstallStep().dependOn(&compile_shaders_cmd.step);
+    } else {
+        const shaders_output = compile_shaders_cmd.addOutputDirectoryArg("shaders");
+        const install_shaders_directory = b.addInstallDirectory(.{
+            .source_dir = shaders_output,
+            .install_dir = .prefix,
+            .install_subdir = "shaders",
+        });
+        b.getInstallStep().dependOn(&install_shaders_directory.step);
+    }
 
     const run_cmd = b.addRunArtifact(exe);
     run_cmd.step.dependOn(b.getInstallStep());
