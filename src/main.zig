@@ -3,6 +3,7 @@ const zengine = @import("zengine");
 const allocators = zengine.allocators;
 const ecs_mod = zengine.ecs;
 const gfx = zengine.gfx;
+const global = zengine.global;
 const math = zengine.math;
 const sdl = zengine.ext.sdl;
 const Engine = zengine.Engine;
@@ -26,6 +27,9 @@ pub fn main() !void {
 fn main_impl() !void {
     allocators.init(std.heap.c_allocator, 2 << 30); // Memory limit: 2GB
     defer allocators.deinit();
+
+    try global.init(allocators.gpa());
+    defer global.deinit();
 
     const engine = try Engine.init(allocators.arena());
     defer engine.deinit();
@@ -63,6 +67,8 @@ fn main_impl() !void {
         const position = positions.components.components.get(entity);
         std.log.info("positions[{}]: {any}", .{ entity, position });
     }
+
+    defer renderer.mesh.release_gpu_buffers(renderer.gpu_device);
 
     const start_time = sdl.SDL_GetTicks();
     var last_update_time = start_time;
@@ -121,9 +127,9 @@ fn main_impl() !void {
             }
         }
 
-        var global_up = math.Vector3{ 0, 0, 1 };
+        var global_up = comptime global.up();
         var coordinates: math.vector3.Coordinates = undefined;
-        math.vector3.inverse_local_coordinates(&coordinates, &renderer.camera_direction, &global_up);
+        math.vector3.local_coordinates(&coordinates, &renderer.camera_direction, &global_up);
 
         const delta: f32 = @floatFromInt(now - last_update_time);
         const camera_step = delta / 500.0;
@@ -143,13 +149,13 @@ fn main_impl() !void {
         if (key_matrix & 0x02 != 0)
             math.vector3.rotate_direction_scale(&renderer.camera_direction, &coordinates.x, 1);
         if (key_matrix & 0x04 != 0)
-            math.vector3.rotate_direction_scale(&renderer.camera_direction, &coordinates.y, -1);
+            math.vector3.rotate_direction_scale(&renderer.camera_direction, &coordinates.z, -1);
         if (key_matrix & 0x08 != 0)
-            math.vector3.rotate_direction_scale(&renderer.camera_direction, &coordinates.y, 1);
+            math.vector3.rotate_direction_scale(&renderer.camera_direction, &coordinates.z, 1);
         if (key_matrix & 0x10 != 0)
-            math.vector3.translate_direction_scale(&renderer.camera_position, &coordinates.z, -8);
+            math.vector3.translate_direction_scale(&renderer.camera_position, &coordinates.y, -8);
         if (key_matrix & 0x20 != 0)
-            math.vector3.translate_direction_scale(&renderer.camera_position, &coordinates.z, 8);
+            math.vector3.translate_direction_scale(&renderer.camera_position, &coordinates.y, 8);
         if (key_matrix & 0x40 != 0)
             math.vector3.translate_scale(&renderer.camera_position, &global_up, -8);
         if (key_matrix & 0x80 != 0)

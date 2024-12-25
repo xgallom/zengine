@@ -22,7 +22,7 @@
 //! // assumes len is a multiple of batch_len
 //! for (0..(len / matrix4x4.batch_len)) {
 //!     do_operation(&matrix);
-//!     matrix4x4.advance(&matrix);
+//!     matrix4x4.increment(&matrix);
 //! }
 //! ```
 //!

@@ -12,12 +12,11 @@
 //!
 //! Example usage:
 //! ```
-//! var vector = Vector3{ &batch_x, &batch_y, &batch_z };
+//! const vector = Vector3{ &batch_x, &batch_y, &batch_z };
 //!
-//! // assumes len is a multiple of batch_len
-//! for (0..(len / vector3.batch_len)) {
-//!     do_operation(&vector);
-//!     vector3.advance(&vector);
+//! var iterator = vector3.iterate(&vector, len);
+//! for (iterator.next()) |v| {
+//!     do_operation(&v);
 //! }
 //! ```
 //!
@@ -27,6 +26,7 @@ const assert = std.debug.assert;
 
 const types = @import("types.zig");
 const batchNT = @import("scalar.zig").batchNT;
+const vectorNT = @import("../vector.zig").vectorNT;
 
 pub fn vectorNBT(comptime N: usize, comptime NB: usize, comptime T: type) type {
     return struct {
@@ -39,6 +39,7 @@ pub fn vectorNBT(comptime N: usize, comptime NB: usize, comptime T: type) type {
         pub const batch_len = scalar.len;
 
         const scalar = batchNT(NB, T);
+        pub const dense = vectorNT(N, types.BatchNT(NB, T));
 
         /// advances the vector in address space to next batch,
         /// assumes bounds checking
@@ -153,5 +154,46 @@ pub fn vectorNBT(comptime N: usize, comptime NB: usize, comptime T: type) type {
                 result[2].* = lhs[0].* * rhs[1].* - lhs[1].* * rhs[0].*;
             }
         } else struct {};
+
+        pub fn iterate(self: *Self, count: usize) Iterator {
+            var result = Iterator{
+                .data = self.*,
+                .remaining = scalar.batch_len(count),
+            };
+            decrement(&result.data);
+            return result;
+        }
+
+        pub const Iterator = struct {
+            data: Self,
+            remaining: usize,
+
+            pub fn next(self: *Iterator) ?*const Self {
+                if (self.remaining == 0) return null;
+                self.remaining -= 1;
+                increment(&self.data);
+                return &self.data;
+            }
+        };
+
+        pub const CIterator = struct {
+            data: CSelf,
+            remaining: usize,
+
+            pub fn next(self: *Iterator) ?*const CSelf {
+                if (self.remaining == 0) return null;
+                self.remaining -= 1;
+                increment(&self.data);
+                return &self.data;
+            }
+        };
+
+        pub fn from_dense(dense_vector: types.DenseVectorNBT(N, NB, T)) Self {
+            var result: Self = undefined;
+            for (0..len) |n| {
+                result[n] = &dense_vector[n];
+            }
+            return result;
+        }
     };
 }

@@ -5,6 +5,7 @@ const assert = std.debug.assert;
 pub const GPA = std.heap.GeneralPurposeAllocator(.{
     .enable_memory_limit = true,
     .thread_safe = false,
+    .safety = false,
 });
 
 pub const Arena = std.heap.ArenaAllocator;

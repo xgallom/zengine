@@ -5,6 +5,7 @@
 const std = @import("std");
 const builtin = @import("builtin");
 const sdl = @import("../ext.zig").sdl;
+const global = @import("../global.zig");
 
 pub const OpenConfig = struct {
     allocator: std.mem.Allocator,
@@ -18,8 +19,7 @@ pub const OpenConfig = struct {
 };
 
 fn open_shader_dir(config: OpenConfig) !std.fs.Dir {
-    const exe_path = try std.fs.selfExeDirPathAlloc(config.allocator);
-    const shaders_path = try std.fs.path.join(config.allocator, &.{ exe_path, "..", "shaders" });
+    const shaders_path = try std.fs.path.join(config.allocator, &.{ global.exe_path(), "..", "shaders" });
     return try std.fs.openDirAbsolute(shaders_path, .{});
 }
 
@@ -43,40 +43,40 @@ pub fn open(config: OpenConfig) ?*sdl.SDL_GPUShader {
         shader_ext = ".spv";
         entry_point = "main";
     } else {
-        std.log.err("No supported shader format found", .{});
+        std.log.err("no supported shader format found", .{});
         return null;
     }
 
     var shaders_dir = open_shader_dir(config) catch |err| {
-        std.log.err("Error opening shaders_dir: {s}", .{@errorName(err)});
+        std.log.err("error opening shaders_dir: {s}", .{@errorName(err)});
         return null;
     };
     defer shaders_dir.close();
 
     const shader_path = std.fmt.allocPrint(config.allocator, "{s}{s}", .{ config.shader_path, shader_ext }) catch |err| {
-        std.log.err("Error creating shader_path: {s}", .{@errorName(err)});
+        std.log.err("error creating shader_path: {s}", .{@errorName(err)});
         return null;
     };
 
     const shader_file = shaders_dir.openFile(shader_path, .{}) catch |err| {
-        std.log.err("Failed opening shader_file \"{s}\": {s}", .{ shader_path, @errorName(err) });
+        std.log.err("failed opening shader_file \"{s}\": {s}", .{ shader_path, @errorName(err) });
         return null;
     };
     defer shader_file.close();
 
     const code_stat = shader_file.stat() catch |err| {
-        std.log.err("Failed obtaining shader_file code_stat: {s}", .{@errorName(err)});
+        std.log.err("failed obtaining shader_file code_stat: {s}", .{@errorName(err)});
         return null;
     };
 
     var code_size = code_stat.size;
     const code = config.allocator.alloc(u8, code_size) catch |err| {
-        std.log.err("Failed to allocate code ([{d}]u8): {s}", .{ code_size, @errorName(err) });
+        std.log.err("failed to allocate code ([{d}]u8): {s}", .{ code_size, @errorName(err) });
         return null;
     };
 
     code_size = shader_file.readAll(code) catch |err| {
-        std.log.err("Failed reading code: {s}", .{@errorName(err)});
+        std.log.err("failed reading code: {s}", .{@errorName(err)});
         return null;
     };
 
@@ -93,7 +93,7 @@ pub fn open(config: OpenConfig) ?*sdl.SDL_GPUShader {
         .props = 0,
     });
     if (shader == null) {
-        std.log.err("Failed creating shader: {s}", .{sdl.SDL_GetError()});
+        // std.log.err("failed creating shader: {s}", .{sdl.SDL_GetError()});
         return null;
     }
 

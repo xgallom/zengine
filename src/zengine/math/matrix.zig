@@ -153,8 +153,8 @@ pub fn matrixMxNT(comptime M: usize, comptime N: usize, comptime T: type) type {
             pub fn world_transform(result: *Self) void {
                 result.* = .{
                     .{ scalar.one, scalar.zero, scalar.zero, scalar.zero },
-                    .{ scalar.zero, scalar.one, scalar.zero, scalar.zero },
-                    .{ scalar.zero, scalar.zero, scalar.one, scalar.zero },
+                    .{ scalar.zero, scalar.zero, -scalar.one, scalar.zero },
+                    .{ scalar.zero, -scalar.one, scalar.zero, scalar.zero },
                     .{ scalar.zero, scalar.zero, scalar.zero, scalar.one },
                 };
             }
@@ -173,7 +173,7 @@ pub fn matrixMxNT(comptime M: usize, comptime N: usize, comptime T: type) type {
 
             pub fn camera(result: *Self, position: *const Vector3, direction: *const Vector3, up: *const Vector3) void {
                 var coordinates: vector3.Coordinates = undefined;
-                vector3.inverse_local_coordinates(&coordinates, direction, up);
+                vector3.camera_coordinates(&coordinates, direction, up);
 
                 const x = &coordinates.x;
                 const y = &coordinates.y;

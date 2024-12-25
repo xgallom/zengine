@@ -29,8 +29,6 @@ pub fn build(b: *std.Build) void {
     lib.addLibraryPath(b.path("lib"));
     lib.linkSystemLibrary("SDL3");
 
-    b.installArtifact(lib);
-
     const exe = b.addExecutable(.{
         .name = "zeng",
         .root_source_file = b.path("src/main.zig"),
@@ -55,7 +53,7 @@ pub fn build(b: *std.Build) void {
 
     switch (target.result.os.tag) {
         .macos => b.installBinFile("lib/libSDL3.0.dylib", "SDL3.dylib"),
-        else => unreachable, // Unsupported target OS
+        else => std.zig.fatal("Unsupported target os: {s}", .{@tagName(target.result.os.tag)}),
     }
 
     const compile_shaders_cmd = b.addRunArtifact(compile_shaders);

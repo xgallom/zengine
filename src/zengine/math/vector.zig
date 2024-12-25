@@ -134,16 +134,16 @@ pub fn vectorNT(comptime N: usize, comptime T: type) type {
                 z: Self,
             };
 
-            pub fn translate_scale(direction: *Self, rotation: *const Self, multiplier: Scalar) void {
-                mul_sub(direction, rotation, multiplier);
+            pub fn translate_scale(direction: *Self, translation: *const Self, multiplier: Scalar) void {
+                mul_sub(direction, translation, multiplier);
             }
 
             pub fn rotate_direction_scale(direction: *Self, rotation: *const Self, multiplier: Scalar) void {
                 mul_add(direction, rotation, multiplier);
             }
 
-            pub fn translate_direction_scale(direction: *Self, rotation: *const Self, multiplier: Scalar) void {
-                mul_sub(direction, rotation, multiplier);
+            pub fn translate_direction_scale(direction: *Self, translation: *const Self, multiplier: Scalar) void {
+                mul_add(direction, translation, multiplier);
             }
 
             pub fn cross(result: *Self, lhs: *const Self, rhs: *const Self) void {
@@ -155,20 +155,22 @@ pub fn vectorNT(comptime N: usize, comptime T: type) type {
             pub fn local_coordinates(result: *Coordinates, direction: *const Self, up: *const Self) void {
                 assert(length(up) == 1);
 
-                result.z = direction.*;
-                cross(&result.x, up, &result.z);
+                result.y = direction.*;
+                normalize(&result.y);
+                cross(&result.x, &result.y, up);
                 normalize(&result.x);
-                cross(&result.y, &result.z, &result.x);
+                cross(&result.z, &result.y, &result.x);
             }
 
-            pub fn inverse_local_coordinates(result: *Coordinates, direction: *const Self, up: *const Self) void {
+            pub fn camera_coordinates(result: *Coordinates, direction: *const Self, up: *const Self) void {
                 assert(length(up) == 1);
 
                 result.z = direction.*;
+                normalize(&result.z);
                 scale(&result.z, -1);
                 cross(&result.x, up, &result.z);
                 normalize(&result.x);
-                cross(&result.y, &result.z, &result.x);
+                cross(&result.y, &result.x, &result.z);
             }
         } else struct {};
     };

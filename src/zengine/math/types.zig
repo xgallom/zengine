@@ -37,7 +37,10 @@ pub const Matrix4x4 = Matrix4x4T(Scalar);
 pub const Matrix4x4f64 = Matrix4x4T(Scalar64);
 
 pub const Vertex = Vector3;
+pub const Vertex4 = Vector4;
 pub const Position = Vector4;
 pub const Displacement = Vector4;
 pub const Euler = Vector3;
 pub const Quaternion = Vector4;
+pub const Index = u32;
+pub const FaceIndex = [3]u32;

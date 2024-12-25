@@ -10,10 +10,10 @@ pub const Scalar = types.Scalar;
 pub const Scalar64 = types.Scalar64;
 
 /// optimal length of a vector for type f32,
-/// defaults to 16 (512b - AVX 512b, ARM 128b - 1024b)
+/// defaults to 16 (512b <- AVX-512, ARM 128 - 1024)
 pub const batch_len: usize = std.simd.suggestVectorLength(Scalar) orelse 16;
 /// optimal length of a vector for type f64,
-/// defaults to 8 (512b - AVX 512b, ARM 128b - 1024b)
+/// defaults to 8 (512b <- AVX-512, ARM 128 - 1024)
 pub const batch_len64: usize = std.simd.suggestVectorLength(Scalar64) orelse 8;
 
 /// batch of N elements of type T
@@ -38,6 +38,11 @@ pub fn VectorNBT(comptime N: usize, comptime NB: usize, comptime T: type) type {
 pub fn CVectorNBT(comptime N: usize, comptime NB: usize, comptime T: type) type {
     return types.VectorNT(N, CPrimitiveNT(NB, T));
 }
+/// underlying type of a vector of N batches of NB elements of type T
+/// - operations of dense vector are implemented in math.vector
+pub fn DenseVectorNBT(comptime N: usize, comptime NB: usize, comptime T: type) type {
+    return types.VectorNT(N, BatchNT(NB, T));
+}
 
 pub fn Vector2BT(comptime NB: usize, comptime T: type) type {
     return VectorNBT(2, NB, T);
@@ -45,17 +50,26 @@ pub fn Vector2BT(comptime NB: usize, comptime T: type) type {
 pub fn CVector2BT(comptime NB: usize, comptime T: type) type {
     return CVectorNBT(2, NB, T);
 }
+pub fn DenseVector2BT(comptime NB: usize, comptime T: type) type {
+    return DenseVectorNBT(2, NB, T);
+}
 pub fn Vector3BT(comptime NB: usize, comptime T: type) type {
     return VectorNBT(3, NB, T);
 }
 pub fn CVector3BT(comptime NB: usize, comptime T: type) type {
     return CVectorNBT(3, NB, T);
 }
+pub fn DenseVector3BT(comptime NB: usize, comptime T: type) type {
+    return DenseVectorNBT(3, NB, T);
+}
 pub fn Vector4BT(comptime NB: usize, comptime T: type) type {
     return VectorNBT(4, NB, T);
 }
 pub fn CVector4BT(comptime NB: usize, comptime T: type) type {
     return CVectorNBT(4, NB, T);
+}
+pub fn DenseVector4BT(comptime NB: usize, comptime T: type) type {
+    return DenseVectorNBT(4, NB, T);
 }
 
 /// underlying type of a matrix of M rows and N columns of mutable pointers to batches of NB elements of type T
@@ -78,12 +92,16 @@ pub const Batch = BatchNT(batch_len, Scalar);
 pub const Batch64 = BatchNT(batch_len64, Scalar64);
 pub const Vector3 = VectorNBT(3, batch_len, Scalar);
 pub const CVector3 = CVectorNBT(3, batch_len, Scalar);
+pub const DenseVector3 = DenseVectorNBT(3, batch_len, Scalar);
 pub const Vector3f64 = VectorNBT(3, batch_len64, Scalar64);
 pub const CVector3f64 = CVectorNBT(3, batch_len64, Scalar64);
+pub const DenseVector3f64 = DenseVectorNBT(3, batch_len64, Scalar64);
 pub const Vector4 = VectorNBT(4, batch_len, Scalar);
 pub const CVector4 = CVectorNBT(4, batch_len, Scalar);
+pub const DenseVector4 = DenseVectorNBT(4, batch_len, Scalar);
 pub const Vector4f64 = VectorNBT(4, batch_len64, Scalar64);
 pub const CVector4f64 = CVectorNBT(4, batch_len64, Scalar64);
+pub const DenseVector4f64 = DenseVectorNBT(4, batch_len64, Scalar64);
 pub const Matrix4x4 = MatrixMxNBT(4, 4, batch_len, Scalar);
 pub const CMatrix4x4 = CMatrixMxNBT(4, 4, batch_len, Scalar);
 pub const Matrix4x4f64 = MatrixMxNBT(4, 4, batch_len64, Scalar64);
