@@ -293,8 +293,8 @@ pub const Renderer = struct {
             .texture = texture,
             .stencil_texture = stencil_texture,
             .sampler = sampler,
-            .camera_position = .{ 10, 10, 10 },
-            .camera_direction = .{ -1, -1, -1 },
+            .camera_position = .{ 16, 0, -16 },
+            .camera_direction = .{ -1, 0, 1 },
         };
     }
 
@@ -315,7 +315,6 @@ pub const Renderer = struct {
     };
 
     pub fn draw(self: Renderer, engine: Engine, time: u64) DrawError!void {
-        _ = time;
         const gpu_device = self.gpu_device;
         const window = engine.window;
         const graphics_pipeline = self.graphics_pipeline;
@@ -361,7 +360,17 @@ pub const Renderer = struct {
             return DrawError.DrawFailed;
         }
 
+        const world = comptime blk: {
+            var result: math.Matrix4x4 = undefined;
+            math.matrix4x4.world_transform(&result);
+            break :blk result;
+        };
+
         var projection: math.Matrix4x4 = undefined;
+        var camera: math.Matrix4x4 = undefined;
+        var view: math.Matrix4x4 = undefined;
+        var view_projection: math.Matrix4x4 = undefined;
+
         math.matrix4x4.perspective_fov(
             &projection,
             39.5978 * std.math.pi / 180.0,
@@ -370,31 +379,29 @@ pub const Renderer = struct {
             0.1,
             100.0,
         );
-
-        var camera: math.Matrix4x4 = undefined;
         math.matrix4x4.camera(
             &camera,
             &self.camera_position,
             &self.camera_direction,
             &comptime global.camera_up(),
         );
-
-        var world: math.Matrix4x4 = undefined;
-        math.matrix4x4.world_transform(&world);
-
-        var view: math.Matrix4x4 = undefined;
         math.matrix4x4.dot(&view, &camera, &world);
-
-        var view_projection: math.Matrix4x4 = undefined;
         math.matrix4x4.dot(&view_projection, &projection, &view);
 
-        var model = math.Matrix4x4{
-            .{ 1, 0, 0, -1 },
-            .{ 0, 1, 0, -1 },
-            .{ 0, 0, 1, 1.4 },
-            .{ 0, 0, 0, 1 },
+        const time_s = @as(f32, @floatFromInt(time)) / 1000.0;
+        const pi = std.math.pi;
+        const model = blk: {
+            var result = math.matrix4x4.identity;
+
+            const x_mod_s = @abs(@sin(time_s * pi / 4.0));
+            const y_mod_s = @abs(@sin(time_s * pi / 8.0));
+            const is_period_2 = (time % 16000) >= 8000;
+            math.matrix4x4.rotate_euler(&result, &.{ x_mod_s * pi / 4.0, y_mod_s * pi / 2.0, 0 }, if (is_period_2) .yxz else .xyz);
+            math.matrix4x4.scale_xyz(&result, &.{ 1, 1, 1 });
+            math.matrix4x4.translate_xyz(&result, &.{ 0, 0, 0 });
+
+            break :blk result;
         };
-        // _ = &model;
 
         std.log.info("camera_position: {any}", .{self.camera_position});
         std.log.info("camera_direction: {any}", .{self.camera_direction});

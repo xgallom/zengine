@@ -44,3 +44,37 @@ pub const Euler = Vector3;
 pub const Quaternion = Vector4;
 pub const Index = u32;
 pub const FaceIndex = [3]u32;
+
+pub const Axis3 = enum {
+    x,
+    y,
+    z,
+    const len = 3;
+};
+pub const Axis4 = enum {
+    x,
+    y,
+    z,
+    w,
+    const len = 4;
+};
+
+pub const EulerOrder = enum {
+    xyz,
+    xzy,
+    yxz,
+    yzx,
+    zxy,
+    zyx,
+
+    pub fn axes(self: EulerOrder) [3]Axis3 {
+        return switch (self) {
+            .xyz => .{ .x, .y, .z },
+            .xzy => .{ .x, .z, .y },
+            .yxz => .{ .y, .x, .z },
+            .yzx => .{ .y, .z, .x },
+            .zxy => .{ .z, .x, .y },
+            .zyx => .{ .z, .y, .x },
+        };
+    }
+};

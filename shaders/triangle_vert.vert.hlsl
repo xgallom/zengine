@@ -19,10 +19,10 @@ Output main(float3 Coords : TEXCOORD0)
 {
     Output output;
 
-    const float4x4 Transform = mul(TransformModel, TransformViewProjection);
+    const float4 Position = mul(float4(Coords, 1.0), TransformModel);
 
-    output.TexCoord = Coords;
-    output.Position = mul(float4(Coords, 1.0), Transform);
+    output.TexCoord = Position.xyz;
+    output.Position = mul(Position, TransformViewProjection);
 
     return output;
 }

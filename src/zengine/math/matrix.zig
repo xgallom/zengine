@@ -21,9 +21,18 @@ pub fn matrixMxNT(comptime M: usize, comptime N: usize, comptime T: type) type {
         pub const vector = vectorNT(N, T);
         pub const scalar = scalarT(T);
 
-        pub const zero = splat(0);
-        pub const one = splat(1);
-        pub const neg_one = splat(-1);
+        pub const zero = splat(scalar.zero);
+        pub const one = splat(scalar.one);
+        pub const neg_one = splat(scalar.neg_one);
+        pub const identity = make_identity();
+
+        fn make_identity() Self {
+            var result = zero;
+            for (0..rows) |i| {
+                result[i][i] = scalar.one;
+            }
+            return result;
+        }
 
         pub fn splat(value: Scalar) Self {
             var result: Self = undefined;
@@ -191,6 +200,75 @@ pub fn matrixMxNT(comptime M: usize, comptime N: usize, comptime T: type) type {
                 var direction = target.*;
                 vector3.sub(&direction, position);
                 camera(result, position, &direction, up);
+            }
+
+            pub fn scale_xyz(operand: *Self, scales: *const Vector3) void {
+                const operation: Self = .{
+                    .{ scales[0], scalar.zero, scalar.zero, scalar.zero },
+                    .{ scalar.zero, scales[1], scalar.zero, scalar.zero },
+                    .{ scalar.zero, scalar.zero, scales[2], scalar.zero },
+                    .{ scalar.zero, scalar.zero, scalar.zero, scalar.one },
+                };
+                const input = operand.*;
+                dot(operand, &operation, &input);
+            }
+
+            pub fn scaling_xyz(scales: *const Vector3) Self {
+                var result = identity;
+                scale_xyz(&result, scales);
+                return result;
+            }
+
+            pub fn rotate_euler(operand: *Self, rotation: *const types.Euler, order: types.EulerOrder) void {
+                const operations: []const Self = &.{
+                    // x
+                    .{
+                        .{ scalar.one, scalar.zero, scalar.zero, scalar.zero },
+                        .{ scalar.zero, @cos(rotation[0]), -@sin(rotation[0]), scalar.zero },
+                        .{ scalar.zero, @sin(rotation[0]), @cos(rotation[0]), scalar.zero },
+                        .{ scalar.zero, scalar.zero, scalar.zero, scalar.one },
+                    },
+                    // y
+                    .{
+                        .{ @cos(rotation[1]), scalar.zero, @sin(rotation[1]), scalar.zero },
+                        .{ scalar.zero, scalar.one, scalar.zero, scalar.zero },
+                        .{ -@sin(rotation[1]), scalar.zero, @cos(rotation[1]), scalar.zero },
+                        .{ scalar.zero, scalar.zero, scalar.zero, scalar.one },
+                    },
+                    // z
+                    .{
+                        .{ @cos(rotation[2]), -@sin(rotation[2]), scalar.zero, scalar.zero },
+                        .{ @sin(rotation[2]), @cos(rotation[2]), scalar.zero, scalar.zero },
+                        .{ scalar.zero, scalar.zero, scalar.one, scalar.zero },
+                        .{ scalar.zero, scalar.zero, scalar.zero, scalar.one },
+                    },
+                };
+                inline for (order.axes()) |axis| {
+                    const input = operand.*;
+                    dot(operand, &operations[@intFromEnum(axis)], &input);
+                }
+            }
+
+            pub fn rotation_euler(rotation: *const types.Euler, order: types.EulerOrder) Self {
+                var result = identity;
+                rotate_euler(&result, rotation, order);
+                return result;
+            }
+
+            pub fn translate_xyz(operand: *Self, translation: *const Vector3) void {
+                const operation = Self{
+                    .{ scalar.one, scalar.zero, scalar.zero, translation[0] },
+                    .{ scalar.zero, scalar.one, scalar.zero, translation[1] },
+                    .{ scalar.zero, scalar.zero, scalar.one, translation[2] },
+                    .{ scalar.zero, scalar.zero, scalar.zero, scalar.one },
+                };
+                const input = operand.*;
+                dot(operand, &operation, &input);
+            }
+            pub fn translation_xyz(translation: *const Vector3) Self {
+                var result = identity;
+                translate_xyz(&result, translation);
+                return result;
             }
         } else struct {};
     };
