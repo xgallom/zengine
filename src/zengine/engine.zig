@@ -26,19 +26,19 @@ pub const Engine = struct {
 
     pub fn init(allocator: std.mem.Allocator) InitError!Engine {
         if (!sdl.SDL_Init(sdl.SDL_INIT_VIDEO)) {
-            std.log.err("Failed init: {s}", .{sdl.SDL_GetError()});
+            std.log.err("failed init: {s}", .{sdl.SDL_GetError()});
             return InitError.InitFailed;
         }
 
-        const window = sdl.SDL_CreateWindow("hello gamedev", 1920, 1080, sdl.SDL_WINDOW_MAXIMIZED);
+        const window = sdl.SDL_CreateWindow("zeng - ZEngine 0.1.0", 1920, 1080, sdl.SDL_WINDOW_MAXIMIZED);
         if (window == null) {
-            std.log.err("Failed creating window: {s}", .{sdl.SDL_GetError()});
+            std.log.err("failed creating window: {s}", .{sdl.SDL_GetError()});
             return InitError.WindowFailed;
         }
 
         var window_size = WindowSize{};
         if (!sdl.SDL_GetWindowSizeInPixels(window, &window_size.w, &window_size.h)) {
-            std.log.err("Failed obtaining window size: {s}", .{sdl.SDL_GetError()});
+            std.log.err("failed obtaining window size: {s}", .{sdl.SDL_GetError()});
             return InitError.WindowFailed;
         }
 

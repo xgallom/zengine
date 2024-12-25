@@ -293,8 +293,8 @@ pub const Renderer = struct {
             .texture = texture,
             .stencil_texture = stencil_texture,
             .sampler = sampler,
-            .camera_position = .{ -10, -10, -10 },
-            .camera_direction = .{ 1, 1, 1 },
+            .camera_position = .{ 10, 10, 10 },
+            .camera_direction = .{ -1, -1, -1 },
         };
     }
 
@@ -383,15 +383,15 @@ pub const Renderer = struct {
         math.matrix4x4.world_transform(&world);
 
         var view: math.Matrix4x4 = undefined;
-        math.matrix4x4.dot(&view, &world, &camera);
+        math.matrix4x4.dot(&view, &camera, &world);
 
         var view_projection: math.Matrix4x4 = undefined;
-        math.matrix4x4.dot(&view_projection, &view, &projection);
+        math.matrix4x4.dot(&view_projection, &projection, &view);
 
         var model = math.Matrix4x4{
-            .{ 1, 0, 0, 0 },
-            .{ 0, 1, 0, 0 },
-            .{ 0, 0, 1, 0 },
+            .{ 1, 0, 0, -1 },
+            .{ 0, 1, 0, -1 },
+            .{ 0, 0, 1, 1.4 },
             .{ 0, 0, 0, 1 },
         };
         // _ = &model;

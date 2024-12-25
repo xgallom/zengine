@@ -166,8 +166,8 @@ pub fn matrixMxNT(comptime M: usize, comptime N: usize, comptime T: type) type {
                 result.* = .{
                     .{ x, scalar.zero, scalar.zero, scalar.zero },
                     .{ scalar.zero, y, scalar.zero, scalar.zero },
-                    .{ scalar.zero, scalar.zero, far_plane / (near_plane - far_plane), scalar.neg_one },
-                    .{ scalar.zero, scalar.zero, (near_plane * far_plane) / (near_plane - far_plane), scalar.zero },
+                    .{ scalar.zero, scalar.zero, far_plane / (near_plane - far_plane), (near_plane * far_plane) / (near_plane - far_plane) },
+                    .{ scalar.zero, scalar.zero, scalar.neg_one, scalar.zero },
                 };
             }
 
@@ -180,10 +180,10 @@ pub fn matrixMxNT(comptime M: usize, comptime N: usize, comptime T: type) type {
                 const z = &coordinates.z;
 
                 result.* = .{
-                    .{ x[0], y[0], z[0], scalar.zero },
-                    .{ x[1], y[1], z[1], scalar.zero },
-                    .{ x[2], y[2], z[2], scalar.zero },
-                    .{ -vector3.dot(x, position), -vector3.dot(y, position), -vector3.dot(z, position), scalar.one },
+                    .{ x[0], x[1], x[2], -vector3.dot(x, position) },
+                    .{ y[0], y[1], y[2], -vector3.dot(y, position) },
+                    .{ z[0], z[1], z[2], -vector3.dot(z, position) },
+                    .{ scalar.zero, scalar.zero, scalar.zero, scalar.one },
                 };
             }
 

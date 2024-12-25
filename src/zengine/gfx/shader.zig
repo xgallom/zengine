@@ -31,14 +31,17 @@ pub fn open(config: OpenConfig) ?*sdl.SDL_GPUShader {
     var entry_point: []const u8 = undefined;
 
     if (shader_formats & sdl.SDL_GPU_SHADERFORMAT_DXIL != 0) {
+        std.log.info("shader_format: dxil", .{});
         shader_format = sdl.SDL_GPU_SHADERFORMAT_DXIL;
         shader_ext = ".dxil";
         entry_point = "main";
     } else if (shader_formats & sdl.SDL_GPU_SHADERFORMAT_MSL != 0) {
+        std.log.info("shader_format: msl", .{});
         shader_format = sdl.SDL_GPU_SHADERFORMAT_MSL;
         shader_ext = ".msl";
         entry_point = "main0";
     } else if (shader_formats & sdl.SDL_GPU_SHADERFORMAT_SPIRV != 0) {
+        std.log.info("shader_format: spirv", .{});
         shader_format = sdl.SDL_GPU_SHADERFORMAT_SPIRV;
         shader_ext = ".spv";
         entry_point = "main";
