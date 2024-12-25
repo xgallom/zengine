@@ -79,7 +79,7 @@ pub const Renderer = struct {
         defer sdl.SDL_ReleaseGPUShader(gpu_device, fragment_shader);
 
         const path = std.fs.path.join(engine.allocator, &.{ global.exe_path(), "..", "..", "assets", "cow_nonormals.obj" }) catch |err| {
-            std.log.err("failed creating obj file path: {}", .{@errorName(err)});
+            std.log.err("failed creating obj file path: {s}", .{@errorName(err)});
             return InitError.BufferFailed;
         };
         var mesh = obj_loader.load_file(engine.allocator, path) catch |err| {
@@ -275,6 +275,7 @@ pub const Renderer = struct {
             return InitError.CommandBufferFailed;
         }
 
+        // DEAD_CODE
         const viewport = sdl.SDL_GPUViewport{
             .x = -1,
             .y = -1,
@@ -292,7 +293,7 @@ pub const Renderer = struct {
             .texture = texture,
             .stencil_texture = stencil_texture,
             .sampler = sampler,
-            .camera_position = .{ 0, 0, 0 },
+            .camera_position = .{ -10, -10, -10 },
             .camera_direction = .{ 1, 1, 1 },
         };
     }
@@ -395,7 +396,6 @@ pub const Renderer = struct {
         };
         // _ = &model;
 
-        std.log.info("xform: {any}", .{camera});
         std.log.info("camera_position: {any}", .{self.camera_position});
         std.log.info("camera_direction: {any}", .{self.camera_direction});
 

@@ -93,7 +93,7 @@ pub fn open(config: OpenConfig) ?*sdl.SDL_GPUShader {
         .props = 0,
     });
     if (shader == null) {
-        // std.log.err("failed creating shader: {s}", .{sdl.SDL_GetError()});
+        std.log.err("failed creating shader: {s}", .{sdl.SDL_GetError()});
         return null;
     }
 

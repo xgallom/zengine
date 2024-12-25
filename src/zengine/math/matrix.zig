@@ -153,8 +153,8 @@ pub fn matrixMxNT(comptime M: usize, comptime N: usize, comptime T: type) type {
             pub fn world_transform(result: *Self) void {
                 result.* = .{
                     .{ scalar.one, scalar.zero, scalar.zero, scalar.zero },
-                    .{ scalar.zero, scalar.zero, -scalar.one, scalar.zero },
-                    .{ scalar.zero, -scalar.one, scalar.zero, scalar.zero },
+                    .{ scalar.zero, scalar.one, scalar.zero, scalar.zero },
+                    .{ scalar.zero, scalar.zero, scalar.one, scalar.zero },
                     .{ scalar.zero, scalar.zero, scalar.zero, scalar.one },
                 };
             }
@@ -190,7 +190,6 @@ pub fn matrixMxNT(comptime M: usize, comptime N: usize, comptime T: type) type {
             pub fn look_at(result: *Self, position: *const Vector3, target: *const Vector3, up: *const Vector3) void {
                 var direction = target.*;
                 vector3.sub(&direction, position);
-                vector3.normalize(&direction);
                 camera(result, position, &direction, up);
             }
         } else struct {};

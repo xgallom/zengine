@@ -134,37 +134,30 @@ fn main_impl() !void {
         const delta: f32 = @floatFromInt(now - last_update_time);
         const camera_step = delta / 500.0;
 
-        std.log.info("camera_step: {}", .{camera_step});
-
         std.log.info("coords_norm: {any}", .{coordinates});
         math.vector3.scale(&coordinates.x, camera_step);
         math.vector3.scale(&coordinates.y, camera_step);
         math.vector3.scale(&coordinates.z, camera_step);
         math.vector3.scale(&global_up, camera_step);
 
-        std.log.info("coords: {any}", .{coordinates});
-
         if (key_matrix & 0x01 != 0)
             math.vector3.rotate_direction_scale(&renderer.camera_direction, &coordinates.x, -1);
         if (key_matrix & 0x02 != 0)
             math.vector3.rotate_direction_scale(&renderer.camera_direction, &coordinates.x, 1);
         if (key_matrix & 0x04 != 0)
-            math.vector3.rotate_direction_scale(&renderer.camera_direction, &coordinates.z, -1);
+            math.vector3.rotate_direction_scale(&renderer.camera_direction, &coordinates.y, -1);
         if (key_matrix & 0x08 != 0)
-            math.vector3.rotate_direction_scale(&renderer.camera_direction, &coordinates.z, 1);
+            math.vector3.rotate_direction_scale(&renderer.camera_direction, &coordinates.y, 1);
         if (key_matrix & 0x10 != 0)
-            math.vector3.translate_direction_scale(&renderer.camera_position, &coordinates.y, -8);
+            math.vector3.translate_direction_scale(&renderer.camera_position, &coordinates.z, -8);
         if (key_matrix & 0x20 != 0)
-            math.vector3.translate_direction_scale(&renderer.camera_position, &coordinates.y, 8);
+            math.vector3.translate_direction_scale(&renderer.camera_position, &coordinates.z, 8);
         if (key_matrix & 0x40 != 0)
             math.vector3.translate_scale(&renderer.camera_position, &global_up, -8);
         if (key_matrix & 0x80 != 0)
             math.vector3.translate_scale(&renderer.camera_position, &global_up, 8);
 
-        if (key_matrix != 0) {
-            std.log.info("cp: {any} cd: {any}", .{ renderer.camera_position, renderer.camera_direction });
-            math.vector3.normalize(&renderer.camera_direction);
-        }
+        if (key_matrix != 0) math.vector3.normalize(&renderer.camera_direction);
 
         try renderer.draw(engine, now - start_time);
         last_update_time = now;

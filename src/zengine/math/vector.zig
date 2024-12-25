@@ -127,7 +127,7 @@ pub fn vectorNT(comptime N: usize, comptime T: type) type {
             }
         }
 
-        pub usingnamespace if (N == 3) struct {
+        const self3 = if (N == 3) struct {
             pub const Coordinates = struct {
                 x: Self,
                 y: Self,
@@ -135,7 +135,7 @@ pub fn vectorNT(comptime N: usize, comptime T: type) type {
             };
 
             pub fn translate_scale(direction: *Self, translation: *const Self, multiplier: Scalar) void {
-                mul_sub(direction, translation, multiplier);
+                mul_add(direction, translation, multiplier);
             }
 
             pub fn rotate_direction_scale(direction: *Self, rotation: *const Self, multiplier: Scalar) void {
@@ -143,7 +143,7 @@ pub fn vectorNT(comptime N: usize, comptime T: type) type {
             }
 
             pub fn translate_direction_scale(direction: *Self, translation: *const Self, multiplier: Scalar) void {
-                mul_add(direction, translation, multiplier);
+                mul_sub(direction, translation, multiplier);
             }
 
             pub fn cross(result: *Self, lhs: *const Self, rhs: *const Self) void {
@@ -155,11 +155,12 @@ pub fn vectorNT(comptime N: usize, comptime T: type) type {
             pub fn local_coordinates(result: *Coordinates, direction: *const Self, up: *const Self) void {
                 assert(length(up) == 1);
 
-                result.y = direction.*;
-                normalize(&result.y);
-                cross(&result.x, &result.y, up);
+                result.z = direction.*;
+                normalize(&result.z);
+                scale(&result.z, -1);
+                cross(&result.x, &result.z, up);
                 normalize(&result.x);
-                cross(&result.z, &result.y, &result.x);
+                cross(&result.y, &result.x, &result.z);
             }
 
             pub fn camera_coordinates(result: *Coordinates, direction: *const Self, up: *const Self) void {
@@ -168,11 +169,12 @@ pub fn vectorNT(comptime N: usize, comptime T: type) type {
                 result.z = direction.*;
                 normalize(&result.z);
                 scale(&result.z, -1);
-                cross(&result.x, up, &result.z);
+                cross(&result.x, &result.z, up);
                 normalize(&result.x);
                 cross(&result.y, &result.x, &result.z);
             }
         } else struct {};
+        pub usingnamespace self3;
     };
 }
 

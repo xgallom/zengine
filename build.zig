@@ -48,7 +48,7 @@ pub fn build(b: *std.Build) void {
     const compile_shaders = b.addExecutable(.{
         .name = "compile_shaders",
         .root_source_file = b.path("src/compile_shaders.zig"),
-        .target = b.host,
+        .target = b.graph.host,
     });
 
     switch (target.result.os.tag) {

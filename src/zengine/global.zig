@@ -43,9 +43,9 @@ pub fn exe_path() []const u8 {
 }
 
 pub fn up() math.Vector3 {
-    return .{ 0, 0, 1 };
+    return .{ 0, 1, 0 };
 }
 
 pub fn camera_up() math.Vector3 {
-    return .{ 0, 0, 1 };
+    return .{ 0, 1, 0 };
 }
