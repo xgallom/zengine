@@ -9,7 +9,7 @@ const types = @import("types.zig");
 const scalarT = @import("scalar.zig").scalarT;
 const vectorNT = @import("vector.zig").vectorNT;
 
-pub fn matrixMxNT(comptime M: usize, comptime N: usize, comptime T: type) type {
+pub fn matrixMxNT(comptime M: comptime_int, comptime N: comptime_int, comptime T: type) type {
     return struct {
         pub const Self = types.MatrixMxNT(M, N, T);
         pub const Vector = types.VectorNT(N, T);

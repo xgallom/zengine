@@ -30,7 +30,7 @@ pub const Engine = struct {
             return InitError.InitFailed;
         }
 
-        const window = sdl.SDL_CreateWindow("zeng - ZEngine 0.1.0", 1920, 1080, sdl.SDL_WINDOW_MAXIMIZED);
+        const window = sdl.SDL_CreateWindow("zeng - ZEngine 0.1.0", 1920, 1080, sdl.SDL_WINDOW_FULLSCREEN);
         if (window == null) {
             std.log.err("failed creating window: {s}", .{sdl.SDL_GetError()});
             return InitError.WindowFailed;

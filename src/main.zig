@@ -37,7 +37,7 @@ fn main_impl() !void {
     var renderer = try gfx.Renderer.init(engine);
     defer renderer.deinit(engine);
 
-    std.log.info("Window size: {}", .{engine.window_size});
+    std.log.info("window size: {}", .{engine.window_size});
 
     {
         var ecs = try ecs_mod.ECS(.{}).init(allocators.gpa());
@@ -90,7 +90,7 @@ fn main_impl() !void {
         }
         framerate_index = (framerate_index + 1) % 512;
         framerate_buffer[framerate_index] = now;
-        // std.log.info("Framerate: {}", .{framerate});
+        std.log.info("framerate: {}", .{framerate});
 
         var sdl_event: sdl.SDL_Event = undefined;
         while (sdl.SDL_PollEvent(&sdl_event)) {

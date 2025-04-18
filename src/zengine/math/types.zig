@@ -7,7 +7,7 @@
 pub const Scalar = f32;
 pub const Scalar64 = f64;
 
-pub fn VectorNT(comptime N: usize, comptime T: type) type {
+pub fn VectorNT(comptime N: comptime_int, comptime T: type) type {
     return [N]T;
 }
 pub fn Vector2T(comptime T: type) type {
@@ -20,7 +20,7 @@ pub fn Vector4T(comptime T: type) type {
     return VectorNT(4, T);
 }
 
-pub fn MatrixMxNT(comptime M: usize, comptime N: usize, comptime T: type) type {
+pub fn MatrixMxNT(comptime M: comptime_int, comptime N: comptime_int, comptime T: type) type {
     return [M][N]T;
 }
 pub fn Matrix4x4T(comptime T: type) type {
