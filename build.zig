@@ -4,7 +4,7 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
-    const install_shaders = b.option(bool, "install_shaders", "Force shaders update");
+    const compile_shaders_opt = b.option(bool, "compile-shaders", "Force shader compilation");
 
     const zengine = b.addModule("zengine", .{
         .root_source_file = b.path("src/zengine/zengine.zig"),
@@ -60,19 +60,16 @@ pub fn build(b: *std.Build) void {
     compile_shaders_cmd.addArg("--input-dir");
     compile_shaders_cmd.addDirectoryArg(b.path("shaders"));
     compile_shaders_cmd.addArg("--output-dir");
+    const shaders_output = compile_shaders_cmd.addOutputDirectoryArg("shaders");
+    const install_shaders_directory = b.addInstallDirectory(.{
+        .source_dir = shaders_output,
+        .install_dir = .prefix,
+        .install_subdir = "shaders",
+    });
 
-    if (install_shaders orelse false) {
-        compile_shaders_cmd.addArg(b.getInstallPath(.prefix, "shaders"));
-        b.getInstallStep().dependOn(&compile_shaders_cmd.step);
-    } else {
-        const shaders_output = compile_shaders_cmd.addOutputDirectoryArg("shaders");
-        const install_shaders_directory = b.addInstallDirectory(.{
-            .source_dir = shaders_output,
-            .install_dir = .prefix,
-            .install_subdir = "shaders",
-        });
-        b.getInstallStep().dependOn(&install_shaders_directory.step);
-    }
+    b.getInstallStep().dependOn(&install_shaders_directory.step);
+
+    compile_shaders_cmd.has_side_effects = compile_shaders_opt orelse false;
 
     const run_cmd = b.addRunArtifact(exe);
     run_cmd.step.dependOn(b.getInstallStep());

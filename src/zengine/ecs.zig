@@ -126,7 +126,7 @@ pub fn ECS(comptime config: struct {
             assert(self.components.contains(@typeName(C)));
 
             switch (@typeInfo(C)) {
-                .Struct, .Union => {
+                .@"struct", .@"union" => {
                     assert(self.components.contains(@typeName(C)));
                     const entry = self.components.getEntry(@typeName(C)).?;
                     return @ptrCast(entry.value_ptr);

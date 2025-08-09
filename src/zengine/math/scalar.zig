@@ -9,7 +9,7 @@ const types = @import("types.zig");
 
 pub fn scalarT(comptime T: type) type {
     return switch (@typeInfo(T)) {
-        .Float, .ComptimeFloat => struct {
+        .float, .comptime_float => struct {
             pub const Self = T;
             pub const Scalar = T;
             pub const len = 1;
@@ -22,8 +22,8 @@ pub fn scalarT(comptime T: type) type {
                 return value;
             }
         },
-        .Vector => switch (@typeInfo(@typeInfo(T).Vector.child)) {
-            .Float, .ComptimeFloat => struct {
+        .vector => switch (@typeInfo(@typeInfo(T).Vector.child)) {
+            .float, .comptime_float => struct {
                 pub const Self = T;
                 pub const Scalar = @typeInfo(T).Vector.child;
                 pub const len = @typeInfo(T).Vector.len;

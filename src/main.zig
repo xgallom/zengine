@@ -10,7 +10,7 @@ const Engine = zengine.Engine;
 
 const assert = std.debug.assert;
 
-pub const std_options = .{
+pub const std_options: std.Options = .{
     .log_level = .info,
 };
 
@@ -21,10 +21,6 @@ const Position = struct {
 };
 
 pub fn main() !void {
-    return main_impl();
-}
-
-fn main_impl() !void {
     allocators.init(std.heap.c_allocator, 2 << 30); // Memory limit: 2GB
     defer allocators.deinit();
 
@@ -39,26 +35,6 @@ fn main_impl() !void {
 
     std.log.info("window size: {}", .{engine.window_size});
 
-    {
-        var ecs = try ecs_mod.ECS(.{}).init(allocators.gpa());
-        defer ecs.deinit();
-
-        try ecs.register(Position, allocators.gpa(), 512);
-        defer ecs.unregister(Position);
-
-        // try ecs.register_primitive(Position, allocators.gpa(), 512);
-        // defer ecs.unregister_primitive(Position);
-
-        const positions = ecs.componentArrayListCast(Position);
-        const entity = try positions.push(.{ .x = 10, .y = 15, .z = 22 });
-        const position = positions.components.get(entity);
-        std.log.info("positions[{}]: {any}", .{ entity, position });
-
-        // const primitive_positions = ecs.primitiveComponentArrayListCast(Position);
-        // const primitive_entity = try primitive_positions.push(.{ .x = 10, .y = 15, .z = 22 });
-        // const primitive_position = primitive_positions.components.items[primitive_entity];
-        // std.log.info("primitive_positions[{}]: {any}", .{ entity, primitive_position });
-    }
     {
         var positions = try ecs_mod.ComponentManager(Position).init(allocators.gpa(), 512);
         defer positions.deinit();
