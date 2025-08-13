@@ -1,4 +1,4 @@
-cbuffer FragUniformBuffer : register(b0, space1)
+cbuffer FragUniformBuffer : register(b0, space3)
 {
     float time;
 };

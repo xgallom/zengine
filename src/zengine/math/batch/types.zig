@@ -10,11 +10,11 @@ pub const Scalar = types.Scalar;
 pub const Scalar64 = types.Scalar64;
 
 /// optimal length of a vector for type f32,
-/// defaults to 16 (512b <- AVX-512, ARM 128 - 1024)
-pub const batch_len: usize = std.simd.suggestVectorLength(Scalar) orelse 16;
+/// defaults to 8 (x64 256, ARM 128 - 1024)
+pub const batch_len: usize = std.simd.suggestVectorLength(Scalar) orelse 8;
 /// optimal length of a vector for type f64,
-/// defaults to 8 (512b <- AVX-512, ARM 128 - 1024)
-pub const batch_len64: usize = std.simd.suggestVectorLength(Scalar64) orelse 8;
+/// defaults to 4 (x64 256, ARM 128 - 1024)
+pub const batch_len64: usize = std.simd.suggestVectorLength(Scalar64) orelse 4;
 
 /// batch of N elements of type T
 pub fn BatchNT(comptime N: usize, comptime T: type) type {

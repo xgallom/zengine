@@ -28,7 +28,7 @@ pub const Mesh = struct {
         self.faces.deinit(self.allocator);
     }
 
-    pub fn create_gpu_buffers(self: *Self, gpu_device: ?*sdl.SDL_GPUDevice) !void {
+    pub fn createGpuBuffers(self: *Self, gpu_device: ?*sdl.SDL_GPUDevice) !void {
         assert(self.vertex_buffer == null);
         assert(self.index_buffer == null);
 
@@ -53,11 +53,27 @@ pub const Mesh = struct {
         errdefer sdl.SDL_ReleaseGPUBuffer(gpu_device, self.index_buffer);
     }
 
-    pub fn release_gpu_buffers(self: *Self, gpu_device: ?*sdl.SDL_GPUDevice) void {
+    pub fn releaseGpuBuffers(self: *Self, gpu_device: ?*sdl.SDL_GPUDevice) void {
         if (self.vertex_buffer != null) sdl.SDL_ReleaseGPUBuffer(gpu_device, self.vertex_buffer);
         if (self.index_buffer != null) sdl.SDL_ReleaseGPUBuffer(gpu_device, self.index_buffer);
         self.vertex_buffer = null;
         self.index_buffer = null;
+    }
+
+    pub fn createUploadTransferBuffer(self: *const Self, gpu_device: ?*sdl.SDL_GPUDevice) !UploadTransferBuffer {
+        assert(self.vertex_buffer != null);
+        assert(self.index_buffer != null);
+
+        const transfer_buffer = sdl.SDL_CreateGPUTransferBuffer(gpu_device, &sdl.SDL_GPUTransferBufferCreateInfo{
+            .usage = sdl.SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD,
+            .size = @intCast((@sizeOf(math.Vertex) * self.vertices.items.len) + (@sizeOf(math.FaceIndex) * self.faces.items.len)),
+        });
+        if (transfer_buffer == null) {
+            std.log.err("failed creating transfer_buffer: {s}", .{sdl.SDL_GetError()});
+            return error.BufferFailed;
+        }
+
+        return .{ .mesh = self, .transfer_buffer = transfer_buffer.? };
     }
 
     pub const UploadTransferBuffer = struct {
@@ -105,20 +121,4 @@ pub const Mesh = struct {
             }, false);
         }
     };
-
-    pub fn create_upload_transfer_buffer(self: *const Self, gpu_device: ?*sdl.SDL_GPUDevice) !UploadTransferBuffer {
-        assert(self.vertex_buffer != null);
-        assert(self.index_buffer != null);
-
-        const transfer_buffer = sdl.SDL_CreateGPUTransferBuffer(gpu_device, &sdl.SDL_GPUTransferBufferCreateInfo{
-            .usage = sdl.SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD,
-            .size = @intCast((@sizeOf(math.Vertex) * self.vertices.items.len) + (@sizeOf(math.FaceIndex) * self.faces.items.len)),
-        });
-        if (transfer_buffer == null) {
-            std.log.err("failed creating transfer_buffer: {s}", .{sdl.SDL_GetError()});
-            return error.BufferFailed;
-        }
-
-        return .{ .mesh = self, .transfer_buffer = transfer_buffer.? };
-    }
 };

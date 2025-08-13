@@ -37,7 +37,7 @@ pub const ComponentFlagsArrayListUnmanaged = struct {
         self.flags.items[entity].unset(component_flag);
     }
 
-    pub fn remove_entity(self: *Self, entity: Entity) void {
+    pub fn removeEntity(self: *Self, entity: Entity) void {
         self.flags.items[entity] = ComponentFlagsBitSet.initEmpty();
     }
 };

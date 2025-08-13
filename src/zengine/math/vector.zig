@@ -31,17 +31,17 @@ pub fn vectorNT(comptime N: comptime_int, comptime T: type) type {
             return self[0..L];
         }
 
-        pub fn slice_const(comptime L: usize, self: *const Self) []const Scalar {
+        pub fn sliceConst(comptime L: usize, self: *const Self) []const Scalar {
             comptime assert(L <= len);
             return self[0..L];
         }
 
-        pub fn slice_len(self: *Self) []Scalar {
+        pub fn sliceLen(self: *Self) []Scalar {
             return slice(len, self);
         }
 
-        pub fn slice_len_const(self: *const Self) []const Scalar {
-            return slice_const(len, self);
+        pub fn sliceLenConst(self: *const Self) []const Scalar {
+            return sliceConst(len, self);
         }
 
         pub fn neg(self: *Self) void {
@@ -72,13 +72,13 @@ pub fn vectorNT(comptime N: comptime_int, comptime T: type) type {
             }
         }
 
-        pub fn mul_add(self: *Self, other: *const Self, multiplier: Scalar) void {
+        pub fn mulAdd(self: *Self, other: *const Self, multiplier: Scalar) void {
             for (0..len) |n| {
                 self[n] = @mulAdd(Scalar, other[n], multiplier, self[n]);
             }
         }
 
-        pub fn mul_sub(self: *Self, other: *const Self, multiplier: Scalar) void {
+        pub fn mulSub(self: *Self, other: *const Self, multiplier: Scalar) void {
             for (0..len) |n| {
                 self[n] = @mulAdd(Scalar, other[n], -multiplier, self[n]);
             }
@@ -90,19 +90,19 @@ pub fn vectorNT(comptime N: comptime_int, comptime T: type) type {
             }
         }
 
-        pub fn scale_recip(self: *Self, multiplier: Scalar) void {
+        pub fn scaleRecip(self: *Self, multiplier: Scalar) void {
             const recip = scalar.one / multiplier;
             for (0..len) |n| {
                 self[n] *= recip;
             }
         }
 
-        pub fn square_length(self: *const Self) Scalar {
+        pub fn squareLength(self: *const Self) Scalar {
             return dot(self, self);
         }
 
         pub fn length(self: *const Self) Scalar {
-            return @sqrt(square_length(self));
+            return @sqrt(squareLength(self));
         }
 
         pub fn normalize(self: *Self) void {
@@ -120,7 +120,7 @@ pub fn vectorNT(comptime N: comptime_int, comptime T: type) type {
             return sum;
         }
 
-        pub fn dot_into(result: *Scalar, lhs: *const Self, rhs: *const Self) void {
+        pub fn dotInto(result: *Scalar, lhs: *const Self, rhs: *const Self) void {
             result.* = scalar.zero;
             for (0..len) |n| {
                 result.* = @mulAdd(Scalar, lhs[n], rhs[n], result.*);
@@ -134,16 +134,16 @@ pub fn vectorNT(comptime N: comptime_int, comptime T: type) type {
                 z: Self,
             };
 
-            pub fn translate_scale(direction: *Self, translation: *const Self, multiplier: Scalar) void {
-                mul_add(direction, translation, multiplier);
+            pub fn translateScale(direction: *Self, translation: *const Self, multiplier: Scalar) void {
+                mulAdd(direction, translation, multiplier);
             }
 
-            pub fn rotate_direction_scale(direction: *Self, rotation: *const Self, multiplier: Scalar) void {
-                mul_add(direction, rotation, multiplier);
+            pub fn rotateDirectionScale(direction: *Self, rotation: *const Self, multiplier: Scalar) void {
+                mulAdd(direction, rotation, multiplier);
             }
 
-            pub fn translate_direction_scale(direction: *Self, translation: *const Self, multiplier: Scalar) void {
-                mul_sub(direction, translation, multiplier);
+            pub fn translateDirectionScale(direction: *Self, translation: *const Self, multiplier: Scalar) void {
+                mulSub(direction, translation, multiplier);
             }
 
             pub fn cross(result: *Self, lhs: *const Self, rhs: *const Self) void {
@@ -152,7 +152,7 @@ pub fn vectorNT(comptime N: comptime_int, comptime T: type) type {
                 result[2] = lhs[0] * rhs[1] - lhs[1] * rhs[0];
             }
 
-            pub fn local_coordinates(result: *Coordinates, direction: *const Self, up: *const Self) void {
+            pub fn localCoordinates(result: *Coordinates, direction: *const Self, up: *const Self) void {
                 assert(length(up) == 1);
 
                 result.z = direction.*;
@@ -163,7 +163,7 @@ pub fn vectorNT(comptime N: comptime_int, comptime T: type) type {
                 cross(&result.y, &result.x, &result.z);
             }
 
-            pub fn camera_coordinates(result: *Coordinates, direction: *const Self, up: *const Self) void {
+            pub fn cameraCoordinates(result: *Coordinates, direction: *const Self, up: *const Self) void {
                 assert(length(up) == 1);
 
                 result.z = direction.*;
@@ -185,37 +185,37 @@ test "vector3" {
 
     var result = lhs;
     ns.add(&result, &rhs);
-    try std.testing.expectEqualSlices(ns.Scalar, &.{ 3, 6, 9 }, ns.slice_len_const(&result));
+    try std.testing.expectEqualSlices(ns.Scalar, &.{ 3, 6, 9 }, ns.sliceLenConst(&result));
     result = lhs;
     ns.sub(&result, &rhs);
-    try std.testing.expectEqualSlices(ns.Scalar, &.{ 1, 2, 3 }, ns.slice_len_const(&result));
+    try std.testing.expectEqualSlices(ns.Scalar, &.{ 1, 2, 3 }, ns.sliceLenConst(&result));
     result = lhs;
     ns.mul(&result, &rhs);
-    try std.testing.expectEqualSlices(ns.Scalar, &.{ 2, 8, 18 }, ns.slice_len_const(&result));
+    try std.testing.expectEqualSlices(ns.Scalar, &.{ 2, 8, 18 }, ns.sliceLenConst(&result));
     result = lhs;
     ns.div(&result, &rhs);
-    try std.testing.expectEqualSlices(ns.Scalar, &.{ 2, 2, 2 }, ns.slice_len_const(&result));
+    try std.testing.expectEqualSlices(ns.Scalar, &.{ 2, 2, 2 }, ns.sliceLenConst(&result));
     result = lhs;
-    ns.mul_add(&result, &rhs, 2);
-    try std.testing.expectEqualSlices(ns.Scalar, &.{ 4, 8, 12 }, ns.slice_len_const(&result));
+    ns.mulAdd(&result, &rhs, 2);
+    try std.testing.expectEqualSlices(ns.Scalar, &.{ 4, 8, 12 }, ns.sliceLenConst(&result));
     result = lhs;
-    ns.mul_sub(&result, &rhs, 2);
-    try std.testing.expectEqualSlices(ns.Scalar, &.{ 0, 0, 0 }, ns.slice_len_const(&result));
+    ns.mulSub(&result, &rhs, 2);
+    try std.testing.expectEqualSlices(ns.Scalar, &.{ 0, 0, 0 }, ns.sliceLenConst(&result));
     result = lhs;
     ns.scale(&result, 2);
-    try std.testing.expectEqualSlices(ns.Scalar, &.{ 4, 8, 12 }, ns.slice_len_const(&result));
+    try std.testing.expectEqualSlices(ns.Scalar, &.{ 4, 8, 12 }, ns.sliceLenConst(&result));
     result = lhs;
-    ns.scale_recip(&result, 2);
-    try std.testing.expectEqualSlices(ns.Scalar, &.{ 1, 2, 3 }, ns.slice_len_const(&result));
+    ns.scaleRecip(&result, 2);
+    try std.testing.expectEqualSlices(ns.Scalar, &.{ 1, 2, 3 }, ns.sliceLenConst(&result));
     result = lhs;
-    try std.testing.expect(ns.square_length(&result) == 56);
+    try std.testing.expect(ns.squareLength(&result) == 56);
     result = ns.Self{ 2, 2, 1 };
     try std.testing.expect(ns.length(&result) == 3);
     result = ns.Self{ 2, 2, 1 };
     ns.normalize(&result);
     {
         const len = @sqrt(2.0 * 2.0 + 2.0 * 2.0 + 1.0 * 1.0);
-        try std.testing.expectEqualSlices(ns.Scalar, &.{ 2.0 / len, 2.0 / len, 1.0 / len }, ns.slice_len_const(&result));
+        try std.testing.expectEqualSlices(ns.Scalar, &.{ 2.0 / len, 2.0 / len, 1.0 / len }, ns.sliceLenConst(&result));
     }
     try std.testing.expect(ns.dot(&lhs, &rhs) == (2 * 1 + 4 * 2 + 6 * 3));
     {
@@ -246,37 +246,37 @@ test "vector3f64" {
 
     var result = lhs;
     ns.add(&result, &rhs);
-    try std.testing.expectEqualSlices(ns.Scalar, &.{ 3, 6, 9 }, ns.slice_len_const(&result));
+    try std.testing.expectEqualSlices(ns.Scalar, &.{ 3, 6, 9 }, ns.sliceLenConst(&result));
     result = lhs;
     ns.sub(&result, &rhs);
-    try std.testing.expectEqualSlices(ns.Scalar, &.{ 1, 2, 3 }, ns.slice_len_const(&result));
+    try std.testing.expectEqualSlices(ns.Scalar, &.{ 1, 2, 3 }, ns.sliceLenConst(&result));
     result = lhs;
     ns.mul(&result, &rhs);
-    try std.testing.expectEqualSlices(ns.Scalar, &.{ 2, 8, 18 }, ns.slice_len_const(&result));
+    try std.testing.expectEqualSlices(ns.Scalar, &.{ 2, 8, 18 }, ns.sliceLenConst(&result));
     result = lhs;
     ns.div(&result, &rhs);
-    try std.testing.expectEqualSlices(ns.Scalar, &.{ 2, 2, 2 }, ns.slice_len_const(&result));
+    try std.testing.expectEqualSlices(ns.Scalar, &.{ 2, 2, 2 }, ns.sliceLenConst(&result));
     result = lhs;
-    ns.mul_add(&result, &rhs, 2);
-    try std.testing.expectEqualSlices(ns.Scalar, &.{ 4, 8, 12 }, ns.slice_len_const(&result));
+    ns.mulAdd(&result, &rhs, 2);
+    try std.testing.expectEqualSlices(ns.Scalar, &.{ 4, 8, 12 }, ns.sliceLenConst(&result));
     result = lhs;
-    ns.mul_sub(&result, &rhs, 2);
-    try std.testing.expectEqualSlices(ns.Scalar, &.{ 0, 0, 0 }, ns.slice_len_const(&result));
+    ns.mulSub(&result, &rhs, 2);
+    try std.testing.expectEqualSlices(ns.Scalar, &.{ 0, 0, 0 }, ns.sliceLenConst(&result));
     result = lhs;
     ns.scale(&result, 2);
-    try std.testing.expectEqualSlices(ns.Scalar, &.{ 4, 8, 12 }, ns.slice_len_const(&result));
+    try std.testing.expectEqualSlices(ns.Scalar, &.{ 4, 8, 12 }, ns.sliceLenConst(&result));
     result = lhs;
-    ns.scale_recip(&result, 2);
-    try std.testing.expectEqualSlices(ns.Scalar, &.{ 1, 2, 3 }, ns.slice_len_const(&result));
+    ns.scaleRecip(&result, 2);
+    try std.testing.expectEqualSlices(ns.Scalar, &.{ 1, 2, 3 }, ns.sliceLenConst(&result));
     result = lhs;
-    try std.testing.expect(ns.square_length(&result) == 56);
+    try std.testing.expect(ns.squareLength(&result) == 56);
     result = ns.Self{ 2, 2, 1 };
     try std.testing.expect(ns.length(&result) == 3);
     result = ns.Self{ 2, 2, 1 };
     ns.normalize(&result);
     {
         const len = @sqrt(2.0 * 2.0 + 2.0 * 2.0 + 1.0 * 1.0);
-        try std.testing.expectEqualSlices(ns.Scalar, &.{ 2.0 / len, 2.0 / len, 1.0 / len }, ns.slice_len_const(&result));
+        try std.testing.expectEqualSlices(ns.Scalar, &.{ 2.0 / len, 2.0 / len, 1.0 / len }, ns.sliceLenConst(&result));
     }
     try std.testing.expect(ns.dot(&lhs, &rhs) == (2 * 1 + 4 * 2 + 6 * 3));
     {
@@ -289,11 +289,11 @@ test "vector3f64" {
     try std.testing.expectEqualSlices(ns.Scalar, &.{ 4, 28, -20 }, &result);
     {
         var coords: ns.Coordinates = undefined;
-        ns.local_coordinates(&coords, &.{ 0, 0, 1 }, &.{ 0, 1, 0 });
+        ns.localCoordinates(&coords, &.{ 0, 0, 1 }, &.{ 0, 1, 0 });
         try std.testing.expectEqualSlices(ns.Scalar, &.{ 1, 0, 0 }, &coords.x);
         try std.testing.expectEqualSlices(ns.Scalar, &.{ 0, 1, 0 }, &coords.y);
         try std.testing.expectEqualSlices(ns.Scalar, &.{ 0, 0, 1 }, &coords.z);
-        ns.inverse_local_coordinates(&coords, &.{ 0, 0, 1 }, &.{ 0, 1, 0 });
+        ns.inverseLocalCoordinates(&coords, &.{ 0, 0, 1 }, &.{ 0, 1, 0 });
         try std.testing.expectEqualSlices(ns.Scalar, &.{ -1, 0, 0 }, &coords.x);
         try std.testing.expectEqualSlices(ns.Scalar, &.{ 0, 1, 0 }, &coords.y);
         try std.testing.expectEqualSlices(ns.Scalar, &.{ 0, 0, -1 }, &coords.z);

@@ -95,17 +95,17 @@ pub const Renderer = struct {
         }
         defer sdl.SDL_ReleaseGPUShader(gpu_device, origin_fragment_shader);
 
-        const path = std.fs.path.join(engine.allocator, &.{ global.exe_path(), "..", "..", "assets", "cow_nonormals.obj" }) catch |err| {
+        const path = std.fs.path.join(engine.allocator, &.{ global.exePath(), "..", "..", "assets", "cow_nonormals.obj" }) catch |err| {
             std.log.err("failed creating obj file path: {s}", .{@errorName(err)});
             return InitError.BufferFailed;
         };
-        var mesh = obj_loader.load_file(engine.allocator, path) catch |err| {
+        var mesh = obj_loader.loadFile(engine.allocator, path) catch |err| {
             std.log.err("failed loading mesh from obj file: {s}", .{@errorName(err)});
             return InitError.BufferFailed;
         };
 
-        try mesh.create_gpu_buffers(gpu_device);
-        errdefer mesh.release_gpu_buffers(gpu_device);
+        try mesh.createGpuBuffers(gpu_device);
+        errdefer mesh.releaseGpuBuffers(gpu_device);
 
         var origin_mesh = Mesh.init(engine.allocator);
         origin_mesh.vertices.appendSlice(origin_mesh.allocator, &.{
@@ -125,8 +125,8 @@ pub const Renderer = struct {
             return InitError.BufferFailed;
         };
 
-        try origin_mesh.create_gpu_buffers(gpu_device);
-        errdefer origin_mesh.release_gpu_buffers(gpu_device);
+        try origin_mesh.createGpuBuffers(gpu_device);
+        errdefer origin_mesh.releaseGpuBuffers(gpu_device);
 
         var stencil_format: sdl.SDL_GPUTextureFormat = undefined;
         if (sdl.SDL_GPUTextureSupportsFormat(gpu_device, sdl.SDL_GPU_TEXTUREFORMAT_D24_UNORM_S8_UINT, sdl.SDL_GPU_TEXTURETYPE_2D, sdl.SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET)) {
@@ -264,12 +264,12 @@ pub const Renderer = struct {
         }
         errdefer sdl.SDL_ReleaseGPUSampler(gpu_device, sampler);
 
-        const mesh_upload_transfer_buffer = try mesh.create_upload_transfer_buffer(gpu_device);
+        const mesh_upload_transfer_buffer = try mesh.createUploadTransferBuffer(gpu_device);
         defer mesh_upload_transfer_buffer.release(gpu_device);
 
         try mesh_upload_transfer_buffer.map(gpu_device);
 
-        const origin_mesh_upload_transfer_buffer = try origin_mesh.create_upload_transfer_buffer(gpu_device);
+        const origin_mesh_upload_transfer_buffer = try origin_mesh.createUploadTransferBuffer(gpu_device);
         defer origin_mesh_upload_transfer_buffer.release(gpu_device);
 
         try origin_mesh_upload_transfer_buffer.map(gpu_device);
@@ -358,9 +358,9 @@ pub const Renderer = struct {
     pub fn deinit(self: *Renderer, engine: Engine) void {
         defer sdl.SDL_DestroyGPUDevice(self.gpu_device);
         defer self.mesh.deinit();
-        defer self.mesh.release_gpu_buffers(self.gpu_device);
+        defer self.mesh.releaseGpuBuffers(self.gpu_device);
         defer self.origin_mesh.deinit();
-        defer self.origin_mesh.release_gpu_buffers(self.gpu_device);
+        defer self.origin_mesh.releaseGpuBuffers(self.gpu_device);
         defer sdl.SDL_ReleaseWindowFromGPUDevice(self.gpu_device, engine.window);
         defer sdl.SDL_ReleaseGPUGraphicsPipeline(self.gpu_device, self.graphics_pipeline);
         defer sdl.SDL_ReleaseGPUGraphicsPipeline(self.gpu_device, self.origin_graphics_pipeline);
@@ -398,7 +398,7 @@ pub const Renderer = struct {
 
         const world = comptime blk: {
             var result: math.Matrix4x4 = undefined;
-            math.matrix4x4.world_transform(&result);
+            math.matrix4x4.worldTransform(&result);
             break :blk result;
         };
 
@@ -407,9 +407,9 @@ pub const Renderer = struct {
         var view: math.Matrix4x4 = undefined;
         var view_projection: math.Matrix4x4 = undefined;
 
-        math.matrix4x4.perspective_fov(
+        math.matrix4x4.perspectiveFov(
             &projection,
-            39.5978 * std.math.pi / 180.0,
+            std.math.degreesToRadians(38.5978),
             @as(f32, @floatFromInt(engine.window_size.w)),
             @as(f32, @floatFromInt(engine.window_size.h)),
             0.1,
@@ -419,7 +419,7 @@ pub const Renderer = struct {
             &camera,
             &self.camera_position,
             &self.camera_direction,
-            &comptime global.camera_up(),
+            &comptime global.cameraUp(),
         );
         math.matrix4x4.dot(&view, &camera, &world);
         math.matrix4x4.dot(&view_projection, &projection, &view);
@@ -430,10 +430,10 @@ pub const Renderer = struct {
             var result = math.matrix4x4.identity;
 
             const euler_order: math.EulerOrder = .xyz;
-            math.matrix4x4.scale_xyz(&result, &.{ 1, 1, 1 });
+            math.matrix4x4.scaleXYZ(&result, &.{ 1, 1, 1 });
             // math.matrix4x4.rotate_euler(&result, &.{ x_mod_s * pi / 4.0, y_mod_s * pi / 4.0, z_mod_s * pi / 4.0 }, euler_order);
-            math.matrix4x4.rotate_euler(&result, &.{ pi / 4.0 + time_s * pi / 4.0, -pi / 4.0, pi / 4.0 }, euler_order);
-            math.matrix4x4.translate_xyz(&result, &.{ 0, 5, 0 });
+            math.matrix4x4.rotateEuler(&result, &.{ pi / 4.0 + time_s * pi / 4.0, -pi / 4.0, pi / 4.0 }, euler_order);
+            math.matrix4x4.translateXYZ(&result, &.{ 0, 5, 0 });
 
             break :blk result;
         };
@@ -442,8 +442,8 @@ pub const Renderer = struct {
         std.log.info("camera_direction: {any}", .{self.camera_direction});
 
         var uniform_buffer: [32]f32 = undefined;
-        @memcpy(uniform_buffer[0..16], math.matrix4x4.slice_len_const(&view_projection));
-        @memcpy(uniform_buffer[16..32], math.matrix4x4.slice_len_const(&model));
+        @memcpy(uniform_buffer[0..16], math.matrix4x4.sliceLenConst(&view_projection));
+        @memcpy(uniform_buffer[16..32], math.matrix4x4.sliceLenConst(&model));
 
         const frag_uniform_buffer: [1]f32 = .{time_s};
         var origin_frag_uniform_buffer: [4]f32 = .{ 1, 0, 1, 1 };
@@ -490,8 +490,40 @@ pub const Renderer = struct {
             sdl.SDL_BindGPUGraphicsPipeline(render_pass, graphics_pipeline);
             sdl.SDL_DrawGPUIndexedPrimitives(render_pass, @intCast(3 * self.mesh.faces.items.len), 1, 0, 0, 0);
 
+            model = blk: {
+                var result = math.matrix4x4.identity;
+
+                const euler_order: math.EulerOrder = .xyz;
+                math.matrix4x4.scaleXYZ(&result, &.{ 1, 1, 1 });
+                // math.matrix4x4.rotate_euler(&result, &.{ x_mod_s * pi / 4.0, y_mod_s * pi / 4.0, z_mod_s * pi / 4.0 }, euler_order);
+                math.matrix4x4.rotateEuler(&result, &.{ pi / 4.0, -pi / 4.0 + time_s * pi / 4.0, pi / 4.0 }, euler_order);
+                math.matrix4x4.translateXYZ(&result, &.{ 10, 5, 0 });
+
+                break :blk result;
+            };
+            @memcpy(uniform_buffer[16..32], math.matrix4x4.sliceLenConst(&model));
+
+            sdl.SDL_PushGPUVertexUniformData(command_buffer, 0, &uniform_buffer, @sizeOf(@TypeOf(uniform_buffer)));
+            sdl.SDL_DrawGPUIndexedPrimitives(render_pass, @intCast(3 * self.mesh.faces.items.len), 1, 0, 0, 0);
+
+            model = blk: {
+                var result = math.matrix4x4.identity;
+
+                const euler_order: math.EulerOrder = .xyz;
+                math.matrix4x4.scaleXYZ(&result, &.{ 1, 1, 1 });
+                // math.matrix4x4.rotate_euler(&result, &.{ x_mod_s * pi / 4.0, y_mod_s * pi / 4.0, z_mod_s * pi / 4.0 }, euler_order);
+                math.matrix4x4.rotateEuler(&result, &.{ pi / 4.0, -pi / 4.0, pi / 4.0 + time_s * pi / 4.0 }, euler_order);
+                math.matrix4x4.translateXYZ(&result, &.{ -10, 5, 0 });
+
+                break :blk result;
+            };
+            @memcpy(uniform_buffer[16..32], math.matrix4x4.sliceLenConst(&model));
+
+            sdl.SDL_PushGPUVertexUniformData(command_buffer, 0, &uniform_buffer, @sizeOf(@TypeOf(uniform_buffer)));
+            sdl.SDL_DrawGPUIndexedPrimitives(render_pass, @intCast(3 * self.mesh.faces.items.len), 1, 0, 0, 0);
+
             model = math.matrix4x4.identity;
-            @memcpy(uniform_buffer[16..32], math.matrix4x4.slice_len_const(&model));
+            @memcpy(uniform_buffer[16..32], math.matrix4x4.sliceLenConst(&model));
 
             sdl.SDL_BindGPUVertexBuffers(render_pass, 0, &sdl.SDL_GPUBufferBinding{
                 .buffer = self.origin_mesh.vertex_buffer,
@@ -505,15 +537,15 @@ pub const Renderer = struct {
             sdl.SDL_BindGPUGraphicsPipeline(render_pass, origin_graphics_pipeline);
 
             origin_frag_uniform_buffer = .{ 1, 0, 0, 1 };
-            sdl.SDL_PushGPUFragmentUniformData(command_buffer, 0, &frag_uniform_buffer, @sizeOf(@TypeOf(frag_uniform_buffer)));
+            sdl.SDL_PushGPUFragmentUniformData(command_buffer, 0, &origin_frag_uniform_buffer, @sizeOf(@TypeOf(origin_frag_uniform_buffer)));
             sdl.SDL_DrawGPUIndexedPrimitives(render_pass, 2, 1, 0, 0, 0);
 
             origin_frag_uniform_buffer = .{ 0, 1, 0, 1 };
-            sdl.SDL_PushGPUFragmentUniformData(command_buffer, 0, &frag_uniform_buffer, @sizeOf(@TypeOf(frag_uniform_buffer)));
+            sdl.SDL_PushGPUFragmentUniformData(command_buffer, 0, &origin_frag_uniform_buffer, @sizeOf(@TypeOf(origin_frag_uniform_buffer)));
             sdl.SDL_DrawGPUIndexedPrimitives(render_pass, 2, 1, 2, 0, 0);
 
             origin_frag_uniform_buffer = .{ 0, 0, 1, 1 };
-            sdl.SDL_PushGPUFragmentUniformData(command_buffer, 0, &frag_uniform_buffer, @sizeOf(@TypeOf(frag_uniform_buffer)));
+            sdl.SDL_PushGPUFragmentUniformData(command_buffer, 0, &origin_frag_uniform_buffer, @sizeOf(@TypeOf(origin_frag_uniform_buffer)));
             sdl.SDL_DrawGPUIndexedPrimitives(render_pass, 2, 1, 4, 0, 0);
 
             sdl.SDL_EndGPURenderPass(render_pass);

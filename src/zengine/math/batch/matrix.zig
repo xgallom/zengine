@@ -52,7 +52,7 @@ pub fn matrixMxNBT(comptime M: usize, comptime N: usize, comptime NB: usize, com
         /// advances the matrix in address space to next batch,
         /// assumes bounds checking
         pub fn increment(self: *CSelf) void {
-            const s = slice_len_const(self);
+            const s = sliceLenConst(self);
             for (0..len) |n| {
                 s[n] += 1;
             }
@@ -61,7 +61,7 @@ pub fn matrixMxNBT(comptime M: usize, comptime N: usize, comptime NB: usize, com
         /// moves the matrix in address space to previous batch,
         /// assumes bounds checking
         pub fn decrement(self: *CSelf) void {
-            const s = slice_len_const(self);
+            const s = sliceLenConst(self);
             for (0..len) |n| {
                 s[n] += 1;
             }
@@ -72,24 +72,24 @@ pub fn matrixMxNBT(comptime M: usize, comptime N: usize, comptime NB: usize, com
             return self[0..L];
         }
 
-        pub fn slice_const(comptime L: usize, self: *const CSelf) []CItem {
+        pub fn sliceConst(comptime L: usize, self: *const CSelf) []CItem {
             comptime assert(L <= len);
             return self[0..L];
         }
 
-        pub fn slice_len(self: *const Self) []Item {
+        pub fn sliceLen(self: *const Self) []Item {
             return slice(len, self);
         }
 
-        pub fn slice_len_const(self: *const CSelf) []CItem {
-            return slice_const(len, self);
+        pub fn sliceLenConst(self: *const CSelf) []CItem {
+            return sliceConst(len, self);
         }
 
         /// Y_mn = L_mn + R_mn
         pub fn add(result: *const Self, lhs: *const CSelf, rhs: *const CSelf) void {
-            const y = slice_len(result);
-            const l = slice_len_const(lhs);
-            const r = slice_len_const(rhs);
+            const y = sliceLen(result);
+            const l = sliceLenConst(lhs);
+            const r = sliceLenConst(rhs);
             for (0..len) |n| {
                 y[n].* = l[n].* + r[n].*;
             }
@@ -97,9 +97,9 @@ pub fn matrixMxNBT(comptime M: usize, comptime N: usize, comptime NB: usize, com
 
         /// Y_mn = L_mn - R_mn
         pub fn sub(result: *const Self, lhs: *const CSelf, rhs: *const CSelf) void {
-            const y = slice_len(result);
-            const l = slice_len_const(lhs);
-            const r = slice_len_const(rhs);
+            const y = sliceLen(result);
+            const l = sliceLenConst(lhs);
+            const r = sliceLenConst(rhs);
             for (0..len) |n| {
                 y[n].* = l[n].* - r[n].*;
             }
@@ -107,9 +107,9 @@ pub fn matrixMxNBT(comptime M: usize, comptime N: usize, comptime NB: usize, com
 
         /// Y_mn = L_mn * R_mn
         pub fn mul(result: *const Self, lhs: *const CSelf, rhs: *const CSelf) void {
-            const y = slice_len(result);
-            const l = slice_len_const(lhs);
-            const r = slice_len_const(rhs);
+            const y = sliceLen(result);
+            const l = sliceLenConst(lhs);
+            const r = sliceLenConst(rhs);
             for (0..len) |n| {
                 y[n].* = l[n].* * r[n].*;
             }
@@ -117,9 +117,9 @@ pub fn matrixMxNBT(comptime M: usize, comptime N: usize, comptime NB: usize, com
 
         /// Y_mn = L_mn / R_mn
         pub fn div(result: *const Self, lhs: *const CSelf, rhs: *const CSelf) void {
-            const y = slice_len(result);
-            const l = slice_len_const(lhs);
-            const r = slice_len_const(rhs);
+            const y = sliceLen(result);
+            const l = sliceLenConst(lhs);
+            const r = sliceLenConst(rhs);
             for (0..len) |n| {
                 y[n].* = l[n].* / r[n].*;
             }
@@ -159,7 +159,7 @@ pub fn matrixMxNBT(comptime M: usize, comptime N: usize, comptime NB: usize, com
         }
 
         /// Y_n = X_m O_mn
-        pub fn apply_right(result: *const vector.Self, right_side_operation: *const CSelf, operand: *const vector.CSelf) void {
+        pub fn applyRight(result: *const vector.Self, right_side_operation: *const CSelf, operand: *const vector.CSelf) void {
             var operation: CSelf = right_side_operation.*;
             transpose(&operation);
             apply(result, &operation, operand);

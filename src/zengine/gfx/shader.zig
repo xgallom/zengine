@@ -18,8 +18,8 @@ pub const OpenConfig = struct {
     num_uniform_buffers: u32 = 0,
 };
 
-fn open_shader_dir(config: OpenConfig) !std.fs.Dir {
-    const shaders_path = try std.fs.path.join(config.allocator, &.{ global.exe_path(), "..", "shaders" });
+fn openShaderDir(config: OpenConfig) !std.fs.Dir {
+    const shaders_path = try std.fs.path.join(config.allocator, &.{ global.exePath(), "..", "shaders" });
     return try std.fs.openDirAbsolute(shaders_path, .{});
 }
 
@@ -50,7 +50,7 @@ pub fn open(config: OpenConfig) ?*sdl.SDL_GPUShader {
         return null;
     }
 
-    var shaders_dir = open_shader_dir(config) catch |err| {
+    var shaders_dir = openShaderDir(config) catch |err| {
         std.log.err("error opening shaders_dir: {s}", .{@errorName(err)});
         return null;
     };

@@ -41,8 +41,8 @@ pub const Vertices = struct {
 
         for (0..vertices.len) |v| {
             const dest = self.len + v;
-            const dest_index = batch.batch.batch_index(dest);
-            const dest_offset = batch.batch.batch_offset(dest);
+            const dest_index = batch.batch.batchIndex(dest);
+            const dest_offset = batch.batch.batchOffset(dest);
             for (0..dims) |n| {
                 self.items[n][dest_index][dest_offset] = vertices[v][n];
             }
@@ -51,7 +51,7 @@ pub const Vertices = struct {
         self.len = total_len;
     }
 
-    pub fn item_array_list(self: *const Self, index: usize) ArrayList {
+    pub fn itemArrayList(self: *const Self, index: usize) ArrayList {
         assert(index < dims);
         const real_len = self.batch_len();
         return .{
@@ -61,11 +61,11 @@ pub const Vertices = struct {
         };
     }
 
-    pub fn batch_len(self: *const Self) usize {
+    pub fn batchLen(self: *const Self) usize {
         return batch.batch.batch_len(self.len);
     }
 
-    pub fn to_vector(self: *const Self) batch.Vector4 {
+    pub fn toVector(self: *const Self) batch.Vector4 {
         return self.items;
     }
 

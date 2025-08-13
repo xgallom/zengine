@@ -37,7 +37,7 @@ pub fn deinit() void {
     is_init = false;
 }
 
-pub fn exe_path() []const u8 {
+pub fn exePath() []const u8 {
     assert(is_init);
     return global_state.exe_path;
 }
@@ -46,6 +46,6 @@ pub fn up() math.Vector3 {
     return .{ 0, 1, 0 };
 }
 
-pub fn camera_up() math.Vector3 {
+pub fn cameraUp() math.Vector3 {
     return .{ 0, 1, 0 };
 }

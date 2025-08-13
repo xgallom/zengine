@@ -2,6 +2,7 @@
 //! The zengine
 //!
 
+pub const allocator = @import("allocator.zig");
 pub const allocators = @import("allocators.zig");
 pub const ecs = @import("ecs.zig");
 pub const ext = @import("ext.zig");

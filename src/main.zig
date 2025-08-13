@@ -12,6 +12,7 @@ const assert = std.debug.assert;
 
 pub const std_options: std.Options = .{
     .log_level = .info,
+    // .logFn = logFn,
 };
 
 const Position = struct {
@@ -20,8 +21,21 @@ const Position = struct {
     z: f32,
 };
 
+// fn logFn(
+//     comptime message_level: std.log.Level,
+//     comptime scope: @TypeOf(.enum_literal),
+//     comptime format: []const u8,
+//     args: anytype,
+// ) void {
+//     const level_txt = comptime message_level.asText();
+//     const prefix2 = if (scope == .default) ": " else "(" ++ @tagName(scope) ++ "): ";
+//
+//     const message = std.fmt.allocPrintZ(allocators.arena(), level_txt ++ prefix2 ++ format ++ "\n", args) catch return;
+//     sdl.SDL_Log(message);
+// }
+
 pub fn main() !void {
-    allocators.init(std.heap.c_allocator, 2 << 30); // Memory limit: 2GB
+    allocators.init(zengine.allocator.raw_sdl_allocator, 2 << 30); // Memory limit: 2GB
     defer allocators.deinit();
 
     try global.init(allocators.gpa());
@@ -44,7 +58,7 @@ pub fn main() !void {
         std.log.info("positions[{}]: {any}", .{ entity, position });
     }
 
-    defer renderer.mesh.release_gpu_buffers(renderer.gpu_device);
+    defer renderer.mesh.releaseGpuBuffers(renderer.gpu_device);
 
     const start_time = sdl.SDL_GetTicks();
     var last_update_time = start_time;
@@ -105,7 +119,7 @@ pub fn main() !void {
 
         var global_up = comptime global.up();
         var coordinates: math.vector3.Coordinates = undefined;
-        math.vector3.local_coordinates(&coordinates, &renderer.camera_direction, &global_up);
+        math.vector3.localCoordinates(&coordinates, &renderer.camera_direction, &global_up);
 
         const delta: f32 = @floatFromInt(now - last_update_time);
         const camera_step = delta / 500.0;
@@ -117,21 +131,24 @@ pub fn main() !void {
         math.vector3.scale(&global_up, camera_step);
 
         if (key_matrix & 0x01 != 0)
-            math.vector3.rotate_direction_scale(&renderer.camera_direction, &coordinates.x, -1);
+            math.vector3.rotateDirectionScale(&renderer.camera_direction, &coordinates.x, -1);
         if (key_matrix & 0x02 != 0)
-            math.vector3.rotate_direction_scale(&renderer.camera_direction, &coordinates.x, 1);
+            math.vector3.rotateDirectionScale(&renderer.camera_direction, &coordinates.x, 1);
+
         if (key_matrix & 0x04 != 0)
-            math.vector3.rotate_direction_scale(&renderer.camera_direction, &coordinates.y, -1);
+            math.vector3.rotateDirectionScale(&renderer.camera_direction, &coordinates.y, -1);
         if (key_matrix & 0x08 != 0)
-            math.vector3.rotate_direction_scale(&renderer.camera_direction, &coordinates.y, 1);
+            math.vector3.rotateDirectionScale(&renderer.camera_direction, &coordinates.y, 1);
+
         if (key_matrix & 0x10 != 0)
-            math.vector3.translate_direction_scale(&renderer.camera_position, &coordinates.z, -8);
+            math.vector3.translateDirectionScale(&renderer.camera_position, &coordinates.z, -8);
         if (key_matrix & 0x20 != 0)
-            math.vector3.translate_direction_scale(&renderer.camera_position, &coordinates.z, 8);
+            math.vector3.translateDirectionScale(&renderer.camera_position, &coordinates.z, 8);
+
         if (key_matrix & 0x40 != 0)
-            math.vector3.translate_scale(&renderer.camera_position, &global_up, -8);
+            math.vector3.translateScale(&renderer.camera_position, &global_up, -8);
         if (key_matrix & 0x80 != 0)
-            math.vector3.translate_scale(&renderer.camera_position, &global_up, 8);
+            math.vector3.translateScale(&renderer.camera_position, &global_up, 8);
 
         if (key_matrix != 0) math.vector3.normalize(&renderer.camera_direction);
 

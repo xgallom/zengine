@@ -2,10 +2,10 @@ const std = @import("std");
 const sdl = @import("ext/sdl.zig");
 const assert = std.debug.assert;
 
-pub const GPA = std.heap.GeneralPurposeAllocator(.{
+pub const GPA = std.heap.DebugAllocator(.{
     .enable_memory_limit = true,
     .thread_safe = false,
-    .safety = false,
+    // .safety = false,
 });
 
 pub const Arena = std.heap.ArenaAllocator;

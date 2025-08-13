@@ -44,7 +44,7 @@ pub fn vectorNBT(comptime N: usize, comptime NB: usize, comptime T: type) type {
         /// advances the vector in address space to next batch,
         /// assumes bounds checking
         pub fn increment(self: *CSelf) void {
-            const s = slice_len_const(self);
+            const s = sliceLenConst(self);
             for (0..len) |n| {
                 s[n] += 1;
             }
@@ -53,7 +53,7 @@ pub fn vectorNBT(comptime N: usize, comptime NB: usize, comptime T: type) type {
         /// moves the vector in address space to previous batch,
         /// assumes bounds checking
         pub fn decrement(self: *CSelf) void {
-            const s = slice_len_const(self);
+            const s = sliceLenConst(self);
             for (0..len) |n| {
                 s[n] += 1;
             }
@@ -64,17 +64,17 @@ pub fn vectorNBT(comptime N: usize, comptime NB: usize, comptime T: type) type {
             return self[0..L];
         }
 
-        pub fn slice_const(comptime L: usize, self: *const CSelf) []CItem {
+        pub fn sliceConst(comptime L: usize, self: *const CSelf) []CItem {
             comptime assert(L <= len);
             return self[0..L];
         }
 
-        pub fn slice_len(self: *const Self) []Item {
+        pub fn sliceLen(self: *const Self) []Item {
             return slice(len, self);
         }
 
-        pub fn slice_len_const(self: *const CSelf) []CItem {
-            return slice_const(len, self);
+        pub fn sliceLenConst(self: *const CSelf) []CItem {
+            return sliceConst(len, self);
         }
 
         /// Y_n = L_n + R_n
@@ -106,7 +106,7 @@ pub fn vectorNBT(comptime N: usize, comptime NB: usize, comptime T: type) type {
         }
 
         /// Y_n = L_n * R_n + C_n
-        pub fn mul_add(result: *const Self, lhs: *const CSelf, rhs: *const CSelf, constant: *const CSelf) void {
+        pub fn mulAdd(result: *const Self, lhs: *const CSelf, rhs: *const CSelf, constant: *const CSelf) void {
             for (0..len) |n| {
                 result[n].* = @mulAdd(Scalar, lhs[n].*, rhs[n].*, constant[n].*);
             }
@@ -120,7 +120,7 @@ pub fn vectorNBT(comptime N: usize, comptime NB: usize, comptime T: type) type {
         }
 
         /// Y_n = X_n * (1 / C)
-        pub fn scale_recip(result: *const Self, vector: *const CSelf, multiplier: CItem) void {
+        pub fn scaleRecip(result: *const Self, vector: *const CSelf, multiplier: CItem) void {
             const recip = scalar.one / multiplier.*;
             for (0..len) |n| {
                 result[n].* = vector[n].* * recip;
@@ -188,7 +188,7 @@ pub fn vectorNBT(comptime N: usize, comptime NB: usize, comptime T: type) type {
             }
         };
 
-        pub fn from_dense(dense_vector: types.DenseVectorNBT(N, NB, T)) Self {
+        pub fn fromDense(dense_vector: types.DenseVectorNBT(N, NB, T)) Self {
             var result: Self = undefined;
             for (0..len) |n| {
                 result[n] = &dense_vector[n];

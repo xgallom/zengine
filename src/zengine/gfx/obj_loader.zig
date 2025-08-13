@@ -2,7 +2,7 @@ const std = @import("std");
 const math = @import("../math.zig");
 const mesh = @import("mesh.zig");
 
-pub fn load_file(allocator: std.mem.Allocator, path: []const u8) !mesh.Mesh {
+pub fn loadFile(allocator: std.mem.Allocator, path: []const u8) !mesh.Mesh {
     var result = mesh.Mesh.init(allocator);
     errdefer result.deinit();
 
@@ -16,11 +16,11 @@ pub fn load_file(allocator: std.mem.Allocator, path: []const u8) !mesh.Mesh {
         switch (line[0]) {
             '#' => continue,
             'v' => {
-                const vertex = try parse_vertex(line);
+                const vertex = try parseVertex(line);
                 try result.vertices.append(result.allocator, vertex);
             },
             'f' => {
-                const face = try parse_face(line);
+                const face = try parseFace(line);
                 if (face[0] >= result.vertices.items.len) return error.InvalidIndex;
                 if (face[1] >= result.vertices.items.len) return error.InvalidIndex;
                 if (face[2] >= result.vertices.items.len) return error.InvalidIndex;
@@ -33,7 +33,7 @@ pub fn load_file(allocator: std.mem.Allocator, path: []const u8) !mesh.Mesh {
     return result;
 }
 
-fn parse_vertex(line: []const u8) !math.Vertex {
+fn parseVertex(line: []const u8) !math.Vertex {
     var result = math.Vertex{ 0, 0, 0 };
     var iterator = std.mem.splitScalar(u8, line, ' ');
     var step: usize = 0;
@@ -54,7 +54,7 @@ fn parse_vertex(line: []const u8) !math.Vertex {
     return result;
 }
 
-fn parse_face(line: []const u8) !math.FaceIndex {
+fn parseFace(line: []const u8) !math.FaceIndex {
     var result: math.FaceIndex = undefined;
     var iterator = std.mem.splitScalar(u8, line, ' ');
     var step: usize = 0;
