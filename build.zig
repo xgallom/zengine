@@ -13,9 +13,12 @@ pub fn build(b: *std.Build) void {
         .link_libc = true,
     });
 
-    zengine.addSystemIncludePath(b.path("include"));
-    zengine.addLibraryPath(b.path("lib"));
-    zengine.linkSystemLibrary("SDL3", .{ .needed = true });
+    // zengine.addSystemIncludePath(b.path("include"));
+    // zengine.addLibraryPath(b.path("lib"));
+    // zengine.linkSystemLibrary("SDL3", .{ .needed = true });
+
+    // zengine.addFrameworkPath(b.path("frameworks/SDL3.xcframework/macos-arm64_x86_64"));
+    // zengine.linkFramework("SDL3", .{ .needed = true });
 
     const lib = b.addStaticLibrary(.{
         .name = "zengine",
@@ -25,8 +28,8 @@ pub fn build(b: *std.Build) void {
         .link_libc = true,
     });
 
-    lib.addSystemIncludePath(b.path("include"));
-    lib.addLibraryPath(b.path("lib"));
+    // lib.addSystemIncludePath(b.path("include"));
+    // lib.addLibraryPath(b.path("lib"));
     lib.linkSystemLibrary("SDL3");
 
     const exe = b.addExecutable(.{
@@ -37,9 +40,13 @@ pub fn build(b: *std.Build) void {
         .link_libc = true,
     });
 
-    exe.addSystemIncludePath(b.path("include"));
-    exe.addLibraryPath(b.path("lib"));
+    // exe.addSystemIncludePath(b.path("include"));
+    // exe.addLibraryPath(b.path("lib"));
     exe.linkSystemLibrary("SDL3");
+
+    // exe.addFrameworkPath(b.path("frameworks/SDL3.xcframework/macos-arm64_x86_64"));
+    // exe.addRPath(b.path("frameworks/SDL3.xcframework/macos-arm64_x86_64"));
+    // exe.linkFramework("SDL3");
 
     exe.root_module.addImport("zengine", zengine);
 
@@ -51,16 +58,19 @@ pub fn build(b: *std.Build) void {
         .target = b.graph.host,
     });
 
-    switch (target.result.os.tag) {
-        .macos => b.installBinFile("lib/libSDL3.0.dylib", "SDL3.dylib"),
-        else => std.zig.fatal("Unsupported target os: {s}", .{@tagName(target.result.os.tag)}),
-    }
+    // switch (target.result.os.tag) {
+    //     .macos => b.installBinFile("lib/libSDL3.0.dylib", "SDL3.dylib"),
+    //     else => std.zig.fatal("Unsupported target os: {s}", .{@tagName(target.result.os.tag)}),
+    // }
 
     const compile_shaders_cmd = b.addRunArtifact(compile_shaders);
     compile_shaders_cmd.addArg("--input-dir");
     compile_shaders_cmd.addDirectoryArg(b.path("shaders"));
     compile_shaders_cmd.addArg("--output-dir");
     const shaders_output = compile_shaders_cmd.addOutputDirectoryArg("shaders");
+    compile_shaders_cmd.addArg("--include-dir");
+    compile_shaders_cmd.addDirectoryArg(b.path("include/shaders"));
+
     const install_shaders_directory = b.addInstallDirectory(.{
         .source_dir = shaders_output,
         .install_dir = .prefix,

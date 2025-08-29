@@ -18,6 +18,7 @@ pub const Engine = struct {
     allocator: std.mem.Allocator,
     window: ?*sdl.SDL_Window,
     window_size: WindowSize,
+    mouse_pos: sdl.SDL_FPoint,
 
     const InitError = error{
         InitFailed,
@@ -30,7 +31,7 @@ pub const Engine = struct {
             return InitError.InitFailed;
         }
 
-        const window = sdl.SDL_CreateWindow("zeng - ZEngine 0.1.0", 1920, 1080, sdl.SDL_WINDOW_FULLSCREEN);
+        const window = sdl.SDL_CreateWindow("zeng - ZEngine 0.1.0", 1920, 1080, 0);
         if (window == null) {
             std.log.err("failed creating window: {s}", .{sdl.SDL_GetError()});
             return InitError.WindowFailed;
@@ -46,10 +47,11 @@ pub const Engine = struct {
             .allocator = allocator,
             .window = window,
             .window_size = window_size,
+            .mouse_pos = .{},
         };
     }
 
-    pub fn deinit(self: Engine) void {
+    pub fn deinit(self: *Engine) void {
         defer sdl.SDL_Quit();
         defer sdl.SDL_DestroyWindow(self.window);
     }

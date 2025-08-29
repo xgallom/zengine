@@ -14,6 +14,7 @@ pub const Allocators = struct {
     core: std.mem.Allocator = undefined,
     gpa_state: GPA = undefined,
     arena_state: Arena = undefined,
+    frame_arena_state: Arena = undefined,
 
     const Self = @This();
 
@@ -26,6 +27,7 @@ pub const Allocators = struct {
         };
 
         self.arena_state = Arena.init(self.gpa_state.allocator());
+        self.frame_arena_state = Arena.init(self.gpa_state.allocator());
     }
 
     pub fn deinit(self: *Self) std.heap.Check {
@@ -37,7 +39,7 @@ pub const Allocators = struct {
 };
 
 var is_init = false;
-var global_state: Allocators = undefined;
+pub var global_state: Allocators = undefined;
 
 pub fn init(core_allocator: std.mem.Allocator, memory_limit: usize) void {
     assert(!is_init);
@@ -68,4 +70,9 @@ pub fn gpa() std.mem.Allocator {
 pub fn arena() std.mem.Allocator {
     assert(is_init);
     return global_state.arena_state.allocator();
+}
+
+pub fn frameArena() std.mem.Allocator {
+    assert(is_init);
+    return global_state.frame_arena_state.allocator();
 }

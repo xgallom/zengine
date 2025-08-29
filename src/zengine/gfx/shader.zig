@@ -11,11 +11,16 @@ pub const OpenConfig = struct {
     allocator: std.mem.Allocator,
     gpu_device: ?*sdl.SDL_GPUDevice,
     shader_path: []const u8,
-    stage: sdl.SDL_GPUShaderStage,
+    stage: Stage,
     num_samplers: u32 = 0,
     num_storage_textures: u32 = 0,
     num_storage_buffers: u32 = 0,
     num_uniform_buffers: u32 = 0,
+
+    const Stage = enum(sdl.SDL_GPUShaderStage) {
+        vertex = sdl.SDL_GPU_SHADERSTAGE_VERTEX,
+        fragment = sdl.SDL_GPU_SHADERSTAGE_FRAGMENT,
+    };
 };
 
 fn openShaderDir(config: OpenConfig) !std.fs.Dir {
@@ -88,7 +93,7 @@ pub fn open(config: OpenConfig) ?*sdl.SDL_GPUShader {
         .code = code.ptr,
         .entrypoint = @ptrCast(entry_point),
         .format = shader_format,
-        .stage = config.stage,
+        .stage = @intFromEnum(config.stage),
         .num_samplers = config.num_samplers,
         .num_storage_textures = config.num_storage_textures,
         .num_storage_buffers = config.num_storage_buffers,
@@ -101,4 +106,8 @@ pub fn open(config: OpenConfig) ?*sdl.SDL_GPUShader {
     }
 
     return shader;
+}
+
+pub fn release(gpu_device: ?*sdl.SDL_GPUDevice, shader: ?*sdl.SDL_GPUShader) void {
+    sdl.SDL_ReleaseGPUShader(gpu_device, shader);
 }

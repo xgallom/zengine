@@ -10,20 +10,25 @@ const scalarT = @import("scalar.zig").scalarT;
 
 pub fn vectorNT(comptime N: comptime_int, comptime T: type) type {
     return struct {
-        pub const Self = [N]T;
+        pub const Self = types.VectorNT(N, T);
         pub const Scalar = T;
+        pub const Coords = types.CoordsNT(N, T);
         pub const len = N;
 
         pub const scalar = scalarT(T);
 
-        pub const zero = splat(0);
-        pub const one = splat(1);
-        pub const neg_one = splat(-1);
+        pub const zero = splat(scalar.zero);
+        pub const one = splat(scalar.one);
+        pub const neg_one = splat(scalar.neg_one);
 
         pub fn splat(value: Scalar) Self {
             var result: Self = undefined;
             for (0..len) |n| result[n] = value;
             return result;
+        }
+
+        pub fn splatInto(result: *Self, value: Scalar) void {
+            for (0..len) |n| result[n] = value;
         }
 
         pub fn slice(comptime L: usize, self: *Self) []Scalar {
@@ -49,132 +54,102 @@ pub fn vectorNT(comptime N: comptime_int, comptime T: type) type {
         }
 
         pub fn add(self: *Self, other: *const Self) void {
-            for (0..len) |n| {
-                self[n] += other[n];
-            }
+            for (0..len) |n| self[n] += other[n];
         }
 
         pub fn sub(self: *Self, other: *const Self) void {
-            for (0..len) |n| {
-                self[n] -= other[n];
-            }
+            for (0..len) |n| self[n] -= other[n];
         }
 
         pub fn mul(self: *Self, other: *const Self) void {
-            for (0..len) |n| {
-                self[n] *= other[n];
-            }
+            for (0..len) |n| self[n] *= other[n];
         }
 
         pub fn div(self: *Self, other: *const Self) void {
-            for (0..len) |n| {
-                self[n] /= other[n];
-            }
+            for (0..len) |n| self[n] /= other[n];
         }
 
         pub fn mulAdd(self: *Self, other: *const Self, multiplier: Scalar) void {
-            for (0..len) |n| {
-                self[n] = @mulAdd(Scalar, other[n], multiplier, self[n]);
-            }
+            for (0..len) |n| self[n] = @mulAdd(Scalar, other[n], multiplier, self[n]);
         }
 
         pub fn mulSub(self: *Self, other: *const Self, multiplier: Scalar) void {
-            for (0..len) |n| {
-                self[n] = @mulAdd(Scalar, other[n], -multiplier, self[n]);
-            }
+            for (0..len) |n| self[n] = @mulAdd(Scalar, other[n], -multiplier, self[n]);
         }
 
         pub fn scale(self: *Self, multiplier: Scalar) void {
-            for (0..len) |n| {
-                self[n] *= multiplier;
-            }
+            for (0..len) |n| self[n] *= multiplier;
         }
 
         pub fn scaleRecip(self: *Self, multiplier: Scalar) void {
             const recip = scalar.one / multiplier;
-            for (0..len) |n| {
-                self[n] *= recip;
-            }
+            for (0..len) |n| self[n] *= recip;
         }
 
-        pub fn squareLength(self: *const Self) Scalar {
+        pub fn magSqr(self: *const Self) Scalar {
             return dot(self, self);
         }
 
-        pub fn length(self: *const Self) Scalar {
-            return @sqrt(squareLength(self));
+        pub fn mag(self: *const Self) Scalar {
+            return @sqrt(magSqr(self));
         }
 
         pub fn normalize(self: *Self) void {
-            const vector_length = scalar.one / length(self);
-            for (0..len) |n| {
-                self[n] *= vector_length;
-            }
+            const vector_length = scalar.one / mag(self);
+            for (0..len) |n| self[n] *= vector_length;
         }
 
         pub fn dot(lhs: *const Self, rhs: *const Self) Scalar {
             var sum = scalar.zero;
-            for (0..len) |n| {
-                sum = @mulAdd(Scalar, lhs[n], rhs[n], sum);
-            }
+            for (0..len) |n| sum = @mulAdd(Scalar, lhs[n], rhs[n], sum);
             return sum;
         }
 
         pub fn dotInto(result: *Scalar, lhs: *const Self, rhs: *const Self) void {
             result.* = scalar.zero;
-            for (0..len) |n| {
-                result.* = @mulAdd(Scalar, lhs[n], rhs[n], result.*);
-            }
+            for (0..len) |n| result.* = @mulAdd(Scalar, lhs[n], rhs[n], result.*);
         }
 
-        const self3 = if (N == 3) struct {
-            pub const Coordinates = struct {
-                x: Self,
-                y: Self,
-                z: Self,
-            };
+        pub fn translateScale(direction: *Self, translation: *const Self, multiplier: Scalar) void {
+            mulAdd(direction, translation, multiplier);
+        }
 
-            pub fn translateScale(direction: *Self, translation: *const Self, multiplier: Scalar) void {
-                mulAdd(direction, translation, multiplier);
-            }
+        pub fn rotateDirectionScale(direction: *Self, rotation: *const Self, multiplier: Scalar) void {
+            mulAdd(direction, rotation, multiplier);
+        }
 
-            pub fn rotateDirectionScale(direction: *Self, rotation: *const Self, multiplier: Scalar) void {
-                mulAdd(direction, rotation, multiplier);
-            }
+        pub fn translateDirectionScale(direction: *Self, translation: *const Self, multiplier: Scalar) void {
+            mulSub(direction, translation, multiplier);
+        }
 
-            pub fn translateDirectionScale(direction: *Self, translation: *const Self, multiplier: Scalar) void {
-                mulSub(direction, translation, multiplier);
-            }
+        pub fn cross(result: *Self, lhs: *const Self, rhs: *const Self) void {
+            comptime assert(N == 3);
+            result[0] = lhs[1] * rhs[2] - lhs[2] * rhs[1];
+            result[1] = lhs[2] * rhs[0] - lhs[0] * rhs[2];
+            result[2] = lhs[0] * rhs[1] - lhs[1] * rhs[0];
+        }
 
-            pub fn cross(result: *Self, lhs: *const Self, rhs: *const Self) void {
-                result[0] = lhs[1] * rhs[2] - lhs[2] * rhs[1];
-                result[1] = lhs[2] * rhs[0] - lhs[0] * rhs[2];
-                result[2] = lhs[0] * rhs[1] - lhs[1] * rhs[0];
-            }
+        pub fn localCoords(result: *Coords, direction: *const Self, up: *const Self) void {
+            assert(mag(up) == 1);
 
-            pub fn localCoordinates(result: *Coordinates, direction: *const Self, up: *const Self) void {
-                assert(length(up) == 1);
+            result.z = direction.*;
+            normalize(&result.z);
+            scale(&result.z, -1);
+            cross(&result.x, &result.z, up);
+            normalize(&result.x);
+            cross(&result.y, &result.x, &result.z);
+        }
 
-                result.z = direction.*;
-                normalize(&result.z);
-                scale(&result.z, -1);
-                cross(&result.x, &result.z, up);
-                normalize(&result.x);
-                cross(&result.y, &result.x, &result.z);
-            }
+        pub fn cameraCoords(result: *Coords, direction: *const Self, up: *const Self) void {
+            assert(mag(up) == 1);
 
-            pub fn cameraCoordinates(result: *Coordinates, direction: *const Self, up: *const Self) void {
-                assert(length(up) == 1);
-
-                result.z = direction.*;
-                normalize(&result.z);
-                scale(&result.z, -1);
-                cross(&result.x, &result.z, up);
-                normalize(&result.x);
-                cross(&result.y, &result.x, &result.z);
-            }
-        } else struct {};
-        pub usingnamespace self3;
+            result.z = direction.*;
+            normalize(&result.z);
+            scale(&result.z, -1);
+            cross(&result.x, &result.z, up);
+            normalize(&result.x);
+            cross(&result.y, &result.x, &result.z);
+        }
     };
 }
 
@@ -288,7 +263,7 @@ test "vector3f64" {
     ns.cross(&result, &lhs, &.{ 6, 2, 4 });
     try std.testing.expectEqualSlices(ns.Scalar, &.{ 4, 28, -20 }, &result);
     {
-        var coords: ns.Coordinates = undefined;
+        var coords: ns.Coords = undefined;
         ns.localCoordinates(&coords, &.{ 0, 0, 1 }, &.{ 0, 1, 0 });
         try std.testing.expectEqualSlices(ns.Scalar, &.{ 1, 0, 0 }, &coords.x);
         try std.testing.expectEqualSlices(ns.Scalar, &.{ 0, 1, 0 }, &coords.y);

@@ -2,8 +2,8 @@ const std = @import("std");
 const math = @import("../math.zig");
 const mesh = @import("mesh.zig");
 
-pub fn loadFile(allocator: std.mem.Allocator, path: []const u8) !mesh.Mesh {
-    var result = mesh.Mesh.init(allocator);
+pub fn loadFile(allocator: std.mem.Allocator, path: []const u8) !mesh.TriangleMesh {
+    var result = mesh.TriangleMesh.init(allocator);
     errdefer result.deinit();
 
     var file = try std.fs.openFileAbsolute(path, .{});

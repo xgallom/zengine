@@ -10,7 +10,7 @@ fn alignedAlloc(size: usize, alignment: usize) ?[*]u8 {
 }
 
 fn alignedFree(ptr: [*]u8) void {
-    sdl.SDL_aligned_free(@ptrCast(@alignCast(ptr)));
+    sdl.SDL_aligned_free(@ptrCast(ptr));
 }
 
 const RawSDLAllocator = struct {

@@ -7,6 +7,8 @@ const usage =
     \\Options:
     \\  --input-dir INPUT_DIRECTORY
     \\  --output-dir OUTPUT_DIRECTORY
+    \\  --install-dir INSTALL_DIRECTORY
+    \\  --include-dir INCLUDE_DIRECTORY
     \\
 ;
 
@@ -14,6 +16,7 @@ const Arguments = struct {
     input_directory: []const u8,
     output_directory: []const u8,
     install_directory: ?[]const u8,
+    include_directory: ?[]const u8,
 };
 
 fn parseArguments(allocator: std.mem.Allocator) !?Arguments {
@@ -22,6 +25,7 @@ fn parseArguments(allocator: std.mem.Allocator) !?Arguments {
     var input_directory: ?[]const u8 = null;
     var output_directory: ?[]const u8 = null;
     var install_directory: ?[]const u8 = null;
+    var include_directory: ?[]const u8 = null;
 
     {
         var n: usize = 1;
@@ -45,6 +49,11 @@ fn parseArguments(allocator: std.mem.Allocator) !?Arguments {
                 if (n >= args.len) fatal("expected argument after '{s}'", .{arg});
                 if (install_directory != null) fatal("duplicated argument {s}", .{arg});
                 install_directory = args[n];
+            } else if (std.mem.eql(u8, "--include-dir", arg)) {
+                n += 1;
+                if (n >= args.len) fatal("expected argument after '{s}'", .{arg});
+                if (include_directory != null) fatal("duplicated argument {s}", .{arg});
+                include_directory = args[n];
             } else {
                 fatal("unrecognized argument: {s}", .{arg});
             }
@@ -55,6 +64,7 @@ fn parseArguments(allocator: std.mem.Allocator) !?Arguments {
         .input_directory = input_directory orelse fatal("missing argument --input-dir", .{}),
         .output_directory = output_directory orelse fatal("missing argument --output-dir", .{}),
         .install_directory = install_directory,
+        .include_directory = include_directory,
     };
 }
 
@@ -74,7 +84,8 @@ pub fn main() !void {
         \\  --input-dir: {s}
         \\  --output-dir: {s}
         \\  --install-dir: {?s}
-    , .{ arguments.input_directory, arguments.output_directory, arguments.install_directory });
+        \\  --include-dir: {?s}
+    , .{ arguments.input_directory, arguments.output_directory, arguments.install_directory, arguments.include_directory });
 
     std.fs.makeDirAbsolute(arguments.output_directory) catch |err| {
         switch (err) {
@@ -110,14 +121,15 @@ pub fn main() !void {
             const output_filename = try std.fmt.allocPrint(arena, "{s}{s}", .{ input_basename, output_extension });
             const output_path = try std.fs.path.join(arena, &.{ arguments.output_directory, output_filename });
 
+            var argv: []const []const u8 = &.{ "shadercross", input_path, "-o", output_path };
+
+            if (arguments.include_directory) |include_directory| {
+                argv = &.{ "shadercross", input_path, "-o", output_path, "-I", include_directory };
+            }
+
             const result = std.process.Child.run(.{
                 .allocator = std.heap.c_allocator,
-                .argv = &.{
-                    "shadercross",
-                    input_path,
-                    "-o",
-                    output_path,
-                },
+                .argv = argv,
             }) catch |err| {
                 if (err == error.FileNotFound) fatal("failed running shadercross", .{});
                 return err;

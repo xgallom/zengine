@@ -1,16 +1,13 @@
-struct Input
-{
+struct Input {
     uint VertexIndex : SV_VertexID;
 };
 
-struct Output
-{
+struct Output {
     float4 Color : TEXCOORD0;
     float4 Position : SV_Position;
 };
 
-Output main(Input input)
-{
+Output main(Input input) {
     Output output;
     float2 pos;
     if (input.VertexIndex == 0)

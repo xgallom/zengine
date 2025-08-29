@@ -35,9 +35,21 @@ pub fn ComponentArrayList(comptime C: type) type {
         }
 
         pub fn set(self: *Self, entity: Entity, value: C) void {
-            assert(self.components.len > entity);
-
+            assert(entity < self.len());
             self.components.set(entity, value);
+        }
+
+        pub fn get(self: *const Self, entity: Entity) C {
+            assert(entity < self.len());
+            return self.components.get(entity);
+        }
+
+        pub fn len(self: *const Self) usize {
+            return self.components.len;
+        }
+
+        pub fn cap(self: *const Self) usize {
+            return self.components.capacity;
         }
     };
 }
@@ -68,7 +80,25 @@ pub fn PrimitiveComponentArrayList(comptime C: type) type {
         pub fn push(self: *Self, value: C) !Entity {
             const ptr = try self.components.addOne(self.allocator);
             ptr.* = value;
-            return @intCast(@intFromPtr(ptr) - @intFromPtr(self.components.items.ptr));
+            return self.len() - 1;
+        }
+
+        pub fn set(self: *Self, entity: Entity, value: C) void {
+            assert(entity < self.len());
+            self.components.items[entity] = value;
+        }
+
+        pub fn get(self: *const Self, entity: Entity) C {
+            assert(entity < self.len());
+            return self.components.items[entity];
+        }
+
+        pub fn len(self: *const Self) usize {
+            return self.components.items.len;
+        }
+
+        pub fn cap(self: *const Self) usize {
+            return self.components.capacity;
         }
     };
 }

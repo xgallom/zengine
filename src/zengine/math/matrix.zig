@@ -1,5 +1,9 @@
 //!
-//! The zengine dense matrix implementation
+//! Generic dense matrix implementation
+//!
+//! Matrix is M rows by N columns,
+//!
+//! The underlying type is `[M][N]T`
 //!
 
 const std = @import("std");
@@ -41,6 +45,11 @@ pub fn matrixMxNT(comptime M: comptime_int, comptime N: comptime_int, comptime T
             return result;
         }
 
+        pub fn splatInto(result: *Self, value: Scalar) void {
+            const r = sliceLen(result);
+            for (0..len) |n| r[n] = value;
+        }
+
         pub fn slice(comptime L: usize, self: *Self) []Scalar {
             comptime assert(L <= len);
             return @as([*]Scalar, @ptrCast(@alignCast(self)))[0..L];
@@ -63,6 +72,7 @@ pub fn matrixMxNT(comptime M: comptime_int, comptime N: comptime_int, comptime T
             scale(self, scalar.neg_one);
         }
 
+        /// Y_mn += O_mn
         pub fn add(self: *Self, other: *const Self) void {
             const s = sliceLen(self);
             const o = sliceLenConst(other);
@@ -71,6 +81,7 @@ pub fn matrixMxNT(comptime M: comptime_int, comptime N: comptime_int, comptime T
             }
         }
 
+        /// Y_mn -= O_mn
         pub fn sub(self: *Self, other: *const Self) void {
             const s = sliceLen(self);
             const o = sliceLenConst(other);
@@ -79,6 +90,7 @@ pub fn matrixMxNT(comptime M: comptime_int, comptime N: comptime_int, comptime T
             }
         }
 
+        /// Y_mn *= O_mn
         pub fn mul(self: *Self, other: *const Self) void {
             const s = sliceLen(self);
             const o = sliceLenConst(other);
@@ -87,6 +99,7 @@ pub fn matrixMxNT(comptime M: comptime_int, comptime N: comptime_int, comptime T
             }
         }
 
+        /// Y_mn /= O_mn
         pub fn div(self: *Self, other: *const Self) void {
             const s = sliceLen(self);
             const o = sliceLenConst(other);
@@ -95,6 +108,7 @@ pub fn matrixMxNT(comptime M: comptime_int, comptime N: comptime_int, comptime T
             }
         }
 
+        /// Y_mn += O_mn * mul
         pub fn mulAdd(self: *Self, other: *const Self, multiplier: Scalar) void {
             const s = sliceLen(self);
             const o = sliceLenConst(other);
@@ -103,6 +117,7 @@ pub fn matrixMxNT(comptime M: comptime_int, comptime N: comptime_int, comptime T
             }
         }
 
+        /// Y_mn -= O_mn * mul
         pub fn mulSub(self: *Self, other: *const Self, multiplier: Scalar) void {
             const s = sliceLen(self);
             const o = sliceLenConst(other);
@@ -111,6 +126,7 @@ pub fn matrixMxNT(comptime M: comptime_int, comptime N: comptime_int, comptime T
             }
         }
 
+        /// Y_mn *= mul
         pub fn scale(self: *Self, multiplier: Scalar) void {
             const s = sliceLen(self);
             for (0..len) |n| {
@@ -118,6 +134,7 @@ pub fn matrixMxNT(comptime M: comptime_int, comptime N: comptime_int, comptime T
             }
         }
 
+        /// Y_mn *= 1 / mul
         pub fn scaleRecip(self: *Self, multiplier: Scalar) void {
             const s = sliceLen(self);
             const recip = scalar.one / multiplier;
@@ -126,12 +143,14 @@ pub fn matrixMxNT(comptime M: comptime_int, comptime N: comptime_int, comptime T
             }
         }
 
+        /// Y_m = O_mn X_n
         pub fn apply(result: *vector.Self, operation: *const Self, operand: *const vector.Self) void {
             for (0..rows) |y| {
                 vector.dotInto(&result[y], &operation[y], operand);
             }
         }
 
+        /// Y_mn = L_mx R_xn
         pub fn dot(result: *Self, lhs: *const Self, rhs: *const Self) void {
             comptime assert(rows == cols);
             for (0..rows) |y| {
@@ -144,6 +163,20 @@ pub fn matrixMxNT(comptime M: comptime_int, comptime N: comptime_int, comptime T
             }
         }
 
+        /// Y_mn = R_mx L_nx
+        pub fn dotRight(result: *Self, lhs: *const Self, rhs: *const Self) void {
+            comptime assert(rows == cols);
+            for (0..rows) |y| {
+                for (0..cols) |x| {
+                    result[y][x] = scalar.zero;
+                    for (0..cols) |n| {
+                        result[y][x] = @mulAdd(Scalar, rhs[y][n], lhs[x][n], result[y][x]);
+                    }
+                }
+            }
+        }
+
+        /// Y_mn = X_nm
         pub fn transpose(self: *Self) void {
             comptime assert(rows == cols);
             for (0..rows) |y| {
@@ -181,8 +214,8 @@ pub fn matrixMxNT(comptime M: comptime_int, comptime N: comptime_int, comptime T
             }
 
             pub fn camera(result: *Self, position: *const Vector3, direction: *const Vector3, up: *const Vector3) void {
-                var coordinates: vector3.Coordinates = undefined;
-                vector3.cameraCoordinates(&coordinates, direction, up);
+                var coordinates: vector3.Coords = undefined;
+                vector3.cameraCoords(&coordinates, direction, up);
 
                 const x = &coordinates.x;
                 const y = &coordinates.y;
@@ -203,24 +236,22 @@ pub fn matrixMxNT(comptime M: comptime_int, comptime N: comptime_int, comptime T
             }
 
             pub fn scaleXYZ(operand: *Self, scales: *const Vector3) void {
-                const operation: Self = .{
-                    .{ scales[0], scalar.zero, scalar.zero, scalar.zero },
-                    .{ scalar.zero, scales[1], scalar.zero, scalar.zero },
-                    .{ scalar.zero, scalar.zero, scales[2], scalar.zero },
-                    .{ scalar.zero, scalar.zero, scalar.zero, scalar.one },
-                };
+                const operation = scalingXYZ(scales);
                 const input = operand.*;
                 dot(operand, &operation, &input);
             }
 
             pub fn scalingXYZ(scales: *const Vector3) Self {
-                var result = identity;
-                scaleXYZ(&result, scales);
-                return result;
+                return .{
+                    .{ scales[0], scalar.zero, scalar.zero, scalar.zero },
+                    .{ scalar.zero, scales[1], scalar.zero, scalar.zero },
+                    .{ scalar.zero, scalar.zero, scales[2], scalar.zero },
+                    .{ scalar.zero, scalar.zero, scalar.zero, scalar.one },
+                };
             }
 
             pub fn rotateEuler(operand: *Self, rotation: *const types.Euler, order: types.EulerOrder) void {
-                const operations: []const Self = &.{
+                const operations: [types.Axis3.len]Self = .{
                     // x
                     .{
                         .{ scalar.one, scalar.zero, scalar.zero, scalar.zero },
@@ -256,19 +287,18 @@ pub fn matrixMxNT(comptime M: comptime_int, comptime N: comptime_int, comptime T
             }
 
             pub fn translateXYZ(operand: *Self, translation: *const Vector3) void {
-                const operation = Self{
+                const operation = translationXYZ(translation);
+                const input = operand.*;
+                dot(operand, &operation, &input);
+            }
+
+            pub fn translationXYZ(translation: *const Vector3) Self {
+                return .{
                     .{ scalar.one, scalar.zero, scalar.zero, translation[0] },
                     .{ scalar.zero, scalar.one, scalar.zero, translation[1] },
                     .{ scalar.zero, scalar.zero, scalar.one, translation[2] },
                     .{ scalar.zero, scalar.zero, scalar.zero, scalar.one },
                 };
-                const input = operand.*;
-                dot(operand, &operation, &input);
-            }
-            pub fn translationXYZ(translation: *const Vector3) Self {
-                var result = identity;
-                translateXYZ(&result, translation);
-                return result;
             }
         } else struct {};
     };
