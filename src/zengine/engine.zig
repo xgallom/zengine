@@ -8,6 +8,7 @@ const std = @import("std");
 const sdl = @import("ext/sdl.zig");
 
 const assert = std.debug.assert;
+const log = std.log.scoped(.engine);
 
 pub const WindowSize = struct {
     w: c_int = 0,
@@ -27,19 +28,19 @@ pub const Engine = struct {
 
     pub fn init(allocator: std.mem.Allocator) InitError!Engine {
         if (!sdl.SDL_Init(sdl.SDL_INIT_VIDEO)) {
-            std.log.err("failed init: {s}", .{sdl.SDL_GetError()});
+            log.err("failed init: {s}", .{sdl.SDL_GetError()});
             return InitError.InitFailed;
         }
 
         const window = sdl.SDL_CreateWindow("zeng - ZEngine 0.1.0", 1920, 1080, 0);
         if (window == null) {
-            std.log.err("failed creating window: {s}", .{sdl.SDL_GetError()});
+            log.err("failed creating window: {s}", .{sdl.SDL_GetError()});
             return InitError.WindowFailed;
         }
 
         var window_size = WindowSize{};
         if (!sdl.SDL_GetWindowSizeInPixels(window, &window_size.w, &window_size.h)) {
-            std.log.err("failed obtaining window size: {s}", .{sdl.SDL_GetError()});
+            log.err("failed obtaining window size: {s}", .{sdl.SDL_GetError()});
             return InitError.WindowFailed;
         }
 

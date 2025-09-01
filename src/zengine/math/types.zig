@@ -47,22 +47,22 @@ pub fn Coords4T(comptime T: type) type {
     return CoordsNT(4, T);
 }
 
-pub const Vector2 = Vector2T(Scalar);
-pub const Vector2f64 = Vector2T(Scalar64);
-pub const Vector3 = Vector3T(Scalar);
-pub const Vector3f64 = Vector3T(Scalar64);
-pub const Vector4 = Vector4T(Scalar);
-pub const Vector4f64 = Vector4T(Scalar64);
+pub const Vector2 = VectorNT(2, Scalar);
+pub const Vector2f64 = VectorNT(2, Scalar64);
+pub const Vector3 = VectorNT(3, Scalar);
+pub const Vector3f64 = VectorNT(3, Scalar64);
+pub const Vector4 = VectorNT(4, Scalar);
+pub const Vector4f64 = VectorNT(4, Scalar64);
 
-pub const Matrix3x3 = Matrix3x3T(Scalar);
-pub const Matrix3x3f64 = Matrix3x3T(Scalar64);
-pub const Matrix4x4 = Matrix4x4T(Scalar);
-pub const Matrix4x4f64 = Matrix4x4T(Scalar64);
+pub const Matrix3x3 = MatrixMxNT(3, 3, Scalar);
+pub const Matrix3x3f64 = MatrixMxNT(3, 3, Scalar64);
+pub const Matrix4x4 = MatrixMxNT(4, 4, Scalar);
+pub const Matrix4x4f64 = MatrixMxNT(4, 4, Scalar64);
 
-pub const Coords3 = Coords3T(Scalar);
-pub const Coords3f64 = Coords3T(Scalar64);
-pub const Coords4 = Coords4T(Scalar);
-pub const Coords4f64 = Coords4T(Scalar64);
+pub const Coords3 = CoordsNT(3, Scalar);
+pub const Coords3f64 = CoordsNT(3, Scalar64);
+pub const Coords4 = CoordsNT(4, Scalar);
+pub const Coords4f64 = CoordsNT(4, Scalar64);
 
 pub const Vertex = Vector3;
 pub const Position = Vector4;

@@ -34,7 +34,7 @@ const types = @import("types.zig");
 const batchNT = @import("scalar.zig").batchNT;
 const vectorNBT = @import("vector.zig").vectorNBT;
 
-pub fn matrixMxNBT(comptime M: usize, comptime N: usize, comptime NB: usize, comptime T: type) type {
+pub fn matrixMxNBT(comptime M: comptime_int, comptime N: comptime_int, comptime NB: comptime_int, comptime T: type) type {
     return struct {
         pub const Self = types.MatrixMxNBT(M, N, NB, T);
         pub const CSelf = types.CMatrixMxNBT(M, N, NB, T);
@@ -43,7 +43,7 @@ pub fn matrixMxNBT(comptime M: usize, comptime N: usize, comptime NB: usize, com
         pub const Scalar = scalar.Self;
         pub const rows = M;
         pub const cols = N;
-        pub const len: usize = M * N;
+        pub const len = M * N;
         pub const batch_len = scalar.len;
 
         const vector = vectorNBT(N, NB, T);
@@ -63,7 +63,7 @@ pub fn matrixMxNBT(comptime M: usize, comptime N: usize, comptime NB: usize, com
         pub fn decrement(self: *CSelf) void {
             const s = sliceLenConst(self);
             for (0..len) |n| {
-                s[n] += 1;
+                s[n] -= 1;
             }
         }
 

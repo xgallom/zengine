@@ -1,5 +1,6 @@
 const std = @import("std");
 const assert = std.debug.assert;
+const log = std.log.scoped(.ecs);
 
 const component_array_list = @import("component_array_list.zig");
 const ComponentArrayList = component_array_list.ComponentArrayList;
@@ -15,6 +16,7 @@ fn AnyComponentManager(comptime C: type, comptime AL: type) type {
     return struct {
         components: ArrayList,
         component_flags: FlagsBitSet,
+        lock: std.Thread.Mutex = .{},
 
         pub const Self = @This();
         pub const ArrayList = AL;
@@ -34,21 +36,38 @@ fn AnyComponentManager(comptime C: type, comptime AL: type) type {
         }
 
         pub fn push(self: *Self, value: C) !Entity {
-            const entity = try self.components.push(value);
+            self.lock.lock();
+            defer self.lock.unlock();
 
-            if (self.component_flags.capacity() < self.components.len()) {
+            _ = @atomicLoad(usize, &self.components.components.capacity, .seq_cst);
+            _ = @atomicLoad(usize, &self.component_flags.bit_length, .seq_cst);
+            log.info("before {} {any}", .{ std.Thread.getCurrentId(), self });
+
+            self.lock.unlock();
+            self.lock.lock();
+            const entity = try self.components.push(value);
+            log.info("after {} {}", .{ self.components.cap(), self.components.len() });
+
+            if (self.component_flags.capacity() < self.components.cap()) {
+                log.debug("resize flags {} {}", .{ self.component_flags.capacity(), self.components.cap() });
                 try self.component_flags.resize(self.components.allocator, self.components.cap(), false);
             }
             self.component_flags.set(entity);
+            log.debug("flags set", .{});
 
+            log.info("after_flags {} {any}", .{ std.Thread.getCurrentId(), self });
             return entity;
         }
 
         pub fn remove(self: *Self, entity: Entity) void {
+            self.lock.lock();
+            defer self.lock.unlock();
+
             self.component_flags.unset(entity);
         }
 
-        pub fn iter(self: *const Self) Iterator {
+        pub fn iter(self: *Self) Iterator {
+            self.lock.lock();
             return .{
                 .self = self,
                 .idx = 0,
@@ -56,8 +75,12 @@ fn AnyComponentManager(comptime C: type, comptime AL: type) type {
         }
 
         pub const Iterator = struct {
-            self: *const Self,
+            self: *Self,
             idx: Entity,
+
+            pub fn deinit(i: *Iterator) void {
+                i.self.lock.unlock();
+            }
 
             pub fn next(i: *Iterator) ?struct { entity: Entity, item: C } {
                 while (true) : (i.idx += 1) {

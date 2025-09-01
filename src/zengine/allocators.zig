@@ -1,37 +1,48 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const sdl = @import("ext/sdl.zig");
 const assert = std.debug.assert;
 
+const is_debug = builtin.mode == .Debug or builtin.mode == .ReleaseSafe;
 pub const GPA = std.heap.DebugAllocator(.{
     .enable_memory_limit = true,
-    .thread_safe = false,
+    .thread_safe = true,
+    .safety = true,
     // .safety = false,
 });
 
 pub const Arena = std.heap.ArenaAllocator;
 
-pub const Allocators = struct {
+pub const ArenaType = enum {
+    global,
+    frame,
+    scratch,
+};
+
+const Allocators = struct {
     core: std.mem.Allocator = undefined,
     gpa_state: GPA = undefined,
-    arena_state: Arena = undefined,
-    frame_arena_state: Arena = undefined,
+    gpa: std.mem.Allocator = undefined,
+    arenas: std.EnumArray(ArenaType, Arena) = .initUndefined(),
 
     const Self = @This();
 
-    pub fn init(self: *Self, core_allocator: std.mem.Allocator, memory_limit: usize) void {
+    fn init(self: *Self, core_allocator: std.mem.Allocator, memory_limit: usize) void {
         self.core = core_allocator;
 
         self.gpa_state = GPA{
             .backing_allocator = self.core,
             .requested_memory_limit = memory_limit,
         };
+        self.gpa = if (is_debug) self.gpa_state.allocator() else std.heap.smp_allocator;
 
-        self.arena_state = Arena.init(self.gpa_state.allocator());
-        self.frame_arena_state = Arena.init(self.gpa_state.allocator());
+        var iter = self.arenas.iterator();
+        while (iter.next()) |item| item.value.* = Arena.init(self.gpa);
     }
 
-    pub fn deinit(self: *Self) std.heap.Check {
-        self.arena_state.deinit();
+    fn deinit(self: *Self) std.heap.Check {
+        var iter = self.arenas.iterator();
+        while (iter.next()) |item| item.value.deinit();
         const result = self.gpa_state.deinit();
         self.* = Self{};
         return result;
@@ -64,15 +75,42 @@ pub fn core() std.mem.Allocator {
 
 pub fn gpa() std.mem.Allocator {
     assert(is_init);
-    return global_state.gpa_state.allocator();
+    return global_state.gpa;
 }
 
-pub fn arena() std.mem.Allocator {
+pub fn arenaState(key: ArenaType) *Arena {
     assert(is_init);
-    return global_state.arena_state.allocator();
+    return global_state.arenas.getPtr(key);
 }
 
-pub fn frameArena() std.mem.Allocator {
-    assert(is_init);
-    return global_state.frame_arena_state.allocator();
+pub fn arena(key: ArenaType) std.mem.Allocator {
+    return arenaState(key).allocator();
+}
+
+pub fn arenaReset(key: ArenaType, mode: Arena.ResetMode) bool {
+    return arenaState(key).reset(mode);
+}
+
+pub fn global() std.mem.Allocator {
+    return arena(.global);
+}
+
+pub fn frame() std.mem.Allocator {
+    return arena(.frame);
+}
+
+pub fn frameReset() void {
+    _ = arenaReset(.frame, .retain_capacity);
+}
+
+pub fn scratch() std.mem.Allocator {
+    return arena(.scratch);
+}
+
+pub fn scratchRelease() void {
+    _ = arenaReset(.scratch, .retain_capacity);
+}
+
+pub fn scratchFree() void {
+    _ = arenaReset(.scratch, .free_all);
 }

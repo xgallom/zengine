@@ -1,6 +1,10 @@
 const std = @import("std");
 const math = @import("../math.zig");
+const allocators = @import("../allocators.zig");
 const mesh = @import("mesh.zig");
+
+const assert = std.debug.assert;
+const log = std.log.scoped(.gfx);
 
 pub fn loadFile(allocator: std.mem.Allocator, path: []const u8) !mesh.TriangleMesh {
     var result = mesh.TriangleMesh.init(allocator);
@@ -11,8 +15,9 @@ pub fn loadFile(allocator: std.mem.Allocator, path: []const u8) !mesh.TriangleMe
 
     var reader = file.reader();
 
-    var buf: [1024]u8 = undefined;
-    while (try reader.readUntilDelimiterOrEof(&buf, '\n')) |line| {
+    const buf = try allocators.scratch().alloc(u8, 1024);
+
+    while (try reader.readUntilDelimiterOrEof(buf, '\n')) |line| {
         switch (line[0]) {
             '#' => continue,
             'v' => {
@@ -45,7 +50,7 @@ fn parseVertex(line: []const u8) !math.Vertex {
                     return error.ParseFloatError;
                 };
             },
-            4 => std.log.warn("loaded 4th component of a 3-element vertex", .{}),
+            4 => log.warn("loaded 4th component of a 3-element vertex", .{}),
             else => return error.TooManyArguments,
         }
     }

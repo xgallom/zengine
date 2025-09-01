@@ -17,10 +17,10 @@ pub fn matrix4x4T(comptime T: type) type {
     return matrixMxNT(4, 4, T);
 }
 
-pub const matrix3x3 = matrix3x3T(types.Scalar);
-pub const matrix3x3f64 = matrix3x3T(types.Scalar64);
-pub const matrix4x4 = matrix4x4T(types.Scalar);
-pub const matrix4x4f64 = matrix4x4T(types.Scalar64);
+pub const matrix3x3 = matrixMxNT(3, 3, types.Scalar);
+pub const matrix3x3f64 = matrixMxNT(3, 3, types.Scalar64);
+pub const matrix4x4 = matrixMxNT(4, 4, types.Scalar);
+pub const matrix4x4f64 = matrixMxNT(4, 4, types.Scalar64);
 
 pub const vector = @import("math/vector.zig");
 pub const vectorNT = vector.vectorNT;

@@ -1,5 +1,6 @@
 const std = @import("std");
 const assert = std.debug.assert;
+const log = std.log.scoped(.gfx);
 
 const math = @import("../math.zig");
 const sdl = @import("../ext.zig").sdl;
@@ -40,7 +41,7 @@ pub fn Mesh(comptime V: type, comptime I: type) type {
                 .size = @intCast(@sizeOf(Vertex) * self.vertices.items.len),
             });
             if (self.vertex_buffer == null) {
-                std.log.err("failed creating vertex_buffer: {s}", .{sdl.SDL_GetError()});
+                log.err("failed creating vertex_buffer: {s}", .{sdl.SDL_GetError()});
                 return error.BufferFailed;
             }
             errdefer sdl.SDL_ReleaseGPUBuffer(gpu_device, self.vertex_buffer);
@@ -50,7 +51,7 @@ pub fn Mesh(comptime V: type, comptime I: type) type {
                 .size = @intCast(@sizeOf(FaceIndex) * self.faces.items.len),
             });
             if (self.index_buffer == null) {
-                std.log.err("failed creating index_buffer: {s}", .{sdl.SDL_GetError()});
+                log.err("failed creating index_buffer: {s}", .{sdl.SDL_GetError()});
                 return error.BufferFailed;
             }
             errdefer sdl.SDL_ReleaseGPUBuffer(gpu_device, self.index_buffer);
@@ -72,7 +73,7 @@ pub fn Mesh(comptime V: type, comptime I: type) type {
                 .size = @intCast((@sizeOf(Vertex) * self.vertices.items.len) + (@sizeOf(FaceIndex) * self.faces.items.len)),
             });
             if (transfer_buffer == null) {
-                std.log.err("failed creating transfer_buffer: {s}", .{sdl.SDL_GetError()});
+                log.err("failed creating transfer_buffer: {s}", .{sdl.SDL_GetError()});
                 return error.BufferFailed;
             }
 
@@ -91,7 +92,7 @@ pub fn Mesh(comptime V: type, comptime I: type) type {
                 const mesh = self.mesh;
                 const transfer_buffer_ptr = sdl.SDL_MapGPUTransferBuffer(gpu_device, self.transfer_buffer, false);
                 if (transfer_buffer_ptr == null) {
-                    std.log.err("failed mapping transfer_buffer_ptr: {s}", .{sdl.SDL_GetError()});
+                    log.err("failed mapping transfer_buffer_ptr: {s}", .{sdl.SDL_GetError()});
                     return error.BufferFailed;
                 }
 

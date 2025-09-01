@@ -3,6 +3,7 @@
 //!
 
 const std = @import("std");
+const allocators = @import("../allocators.zig");
 const sdl = @import("../ext.zig").sdl;
 const math = @import("../math.zig");
 const global = @import("../global.zig");
@@ -11,7 +12,9 @@ const shader = @import("shader.zig");
 const TriangleMesh = @import("mesh.zig").TriangleMesh;
 const LineMesh = @import("mesh.zig").LineMesh;
 const obj_loader = @import("obj_loader.zig");
+
 const assert = std.debug.assert;
+const log = std.log.scoped(.gfx);
 
 pub const Renderer = struct {
     gpu_device: ?*sdl.SDL_GPUDevice,
@@ -43,9 +46,12 @@ pub const Renderer = struct {
 
     pub const DrawError = error{
         DrawFailed,
+        OutOfMemory,
     };
 
     pub fn init(engine: Engine) InitError!Renderer {
+        defer allocators.scratchFree();
+
         const allocator = engine.allocator;
         const window = engine.window;
 
@@ -55,7 +61,7 @@ pub const Renderer = struct {
             null,
         );
         if (gpu_device == null) {
-            std.log.err("failed creating gpu_device: {s}", .{sdl.SDL_GetError()});
+            log.err("failed creating gpu_device: {s}", .{sdl.SDL_GetError()});
             return InitError.GpuFailed;
         }
         errdefer sdl.SDL_DestroyGPUDevice(gpu_device);
@@ -69,7 +75,7 @@ pub const Renderer = struct {
         });
 
         if (vertex_shader == null) {
-            std.log.err("failed creating vertex_shader", .{});
+            log.err("failed creating vertex_shader", .{});
             return InitError.ShaderFailed;
         }
         defer shader.release(gpu_device, vertex_shader);
@@ -82,7 +88,7 @@ pub const Renderer = struct {
         });
 
         if (full_vertex_shader == null) {
-            std.log.err("failed creating full_vertex_shader", .{});
+            log.err("failed creating full_vertex_shader", .{});
             return InitError.ShaderFailed;
         }
         defer shader.release(gpu_device, full_vertex_shader);
@@ -97,7 +103,7 @@ pub const Renderer = struct {
         });
 
         if (fragment_shader == null) {
-            std.log.err("failed creating fragment_shader", .{});
+            log.err("failed creating fragment_shader", .{});
             return InitError.ShaderFailed;
         }
         defer shader.release(gpu_device, fragment_shader);
@@ -111,7 +117,7 @@ pub const Renderer = struct {
         });
 
         if (origin_fragment_shader == null) {
-            std.log.err("failed creating origin_fragment_shader", .{});
+            log.err("failed creating origin_fragment_shader", .{});
             return InitError.ShaderFailed;
         }
         defer shader.release(gpu_device, origin_fragment_shader);
@@ -125,31 +131,34 @@ pub const Renderer = struct {
         });
 
         if (full_fragment_shader == null) {
-            std.log.err("failed creating full_fragment_shader", .{});
+            log.err("failed creating full_fragment_shader", .{});
             return InitError.ShaderFailed;
         }
         defer shader.release(gpu_device, full_fragment_shader);
 
-        const path = std.fs.path.join(engine.allocator, &.{ global.exePath(), "..", "..", "assets", "cow_nonormals.obj" }) catch |err| {
-            std.log.err("failed creating obj file path: {s}", .{@errorName(err)});
+        const path = std.fs.path.join(allocators.scratch(), &.{ global.exePath(), "..", "..", "assets", "cow_nonormals.obj" }) catch |err| {
+            log.err("failed creating obj file path: {s}", .{@errorName(err)});
             return InitError.BufferFailed;
         };
+
         var mesh = obj_loader.loadFile(engine.allocator, path) catch |err| {
-            std.log.err("failed loading mesh from obj file: {s}", .{@errorName(err)});
+            log.err("failed loading mesh from obj file: {s}", .{@errorName(err)});
             return InitError.BufferFailed;
         };
+        defer mesh.deinit();
 
         try mesh.createGpuBuffers(gpu_device);
         errdefer mesh.releaseGpuBuffers(gpu_device);
 
         var origin_mesh = LineMesh.init(engine.allocator);
+        defer origin_mesh.deinit();
         origin_mesh.vertices.appendSlice(origin_mesh.allocator, &.{
             .{ 0, 0, 0 },
             .{ 1, 0, 0 },
             .{ 0, 1, 0 },
             .{ 0, 0, 1 },
         }) catch |err| {
-            std.log.err("failed appending origin_mesh vertices: {s}", .{@errorName(err)});
+            log.err("failed appending origin_mesh vertices: {s}", .{@errorName(err)});
             return InitError.BufferFailed;
         };
         origin_mesh.faces.appendSlice(origin_mesh.allocator, &.{
@@ -157,7 +166,7 @@ pub const Renderer = struct {
             .{ 0, 2 },
             .{ 0, 3 },
         }) catch |err| {
-            std.log.err("failed appending origin_mesh faces: {s}", .{@errorName(err)});
+            log.err("failed appending origin_mesh faces: {s}", .{@errorName(err)});
             return InitError.BufferFailed;
         };
 
@@ -171,11 +180,11 @@ pub const Renderer = struct {
             stencil_format = sdl.SDL_GPU_TEXTUREFORMAT_D32_FLOAT_S8_UINT;
         } else {
             stencil_format = sdl.SDL_GPU_TEXTUREFORMAT_D32_FLOAT;
-            std.log.err("no supported stencil format", .{});
+            log.err("no supported stencil format", .{});
         }
 
         if (!sdl.SDL_ClaimWindowForGPUDevice(gpu_device, window)) {
-            std.log.err("failed claiming window for gpu_device: {s}", .{sdl.SDL_GetError()});
+            log.err("failed claiming window for gpu_device: {s}", .{sdl.SDL_GetError()});
             return InitError.WindowFailed;
         }
 
@@ -185,7 +194,7 @@ pub const Renderer = struct {
         }
 
         if (!sdl.SDL_SetGPUSwapchainParameters(gpu_device, window, sdl.SDL_GPU_SWAPCHAINCOMPOSITION_SDR, present_mode)) {
-            std.log.err("failed setting swapchain parameters: {s}", .{sdl.SDL_GetError()});
+            log.err("failed setting swapchain parameters: {s}", .{sdl.SDL_GetError()});
             return InitError.WindowFailed;
         }
 
@@ -239,7 +248,7 @@ pub const Renderer = struct {
         const graphics_pipeline = sdl.SDL_CreateGPUGraphicsPipeline(gpu_device, &graphics_pipeline_create_info);
 
         if (graphics_pipeline == null) {
-            std.log.err("failed creating graphics_pipeline: {s}", .{sdl.SDL_GetError()});
+            log.err("failed creating graphics_pipeline: {s}", .{sdl.SDL_GetError()});
             return InitError.PipelineFailed;
         }
         errdefer sdl.SDL_ReleaseGPUGraphicsPipeline(gpu_device, graphics_pipeline);
@@ -250,7 +259,7 @@ pub const Renderer = struct {
 
         const origin_graphics_pipeline = sdl.SDL_CreateGPUGraphicsPipeline(gpu_device, &graphics_pipeline_create_info);
         if (origin_graphics_pipeline == null) {
-            std.log.err("failed creating origin_graphics_pipeline: {s}", .{sdl.SDL_GetError()});
+            log.err("failed creating origin_graphics_pipeline: {s}", .{sdl.SDL_GetError()});
             return InitError.PipelineFailed;
         }
         errdefer sdl.SDL_ReleaseGPUGraphicsPipeline(gpu_device, origin_graphics_pipeline);
@@ -264,7 +273,7 @@ pub const Renderer = struct {
         const full_graphics_pipeline = sdl.SDL_CreateGPUGraphicsPipeline(gpu_device, &graphics_pipeline_create_info);
 
         if (full_graphics_pipeline == null) {
-            std.log.err("failed creating full_graphics_pipeline: {s}", .{sdl.SDL_GetError()});
+            log.err("failed creating full_graphics_pipeline: {s}", .{sdl.SDL_GetError()});
             return InitError.PipelineFailed;
         }
         errdefer sdl.SDL_ReleaseGPUGraphicsPipeline(gpu_device, full_graphics_pipeline);
@@ -280,7 +289,7 @@ pub const Renderer = struct {
             .sample_count = sdl.SDL_GPU_SAMPLECOUNT_1,
         });
         if (stencil_texture == null) {
-            std.log.err("failed creating stencil_texture: {s}", .{sdl.SDL_GetError()});
+            log.err("failed creating stencil_texture: {s}", .{sdl.SDL_GetError()});
             return InitError.BufferFailed;
         }
         errdefer sdl.SDL_ReleaseGPUTexture(gpu_device, stencil_texture);
@@ -295,7 +304,7 @@ pub const Renderer = struct {
             .num_levels = 1,
         });
         if (texture == null) {
-            std.log.err("failed creating texture: {s}", .{sdl.SDL_GetError()});
+            log.err("failed creating texture: {s}", .{sdl.SDL_GetError()});
             return InitError.BufferFailed;
         }
         errdefer sdl.SDL_ReleaseGPUTexture(gpu_device, texture);
@@ -309,7 +318,7 @@ pub const Renderer = struct {
             .address_mode_w = sdl.SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE,
         });
         if (sampler == null) {
-            std.log.err("failed creating sampler: {s}", .{sdl.SDL_GetError()});
+            log.err("failed creating sampler: {s}", .{sdl.SDL_GetError()});
             return InitError.BufferFailed;
         }
         errdefer sdl.SDL_ReleaseGPUSampler(gpu_device, sampler);
@@ -326,7 +335,7 @@ pub const Renderer = struct {
 
         const command_buffer = sdl.SDL_AcquireGPUCommandBuffer(gpu_device);
         if (command_buffer == null) {
-            std.log.err("failed to acquire gpu_command_buffer: {s}", .{sdl.SDL_GetError()});
+            log.err("failed to acquire gpu_command_buffer: {s}", .{sdl.SDL_GetError()});
             return InitError.CommandBufferFailed;
         }
         errdefer _ = sdl.SDL_CancelGPUCommandBuffer(command_buffer);
@@ -334,7 +343,7 @@ pub const Renderer = struct {
         {
             const copy_pass = sdl.SDL_BeginGPUCopyPass(command_buffer);
             if (copy_pass == null) {
-                std.log.err("failed to begin copy_pass: {s}", .{sdl.SDL_GetError()});
+                log.err("failed to begin copy_pass: {s}", .{sdl.SDL_GetError()});
                 return InitError.CopyPassFailed;
             }
 
@@ -368,7 +377,7 @@ pub const Renderer = struct {
             );
 
             if (render_pass == null) {
-                std.log.err("failed to begin render_pass[{}]: {s}", .{ layer, sdl.SDL_GetError() });
+                log.err("failed to begin render_pass[{}]: {s}", .{ layer, sdl.SDL_GetError() });
                 return InitError.RenderPassFailed;
             }
 
@@ -376,7 +385,7 @@ pub const Renderer = struct {
         }
 
         if (!sdl.SDL_SubmitGPUCommandBuffer(command_buffer)) {
-            std.log.err("failed submitting command_buffer: {s}", .{sdl.SDL_GetError()});
+            log.err("failed submitting command_buffer: {s}", .{sdl.SDL_GetError()});
             return InitError.CommandBufferFailed;
         }
 
@@ -409,9 +418,9 @@ pub const Renderer = struct {
 
     pub fn deinit(self: *Renderer, engine: Engine) void {
         defer sdl.SDL_DestroyGPUDevice(self.gpu_device);
-        defer self.mesh.deinit();
+        // defer self.mesh.deinit();
         defer self.mesh.releaseGpuBuffers(self.gpu_device);
-        defer self.origin_mesh.deinit();
+        // defer self.origin_mesh.deinit();
         defer self.origin_mesh.releaseGpuBuffers(self.gpu_device);
         defer sdl.SDL_ReleaseWindowFromGPUDevice(self.gpu_device, engine.window);
         defer sdl.SDL_ReleaseGPUGraphicsPipeline(self.gpu_device, self.graphics_pipeline);
@@ -422,45 +431,43 @@ pub const Renderer = struct {
     }
 
     pub fn draw(self: Renderer, engine: Engine, time: u64) DrawError!bool {
-        std.log.debug("draw", .{});
+        log.debug("draw", .{});
         const gpu_device = self.gpu_device;
         const window = engine.window;
         const graphics_pipeline = self.graphics_pipeline;
         const origin_graphics_pipeline = self.origin_graphics_pipeline;
         // const full_graphics_pipeline = self.full_graphics_pipeline;
 
-        std.log.debug("command_buffer", .{});
+        const fa = allocators.frame();
+
+        log.debug("command_buffer", .{});
         const command_buffer = sdl.SDL_AcquireGPUCommandBuffer(gpu_device);
         if (command_buffer == null) {
-            std.log.err("failed to acquire command_buffer: {s}", .{sdl.SDL_GetError()});
+            log.err("failed to acquire command_buffer: {s}", .{sdl.SDL_GetError()});
             return DrawError.DrawFailed;
         }
         errdefer _ = sdl.SDL_CancelGPUCommandBuffer(command_buffer);
 
-        std.log.debug("swapchain_texture", .{});
+        log.debug("swapchain_texture", .{});
         var swapchain_texture: ?*sdl.SDL_GPUTexture = undefined;
         if (!sdl.SDL_AcquireGPUSwapchainTexture(command_buffer, window, &swapchain_texture, null, null)) {
-            std.log.err("failed to acquire swapchain_texture: {s}", .{sdl.SDL_GetError()});
+            log.err("failed to acquire swapchain_texture: {s}", .{sdl.SDL_GetError()});
             return DrawError.DrawFailed;
         }
         if (swapchain_texture == null) {
-            std.log.info("skip draw", .{});
+            log.info("skip draw", .{});
             return false;
         }
 
-        const world = comptime blk: {
-            var result: math.Matrix4x4 = undefined;
-            math.matrix4x4.worldTransform(&result);
-            break :blk result;
-        };
+        const world = try fa.create(math.Matrix4x4);
+        const projection = try fa.create(math.Matrix4x4);
+        const camera = try fa.create(math.Matrix4x4);
+        const view = try fa.create(math.Matrix4x4);
+        const view_projection = try fa.create(math.Matrix4x4);
 
-        var projection: math.Matrix4x4 = undefined;
-        var camera: math.Matrix4x4 = undefined;
-        var view: math.Matrix4x4 = undefined;
-        var view_projection: math.Matrix4x4 = undefined;
-
+        math.matrix4x4.worldTransform(world);
         math.matrix4x4.perspectiveFov(
-            &projection,
+            projection,
             std.math.degreesToRadians(self.fov),
             @as(f32, @floatFromInt(engine.window_size.w)),
             @as(f32, @floatFromInt(engine.window_size.h)),
@@ -468,37 +475,38 @@ pub const Renderer = struct {
             100.0,
         );
         math.matrix4x4.camera(
-            &camera,
+            camera,
             &self.camera_position,
             &self.camera_direction,
             &comptime global.cameraUp(),
         );
-        math.matrix4x4.dot(&view, &camera, &world);
-        math.matrix4x4.dot(&view_projection, &projection, &view);
+        math.matrix4x4.dot(view, camera, world);
+        math.matrix4x4.dot(view_projection, projection, view);
 
         const time_s = @as(f32, @floatFromInt(time)) / 1000.0;
         const aspect_ratio = @as(f32, @floatFromInt(engine.window_size.w)) / @as(f32, @floatFromInt(engine.window_size.h));
         const mouse_x = engine.mouse_pos.x / @as(f32, @floatFromInt(engine.window_size.w));
         const mouse_y = engine.mouse_pos.y / @as(f32, @floatFromInt(engine.window_size.h));
         const pi = std.math.pi;
-        var model = blk: {
-            var result = math.matrix4x4.identity;
+
+        const model = try fa.create(math.Matrix4x4);
+        {
+            const result = model;
+            result.* = math.matrix4x4.identity;
 
             const euler_order: math.EulerOrder = .xyz;
-            math.matrix4x4.scaleXYZ(&result, &.{ 1, 1, 1 });
+            math.matrix4x4.scaleXYZ(result, &.{ 1, 1, 1 });
             // math.matrix4x4.rotate_euler(&result, &.{ x_mod_s * pi / 4.0, y_mod_s * pi / 4.0, z_mod_s * pi / 4.0 }, euler_order);
-            math.matrix4x4.rotateEuler(&result, &.{ pi / 4.0 + time_s * pi / 4.0, -pi / 4.0, pi / 4.0 }, euler_order);
-            math.matrix4x4.translateXYZ(&result, &.{ 0, 5, 0 });
+            math.matrix4x4.rotateEuler(result, &.{ pi / 4.0 + time_s * pi / 4.0, -pi / 4.0, pi / 4.0 }, euler_order);
+            math.matrix4x4.translateXYZ(result, &.{ 0, 5, 0 });
+        }
 
-            break :blk result;
-        };
+        log.debug("camera_position: {any}", .{self.camera_position});
+        log.debug("camera_direction: {any}", .{self.camera_direction});
 
-        std.log.debug("camera_position: {any}", .{self.camera_position});
-        std.log.debug("camera_direction: {any}", .{self.camera_direction});
-
-        var uniform_buffer: [32]f32 = undefined;
-        @memcpy(uniform_buffer[0..16], math.matrix4x4.sliceLenConst(&view_projection));
-        @memcpy(uniform_buffer[16..32], math.matrix4x4.sliceLenConst(&model));
+        var uniform_buffer = try fa.alloc(f32, 32);
+        @memcpy(uniform_buffer[0..16], math.matrix4x4.sliceLenConst(view_projection));
+        @memcpy(uniform_buffer[16..32], math.matrix4x4.sliceLenConst(model));
 
         // const frag_uniform_buffer: [1]f32 = .{time_s};
         const frag_uniform_buffer: [4]f32 = .{ time_s, aspect_ratio, mouse_x, mouse_y };
@@ -525,22 +533,22 @@ pub const Renderer = struct {
         //         },
         //     );
         //     if (render_pass == null) {
-        //         std.log.err("failed to begin render_pass: {s}", .{sdl.SDL_GetError()});
+        //         log.err("failed to begin render_pass: {s}", .{sdl.SDL_GetError()});
         //         return DrawError.DrawFailed;
         //     }
         //
-        //     sdl.SDL_PushGPUVertexUniformData(command_buffer, 0, &uniform_buffer, @sizeOf(@TypeOf(uniform_buffer)));
+        //     sdl.SDL_PushGPUVertexUniformData(command_buffer, 0, uniform_buffer, @sizeOf(@TypeOf(uniform_buffer)));
         //     sdl.SDL_PushGPUFragmentUniformData(command_buffer, 0, &frag_uniform_buffer, @sizeOf(@TypeOf(frag_uniform_buffer)));
         //     sdl.SDL_BindGPUGraphicsPipeline(render_pass, full_graphics_pipeline);
-        //     std.log.debug("draw cow", .{});
+        //     log.debug("draw cow", .{});
         //     sdl.SDL_DrawGPUPrimitives(render_pass, 6, 1, 0, 0);
         //
-        //     std.log.debug("end render_pass", .{});
+        //     log.debug("end render_pass", .{});
         //     sdl.SDL_EndGPURenderPass(render_pass);
         // }
 
         {
-            std.log.debug("render_pass", .{});
+            log.debug("render_pass", .{});
             const render_pass = sdl.SDL_BeginGPURenderPass(
                 command_buffer,
                 &sdl.SDL_GPUColorTargetInfo{
@@ -561,11 +569,11 @@ pub const Renderer = struct {
                 },
             );
             if (render_pass == null) {
-                std.log.err("failed to begin render_pass: {s}", .{sdl.SDL_GetError()});
+                log.err("failed to begin render_pass: {s}", .{sdl.SDL_GetError()});
                 return DrawError.DrawFailed;
             }
 
-            std.log.debug("bind", .{});
+            log.debug("bind", .{});
             sdl.SDL_BindGPUVertexBuffers(render_pass, 0, &sdl.SDL_GPUBufferBinding{
                 .buffer = self.mesh.vertex_buffer,
                 .offset = 0,
@@ -578,48 +586,46 @@ pub const Renderer = struct {
             //     .sampler = self.sampler,
             //     .texture = self.texture,
             // }, 1);
-            sdl.SDL_PushGPUVertexUniformData(command_buffer, 0, &uniform_buffer, @sizeOf(@TypeOf(uniform_buffer)));
+            sdl.SDL_PushGPUVertexUniformData(command_buffer, 0, uniform_buffer.ptr, @intCast(@sizeOf(f32) * uniform_buffer.len));
             sdl.SDL_PushGPUFragmentUniformData(command_buffer, 0, &frag_uniform_buffer, @sizeOf(@TypeOf(frag_uniform_buffer)));
             sdl.SDL_BindGPUGraphicsPipeline(render_pass, graphics_pipeline);
-            std.log.debug("draw cow", .{});
+            log.debug("draw cow", .{});
             sdl.SDL_DrawGPUIndexedPrimitives(render_pass, @intCast(3 * self.mesh.faces.items.len), 1, 0, 0, 0);
 
-            model = blk: {
-                var result = math.matrix4x4.identity;
+            {
+                const result = model;
+                result.* = math.matrix4x4.identity;
 
                 const euler_order: math.EulerOrder = .xyz;
-                math.matrix4x4.scaleXYZ(&result, &.{ 1, 1, 1 });
+                math.matrix4x4.scaleXYZ(result, &.{ 1, 1, 1 });
                 // math.matrix4x4.rotate_euler(&result, &.{ x_mod_s * pi / 4.0, y_mod_s * pi / 4.0, z_mod_s * pi / 4.0 }, euler_order);
-                math.matrix4x4.rotateEuler(&result, &.{ pi / 4.0, -pi / 4.0 + time_s * pi / 4.0, pi / 4.0 }, euler_order);
-                math.matrix4x4.translateXYZ(&result, &.{ 10, 5, 0 });
+                math.matrix4x4.rotateEuler(result, &.{ pi / 4.0, -pi / 4.0 + time_s * pi / 4.0, pi / 4.0 }, euler_order);
+                math.matrix4x4.translateXYZ(result, &.{ 10, 5, 0 });
+            }
+            @memcpy(uniform_buffer[16..32], math.matrix4x4.sliceLenConst(model));
 
-                break :blk result;
-            };
-            @memcpy(uniform_buffer[16..32], math.matrix4x4.sliceLenConst(&model));
-
-            sdl.SDL_PushGPUVertexUniformData(command_buffer, 0, &uniform_buffer, @sizeOf(@TypeOf(uniform_buffer)));
-            std.log.debug("draw cow 2", .{});
+            sdl.SDL_PushGPUVertexUniformData(command_buffer, 0, uniform_buffer.ptr, @intCast(@sizeOf(f32) * uniform_buffer.len));
+            log.debug("draw cow 2", .{});
             sdl.SDL_DrawGPUIndexedPrimitives(render_pass, @intCast(3 * self.mesh.faces.items.len), 1, 0, 0, 0);
 
-            model = blk: {
-                var result = math.matrix4x4.identity;
+            {
+                const result = model;
+                result.* = math.matrix4x4.identity;
 
                 const euler_order: math.EulerOrder = .xyz;
-                math.matrix4x4.scaleXYZ(&result, &.{ 1, 1, 1 });
+                math.matrix4x4.scaleXYZ(result, &.{ 1, 1, 1 });
                 // math.matrix4x4.rotate_euler(&result, &.{ x_mod_s * pi / 4.0, y_mod_s * pi / 4.0, z_mod_s * pi / 4.0 }, euler_order);
-                math.matrix4x4.rotateEuler(&result, &.{ pi / 4.0, -pi / 4.0, pi / 4.0 + time_s * pi / 4.0 }, euler_order);
-                math.matrix4x4.translateXYZ(&result, &.{ -10, 5, 0 });
+                math.matrix4x4.rotateEuler(result, &.{ pi / 4.0, -pi / 4.0, pi / 4.0 + time_s * pi / 4.0 }, euler_order);
+                math.matrix4x4.translateXYZ(result, &.{ -10, 5, 0 });
+            }
+            @memcpy(uniform_buffer[16..32], math.matrix4x4.sliceLenConst(model));
 
-                break :blk result;
-            };
-            @memcpy(uniform_buffer[16..32], math.matrix4x4.sliceLenConst(&model));
-
-            sdl.SDL_PushGPUVertexUniformData(command_buffer, 0, &uniform_buffer, @sizeOf(@TypeOf(uniform_buffer)));
-            std.log.debug("draw cow 3", .{});
+            sdl.SDL_PushGPUVertexUniformData(command_buffer, 0, uniform_buffer.ptr, @intCast(@sizeOf(f32) * uniform_buffer.len));
+            log.debug("draw cow 3", .{});
             sdl.SDL_DrawGPUIndexedPrimitives(render_pass, @intCast(3 * self.mesh.faces.items.len), 1, 0, 0, 0);
 
-            model = math.matrix4x4.identity;
-            @memcpy(uniform_buffer[16..32], math.matrix4x4.sliceLenConst(&model));
+            model.* = math.matrix4x4.identity;
+            @memcpy(uniform_buffer[16..32], math.matrix4x4.sliceLenConst(model));
 
             sdl.SDL_BindGPUVertexBuffers(render_pass, 0, &sdl.SDL_GPUBufferBinding{
                 .buffer = self.origin_mesh.vertex_buffer,
@@ -629,10 +635,10 @@ pub const Renderer = struct {
                 .buffer = self.origin_mesh.index_buffer,
                 .offset = 0,
             }, sdl.SDL_GPU_INDEXELEMENTSIZE_32BIT);
-            sdl.SDL_PushGPUVertexUniformData(command_buffer, 0, &uniform_buffer, @sizeOf(@TypeOf(uniform_buffer)));
+            sdl.SDL_PushGPUVertexUniformData(command_buffer, 0, uniform_buffer.ptr, @intCast(@sizeOf(f32) * uniform_buffer.len));
             sdl.SDL_BindGPUGraphicsPipeline(render_pass, origin_graphics_pipeline);
 
-            std.log.debug("draw origin", .{});
+            log.debug("draw origin", .{});
 
             origin_frag_uniform_buffer = .{ 1, 0, 0, 1 };
             sdl.SDL_PushGPUFragmentUniformData(command_buffer, 0, &origin_frag_uniform_buffer, @sizeOf(@TypeOf(origin_frag_uniform_buffer)));
@@ -646,12 +652,12 @@ pub const Renderer = struct {
             sdl.SDL_PushGPUFragmentUniformData(command_buffer, 0, &origin_frag_uniform_buffer, @sizeOf(@TypeOf(origin_frag_uniform_buffer)));
             sdl.SDL_DrawGPUIndexedPrimitives(render_pass, 2, 1, 4, 0, 0);
 
-            std.log.debug("end render_pass", .{});
+            log.debug("end render_pass", .{});
             sdl.SDL_EndGPURenderPass(render_pass);
         }
 
         // {
-        //     std.log.debug("render_pass 2", .{});
+        //     log.debug("render_pass 2", .{});
         //     const render_pass = sdl.SDL_BeginGPURenderPass(
         //         command_buffer,
         //         &sdl.SDL_GPUColorTargetInfo{
@@ -670,7 +676,7 @@ pub const Renderer = struct {
         //         },
         //     );
         //     if (render_pass == null) {
-        //         std.log.err("failed to begin render_pass: {s}", .{sdl.SDL_GetError()});
+        //         log.err("failed to begin render_pass: {s}", .{sdl.SDL_GetError()});
         //         return DrawError.DrawFailed;
         //     }
         //
@@ -682,9 +688,9 @@ pub const Renderer = struct {
         //     sdl.SDL_EndGPURenderPass(render_pass);
         // }
 
-        std.log.debug("submit command_buffer", .{});
+        log.debug("submit command_buffer", .{});
         if (!sdl.SDL_SubmitGPUCommandBuffer(command_buffer)) {
-            std.log.err("failed submitting command_buffer: {s}", .{sdl.SDL_GetError()});
+            log.err("failed submitting command_buffer: {s}", .{sdl.SDL_GetError()});
             return DrawError.DrawFailed;
         }
 

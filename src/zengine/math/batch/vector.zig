@@ -28,7 +28,7 @@ const types = @import("types.zig");
 const batchNT = @import("scalar.zig").batchNT;
 const vectorNT = @import("../vector.zig").vectorNT;
 
-pub fn vectorNBT(comptime N: usize, comptime NB: usize, comptime T: type) type {
+pub fn vectorNBT(comptime N: comptime_int, comptime NB: comptime_int, comptime T: type) type {
     return struct {
         pub const Self = types.VectorNBT(N, NB, T);
         pub const CSelf = types.CVectorNBT(N, NB, T);
@@ -55,7 +55,7 @@ pub fn vectorNBT(comptime N: usize, comptime NB: usize, comptime T: type) type {
         pub fn decrement(self: *CSelf) void {
             const s = sliceLenConst(self);
             for (0..len) |n| {
-                s[n] += 1;
+                s[n] -= 1;
             }
         }
 

@@ -80,7 +80,7 @@ pub fn PrimitiveComponentArrayList(comptime C: type) type {
         pub fn push(self: *Self, value: C) !Entity {
             const ptr = try self.components.addOne(self.allocator);
             ptr.* = value;
-            return self.len() - 1;
+            return @intCast(self.len() - 1);
         }
 
         pub fn set(self: *Self, entity: Entity, value: C) void {

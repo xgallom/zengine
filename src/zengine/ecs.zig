@@ -77,7 +77,7 @@ pub fn ECS(comptime config: struct {
             comptime if (!config.enable_components) @compileError("Components are disabled");
             const C = @TypeOf(value);
             const components = self.componentArrayListCast(C);
-            const entity = try self.components.push(value, components);
+            const entity = try components.push(value);
             try self.flags.push(self.allocator, entity, components.component_flag);
             return entity;
         }
@@ -86,7 +86,7 @@ pub fn ECS(comptime config: struct {
             comptime if (!config.enable_primitive_components) @compileError("Primitive components are disabled");
             const C = @TypeOf(value);
             const components = self.primitiveComponentArrayListCast(C);
-            const entity = try self.primitive_components.push(value, components);
+            const entity = try components.push(value, components);
             try self.primitive_flags.push(self.allocator, entity, components.component_flag);
             return entity;
         }
@@ -123,13 +123,12 @@ pub fn ECS(comptime config: struct {
 
         pub fn componentArrayListCast(self: *const Self, comptime C: type) *ComponentArrayList(C) {
             comptime if (!config.enable_components) @compileError("Components are disabled");
-            assert(self.components.contains(@typeName(C)));
 
             switch (@typeInfo(C)) {
                 .@"struct", .@"union" => {
-                    assert(self.components.contains(@typeName(C)));
-                    const entry = self.components.getEntry(@typeName(C)).?;
-                    return @ptrCast(entry.value_ptr);
+                    const ptr = self.components.getPtr(@typeName(C));
+                    assert(ptr != null);
+                    return @ptrCast(ptr.?);
                 },
                 else => @compileError("Invalid type requested from components"),
             }
@@ -137,26 +136,24 @@ pub fn ECS(comptime config: struct {
 
         pub fn primitiveComponentArrayListCast(self: *const Self, comptime C: type) *PrimitiveComponentArrayList(C) {
             comptime if (!config.enable_primitive_components) @compileError("Primitive components are disabled");
-            assert(self.primitive_components.contains(@typeName(C)));
 
-            const entry = self.primitive_components.getEntry(@typeName(C)).?;
-            return @ptrCast(entry.value_ptr);
+            const ptr = self.primitive_components.getPtr(@typeName(C));
+            assert(ptr != null);
+            return @ptrCast(ptr.?);
         }
 
         pub fn unregister(self: *Self, C: type) void {
             comptime if (!config.enable_components) @compileError("Components are disabled");
-            assert(self.components.contains(@typeName(C)));
 
             const item = self.componentArrayListCast(C);
-            item.components.deinit(item.allocator);
+            item.deinit();
         }
 
         pub fn unregister_primitive(self: *Self, C: type) void {
             comptime if (!config.enable_primitive_components) @compileError("Primitive components are disabled");
-            assert(self.primitive_components.contains(@typeName(C)));
 
             const item = self.primitiveComponentArrayListCast(C);
-            item.components.deinit(item.allocator);
+            item.deinit();
         }
     };
 }
