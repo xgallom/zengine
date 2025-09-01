@@ -30,6 +30,7 @@ pub const Renderer = struct {
     sampler: ?*sdl.SDL_GPUSampler,
     camera_position: math.Vector3,
     camera_direction: math.Vector3,
+    camera_up: math.Vector3,
     fov: math.Scalar,
 
     pub const InitError = error{
@@ -42,6 +43,7 @@ pub const Renderer = struct {
         CommandBufferFailed,
         CopyPassFailed,
         RenderPassFailed,
+        OutOfMemory,
     };
 
     pub const DrawError = error{
@@ -399,6 +401,8 @@ pub const Renderer = struct {
             .max_depth = 1,
         };
 
+        // const result = try allocator.create(Renderer);
+        // result.* = .{
         return .{
             .gpu_device = gpu_device,
             .graphics_pipeline = graphics_pipeline,
@@ -412,11 +416,14 @@ pub const Renderer = struct {
             .sampler = sampler,
             .camera_position = .{ 10, 10, 10 },
             .camera_direction = .{ -1, -1, -1 },
+            .camera_up = comptime global.cameraUp(),
             .fov = 38.5978,
         };
+        // return result;
     }
 
     pub fn deinit(self: *Renderer, engine: Engine) void {
+        // defer engine.allocator.destroy(self);
         defer sdl.SDL_DestroyGPUDevice(self.gpu_device);
         // defer self.mesh.deinit();
         defer self.mesh.releaseGpuBuffers(self.gpu_device);
@@ -478,7 +485,7 @@ pub const Renderer = struct {
             camera,
             &self.camera_position,
             &self.camera_direction,
-            &comptime global.cameraUp(),
+            &self.camera_up,
         );
         math.matrix4x4.dot(view, camera, world);
         math.matrix4x4.dot(view_projection, projection, view);

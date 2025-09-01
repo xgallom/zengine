@@ -4,6 +4,7 @@
 
 pub const allocator = @import("allocator.zig");
 pub const allocators = @import("allocators.zig");
+pub const controls = @import("controls.zig");
 pub const ecs = @import("ecs.zig");
 pub const ext = @import("ext.zig");
 pub const gfx = @import("gfx.zig");

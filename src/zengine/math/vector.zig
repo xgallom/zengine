@@ -130,7 +130,7 @@ pub fn vectorNT(comptime N: comptime_int, comptime T: type) type {
         }
 
         pub fn localCoords(result: *Coords, direction: *const Self, up: *const Self) void {
-            assert(mag(up) == 1);
+            assert(mag(up) <= 1.001);
 
             result.z = direction.*;
             normalize(&result.z);
@@ -141,7 +141,7 @@ pub fn vectorNT(comptime N: comptime_int, comptime T: type) type {
         }
 
         pub fn cameraCoords(result: *Coords, direction: *const Self, up: *const Self) void {
-            assert(mag(up) == 1);
+            assert(mag(up) <= 1.001);
 
             result.z = direction.*;
             normalize(&result.z);

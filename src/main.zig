@@ -108,7 +108,7 @@ pub fn main() !void {
         const iterTree = struct {
             fn iterTree(node: *const Tree.Node, label: []const u8, offset: usize) !void {
                 if (node.value) |value| {
-                    std.log.info("{s}[{s}]: {} {X}", .{ spaces[0..offset], label, value, @intFromPtr(node) });
+                    std.log.info("{s}[{s}): \"{s}\" {} {X}", .{ spaces[0..offset], label, value.label, value.value, @intFromPtr(node) });
                 } else {
                     std.log.info("{s}[{s}]: {X}", .{ spaces[0..offset], label, @intFromPtr(node) });
                 }
@@ -130,7 +130,8 @@ pub fn main() !void {
         try iterTree(tree1.root, &.{}, 0);
         // try iterTree(tree2.root, &.{}, 0);
 
-        const st = Tree.SearchType.suffix;
+        const st = Tree.SearchType.exact;
+        std.log.info("search type: {s}", .{@tagName(st)});
         searchTree(&tree1, "slow", st);
         searchTree(&tree1, "slower", st);
         searchTree(&tree1, "slowest", st);
@@ -144,6 +145,8 @@ pub fn main() !void {
         searchTree(&tree1, "teste", st);
         searchTree(&tree1, "tester", st);
         searchTree(&tree1, "testere", st);
+
+        try iterTree(tree2.root, &.{}, 0);
     }
 
     {
@@ -184,8 +187,8 @@ pub fn main() !void {
     }
 
     var log_timer = time.Timer.init(500);
+    var controls = zengine.controls.CameraControls{};
 
-    var key_matrix: u32 = 0;
     return mainloop: while (true) {
         const now = time.getNow();
         global.setNow(now);
@@ -203,36 +206,46 @@ pub fn main() !void {
                 sdl.SDL_EVENT_QUIT => break :mainloop,
                 sdl.SDL_EVENT_KEY_DOWN => {
                     switch (sdl_event.key.key) {
-                        sdl.SDLK_A => key_matrix |= 0x01,
-                        sdl.SDLK_D => key_matrix |= 0x02,
-                        sdl.SDLK_C => key_matrix |= 0x04,
-                        sdl.SDLK_V => key_matrix |= 0x08,
-                        sdl.SDLK_S => key_matrix |= 0x10,
-                        sdl.SDLK_W => key_matrix |= 0x20,
-                        sdl.SDLK_Q => key_matrix |= 0x40,
-                        sdl.SDLK_E => key_matrix |= 0x80,
-                        sdl.SDLK_X => key_matrix |= 0x100,
-                        sdl.SDLK_SPACE => key_matrix |= 0x200,
-                        sdl.SDLK_K => key_matrix |= 0x400,
-                        sdl.SDLK_L => key_matrix |= 0x800,
+                        sdl.SDLK_A => controls.set(.yaw_neg),
+                        sdl.SDLK_D => controls.set(.yaw_pos),
+                        sdl.SDLK_F => controls.set(.pitch_neg),
+                        sdl.SDLK_R => controls.set(.pitch_pos),
+                        // sdl.SDLK_C => controls.set(.roll_neg),
+                        // sdl.SDLK_V => controls.set(.roll_pos),
+
+                        sdl.SDLK_S => controls.set(.z_neg),
+                        sdl.SDLK_W => controls.set(.z_pos),
+                        sdl.SDLK_Q => controls.set(.x_neg),
+                        sdl.SDLK_E => controls.set(.x_pos),
+                        sdl.SDLK_X => controls.set(.y_neg),
+                        sdl.SDLK_SPACE => controls.set(.y_pos),
+
+                        sdl.SDLK_K => controls.set(.fov_neg),
+                        sdl.SDLK_L => controls.set(.fov_pos),
+
                         sdl.SDLK_ESCAPE => break :mainloop,
                         else => {},
                     }
                 },
                 sdl.SDL_EVENT_KEY_UP => {
                     switch (sdl_event.key.key) {
-                        sdl.SDLK_A => key_matrix &= ~@as(u32, 0x01),
-                        sdl.SDLK_D => key_matrix &= ~@as(u32, 0x02),
-                        sdl.SDLK_C => key_matrix &= ~@as(u32, 0x04),
-                        sdl.SDLK_V => key_matrix &= ~@as(u32, 0x08),
-                        sdl.SDLK_S => key_matrix &= ~@as(u32, 0x10),
-                        sdl.SDLK_W => key_matrix &= ~@as(u32, 0x20),
-                        sdl.SDLK_Q => key_matrix &= ~@as(u32, 0x40),
-                        sdl.SDLK_E => key_matrix &= ~@as(u32, 0x80),
-                        sdl.SDLK_X => key_matrix &= ~@as(u32, 0x100),
-                        sdl.SDLK_SPACE => key_matrix &= ~@as(u32, 0x200),
-                        sdl.SDLK_K => key_matrix &= ~@as(u32, 0x400),
-                        sdl.SDLK_L => key_matrix &= ~@as(u32, 0x800),
+                        sdl.SDLK_A => controls.clear(.yaw_neg),
+                        sdl.SDLK_D => controls.clear(.yaw_pos),
+                        sdl.SDLK_F => controls.clear(.pitch_neg),
+                        sdl.SDLK_R => controls.clear(.pitch_pos),
+                        // sdl.SDLK_C => controls.clear(.roll_neg),
+                        // sdl.SDLK_V => controls.clear(.roll_pos),
+
+                        sdl.SDLK_S => controls.clear(.z_neg),
+                        sdl.SDLK_W => controls.clear(.z_pos),
+                        sdl.SDLK_Q => controls.clear(.x_neg),
+                        sdl.SDLK_E => controls.clear(.x_pos),
+                        sdl.SDLK_X => controls.clear(.y_neg),
+                        sdl.SDLK_SPACE => controls.clear(.y_pos),
+
+                        sdl.SDLK_K => controls.clear(.fov_neg),
+                        sdl.SDLK_L => controls.clear(.fov_pos),
+
                         else => {},
                     }
                 },
@@ -246,10 +259,9 @@ pub fn main() !void {
             }
         }
 
-        var global_up = comptime global.up();
+        var up = renderer.camera_up;
         var coordinates: math.vector3.Coords = undefined;
-        // var coordinates2: math.vector2.Coords = undefined;
-        math.vector3.localCoords(&coordinates, &renderer.camera_direction, &global_up);
+        math.vector3.localCoords(&coordinates, &renderer.camera_direction, &renderer.camera_up);
 
         const delta: f32 = @floatFromInt(global.sinceUpdate());
         const camera_step = delta / 500.0;
@@ -258,42 +270,48 @@ pub fn main() !void {
         math.vector3.scale(&coordinates.x, camera_step);
         math.vector3.scale(&coordinates.y, camera_step);
         math.vector3.scale(&coordinates.z, camera_step);
-        math.vector3.scale(&global_up, camera_step);
+        math.vector3.scale(&up, camera_step);
 
         // math.vector2.localCoords(&coordinates2, &.{ 0, 1 }, &.{ 1, 0 });
 
-        if (key_matrix & 0x01 != 0)
+        if (controls.has(.yaw_neg))
             math.vector3.rotateDirectionScale(&renderer.camera_direction, &coordinates.x, -1);
-        if (key_matrix & 0x02 != 0)
+        if (controls.has(.yaw_pos))
             math.vector3.rotateDirectionScale(&renderer.camera_direction, &coordinates.x, 1);
 
-        if (key_matrix & 0x04 != 0)
+        if (controls.has(.pitch_neg))
             math.vector3.rotateDirectionScale(&renderer.camera_direction, &coordinates.y, -1);
-        if (key_matrix & 0x08 != 0)
+        if (controls.has(.pitch_pos))
             math.vector3.rotateDirectionScale(&renderer.camera_direction, &coordinates.y, 1);
 
-        if (key_matrix & 0x10 != 0)
-            math.vector3.translateDirectionScale(&renderer.camera_position, &coordinates.z, -8);
-        if (key_matrix & 0x20 != 0)
-            math.vector3.translateDirectionScale(&renderer.camera_position, &coordinates.z, 8);
+        // if (controls.has(.roll_neg))
+        //     math.vector3.rotateDirectionScale(&renderer.camera_up, &coordinates.x, -1);
+        // if (controls.has(.roll_pos))
+        //     math.vector3.rotateDirectionScale(&renderer.camera_up, &coordinates.x, 1);
 
-        if (key_matrix & 0x40 != 0)
+        if (controls.has(.x_neg))
             math.vector3.translateScale(&renderer.camera_position, &coordinates.x, -8);
-        if (key_matrix & 0x80 != 0)
+        if (controls.has(.x_pos))
             math.vector3.translateScale(&renderer.camera_position, &coordinates.x, 8);
 
-        if (key_matrix & 0x100 != 0)
-            math.vector3.translateScale(&renderer.camera_position, &global_up, -8);
-        if (key_matrix & 0x200 != 0)
-            math.vector3.translateScale(&renderer.camera_position, &global_up, 8);
+        if (controls.has(.y_neg))
+            math.vector3.translateScale(&renderer.camera_position, &up, -8);
+        if (controls.has(.y_pos))
+            math.vector3.translateScale(&renderer.camera_position, &up, 8);
 
-        if (key_matrix & 0x400 != 0)
+        if (controls.has(.z_neg))
+            math.vector3.translateDirectionScale(&renderer.camera_position, &coordinates.z, -8);
+        if (controls.has(.z_pos))
+            math.vector3.translateDirectionScale(&renderer.camera_position, &coordinates.z, 8);
+
+        if (controls.has(.fov_neg))
             renderer.fov -= 10 * camera_step;
-        if (key_matrix & 0x800 != 0)
+        if (controls.has(.fov_pos))
             renderer.fov += 10 * camera_step;
 
-        if (key_matrix != 0) {
+        if (controls.hasAny()) {
             math.vector3.normalize(&renderer.camera_direction);
+            // math.vector3.normalize(&renderer.camera_up);
             renderer.fov = std.math.clamp(renderer.fov, 15, 130);
         }
 
@@ -301,11 +319,12 @@ pub fn main() !void {
 
         if (log_timer.isArmed(now)) {
             std.log.info(
-                "[ {:8} : {d: >8.3}s ] frame allocated: {}, total allocated: {}",
+                "[ {: >8} : {d: >9.3} ] frame: {}, global: {}, total: {}",
                 .{
                     global.frameIndex(),
                     time.msToSec(global.sinceStart()),
                     std.fmt.fmtIntSizeBin(allocators.arenaState(.frame).queryCapacity()),
+                    std.fmt.fmtIntSizeBin(allocators.arenaState(.global).queryCapacity()),
                     std.fmt.fmtIntSizeBin(allocators.global_state.gpa_state.total_requested_bytes),
                 },
             );
