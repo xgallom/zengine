@@ -4,6 +4,8 @@ const sdl = @import("ext/sdl.zig");
 const assert = std.debug.assert;
 const allocator = @import("allocator.zig");
 
+const log = std.log.scoped(.alloc);
+
 pub const GPA = std.heap.DebugAllocator(.{
     .enable_memory_limit = true,
 });
@@ -11,7 +13,7 @@ pub const Arena = std.heap.ArenaAllocator;
 
 const LogAllocator = allocator.LogAllocator(.debug, .alloc, std.debug.runtime_safety);
 
-pub const ArenaType = enum {
+pub const ArenaKey = enum {
     global,
     frame,
     scratch,
@@ -22,8 +24,8 @@ const Self = struct {
     gpa_state: GPA = undefined,
     log_state: LogAllocator,
     gpa: std.mem.Allocator = undefined,
-    arena_states: std.EnumArray(ArenaType, Arena) = .initUndefined(),
-    arenas: std.EnumArray(ArenaType, std.mem.Allocator) = .initUndefined(),
+    arena_states: std.EnumArray(ArenaKey, Arena) = .initUndefined(),
+    arenas: std.EnumArray(ArenaKey, std.mem.Allocator) = .initUndefined(),
 
     fn init(self: *Self, core_allocator: std.mem.Allocator, memory_limit: usize) void {
         self.core = core_allocator;
@@ -49,12 +51,25 @@ const Self = struct {
         while (iter.next()) |item| item.value.deinit();
         return self.gpa_state.deinit();
     }
+
+    fn logCapacities(self: *const Self) void {
+        log.info("gpa: {Bi:.3} / {Bi:.3}", .{
+            self.gpa_state.total_requested_bytes,
+            self.gpa_state.requested_memory_limit,
+        });
+
+        var iter = global_state.arena_states.iterator();
+        while (iter.next()) |item| log.info(
+            "{t}: {Bi:.3}",
+            .{ item.key, item.value.queryCapacity() },
+        );
+    }
 };
 
 var is_init = false;
 var global_state: Self = undefined;
 
-pub fn init(core_allocator: std.mem.Allocator, memory_limit: usize) void {
+pub fn init(core_allocator: std.mem.Allocator, memory_limit: usize) !void {
     assert(!is_init);
     global_state.init(core_allocator, memory_limit);
     is_init = true;
@@ -65,6 +80,11 @@ pub fn deinit() void {
     const result = global_state.deinit();
     is_init = false;
     assert(result == .ok);
+}
+
+pub fn logCapacities() void {
+    assert(is_init);
+    global_state.logCapacities();
 }
 
 pub inline fn core() std.mem.Allocator {
@@ -82,17 +102,17 @@ pub inline fn queryCapacity() usize {
     return global_state.gpa_state.total_requested_bytes;
 }
 
-pub inline fn arenaState(key: ArenaType) *Arena {
+pub inline fn arenaState(key: ArenaKey) *Arena {
     assert(is_init);
     return global_state.arena_states.getPtr(key);
 }
 
-pub inline fn arena(key: ArenaType) std.mem.Allocator {
+pub inline fn arena(key: ArenaKey) std.mem.Allocator {
     assert(is_init);
     return global_state.arenas.get(key);
 }
 
-pub inline fn arenaReset(key: ArenaType, mode: Arena.ResetMode) bool {
+pub inline fn arenaReset(key: ArenaKey, mode: Arena.ResetMode) bool {
     return arenaState(key).reset(mode);
 }
 

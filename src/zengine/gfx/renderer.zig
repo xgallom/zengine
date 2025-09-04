@@ -105,7 +105,6 @@ pub fn init(engine: *const Engine) InitError!*Self {
     const fragment_shader = shader.open(.{
         .allocator = allocator,
         .gpu_device = gpu_device,
-        // .shader_path = "creative.frag",
         .shader_path = "creative.frag",
         .stage = .fragment,
     }) catch |err| {
@@ -535,7 +534,7 @@ pub fn draw(self: *const Self, engine: *const Engine) DrawError!bool {
     @memcpy(uniform_buffer[0..16], math.matrix4x4.sliceLenConst(view_projection));
 
     // const frag_uniform_buffer: [1]f32 = .{time_s};
-    const frag_uniform_buffer: [4]f32 = .{ time_s, aspect_ratio, mouse_x, mouse_y };
+    var frag_uniform_buffer: [4]f32 = .{ time_s, aspect_ratio, mouse_x, mouse_y };
     var origin_frag_uniform_buffer: [4]f32 = .{ 1, 0, 1, 1 };
 
     // {
@@ -613,7 +612,6 @@ pub fn draw(self: *const Self, engine: *const Engine) DrawError!bool {
         //     .texture = self.texture,
         // }, 1);
 
-        sdl.SDL_PushGPUFragmentUniformData(command_buffer, 0, &frag_uniform_buffer, @sizeOf(@TypeOf(frag_uniform_buffer)));
         sdl.SDL_BindGPUGraphicsPipeline(render_pass, graphics_pipeline);
 
         section.sub(.init).end();
@@ -627,6 +625,9 @@ pub fn draw(self: *const Self, engine: *const Engine) DrawError!bool {
                     const rx = x + 1;
                     const ry = y + 1;
                     const rz = z + 1;
+                    const tx = x;
+                    const ty = y;
+                    const tz = z;
                     x *= 30;
                     y *= 30;
                     z *= 30;
@@ -646,7 +647,10 @@ pub fn draw(self: *const Self, engine: *const Engine) DrawError!bool {
                     }
                     @memcpy(uniform_buffer[16..32], math.matrix4x4.sliceLenConst(model));
 
+                    frag_uniform_buffer[0] = time_s + tx;
+
                     sdl.SDL_PushGPUVertexUniformData(command_buffer, 0, uniform_buffer.ptr, @intCast(@sizeOf(f32) * uniform_buffer.len));
+                    sdl.SDL_PushGPUFragmentUniformData(command_buffer, 0, &frag_uniform_buffer, @sizeOf(@TypeOf(frag_uniform_buffer)));
                     sdl.SDL_DrawGPUIndexedPrimitives(render_pass, @intCast(3 * self.mesh.faces.items.len), 1, 0, 0, 0);
 
                     section.sub(.cow1).pause();
@@ -665,7 +669,10 @@ pub fn draw(self: *const Self, engine: *const Engine) DrawError!bool {
                     }
                     @memcpy(uniform_buffer[16..32], math.matrix4x4.sliceLenConst(model));
 
+                    frag_uniform_buffer[0] = time_s + ty;
+
                     sdl.SDL_PushGPUVertexUniformData(command_buffer, 0, uniform_buffer.ptr, @intCast(@sizeOf(f32) * uniform_buffer.len));
+                    sdl.SDL_PushGPUFragmentUniformData(command_buffer, 0, &frag_uniform_buffer, @sizeOf(@TypeOf(frag_uniform_buffer)));
                     sdl.SDL_DrawGPUIndexedPrimitives(render_pass, @intCast(3 * self.mesh.faces.items.len), 1, 0, 0, 0);
 
                     section.sub(.cow2).pause();
@@ -684,7 +691,10 @@ pub fn draw(self: *const Self, engine: *const Engine) DrawError!bool {
                     }
                     @memcpy(uniform_buffer[16..32], math.matrix4x4.sliceLenConst(model));
 
+                    frag_uniform_buffer[0] = time_s + tz;
+
                     sdl.SDL_PushGPUVertexUniformData(command_buffer, 0, uniform_buffer.ptr, @intCast(@sizeOf(f32) * uniform_buffer.len));
+                    sdl.SDL_PushGPUFragmentUniformData(command_buffer, 0, &frag_uniform_buffer, @sizeOf(@TypeOf(frag_uniform_buffer)));
                     sdl.SDL_DrawGPUIndexedPrimitives(render_pass, @intCast(3 * self.mesh.faces.items.len), 1, 0, 0, 0);
 
                     section.sub(.cow3).pause();

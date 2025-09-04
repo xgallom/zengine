@@ -53,20 +53,22 @@ fn removePosition(positions: *ecs.PrimitiveComponentManager(Position), entity: e
 }
 
 pub fn main() !void {
-    allocators.init(zengine.raw_allocator, 2 << 30); // memory limit 2GiB
+    try allocators.init(zengine.raw_allocator, 2 << 30); // memory limit 2GiB
     defer allocators.deinit();
 
     const engine = try Engine.init();
     defer engine.deinit();
-
-    try global.init();
-    defer global.deinit();
 
     try perf.init();
     defer perf.deinit();
 
     try sections.register();
     sections.items.init.begin();
+
+    try global.init();
+    defer global.deinit();
+
+    try engine.initWindow();
 
     const renderer = try gfx.Renderer.init(engine);
     defer renderer.deinit(engine);
@@ -346,44 +348,9 @@ pub fn main() !void {
 
         if (log_timer.isArmed(now)) {
             perf.updateAvg();
-
-            log.info(
-                "[ {: >8} : {d: >9.3} ] frame: {Bi}, global: {Bi}, total: {Bi}",
-                .{
-                    global.frameIndex(),
-                    global.timeSinceStart().toFloat(.s),
-                    allocators.arenaState(.frame).queryCapacity(),
-                    allocators.arenaState(.global).queryCapacity(),
-                    allocators.queryCapacity(),
-                },
-            );
-            log.info("framerate: {}", .{perf.framerate()});
-
-            const tree = perf.sectionsTree();
-            const iterTree = struct {
-                fn iterTree(node: *const perf.SectionsTree.Node, label: []const u8, offset: usize) !void {
-                    if (node.value) |value| {
-                        const avg = try perf.getAvg(value);
-                        log.info("{s}[{s}): \"{s}\" {}us", .{
-                            global.spaces(offset),
-                            label,
-                            value,
-                            avg.toFloat64(.us),
-                        });
-                    } else {
-                        log.info("{s}[{s}]:", .{ global.spaces(offset), label });
-                    }
-                    var edge_node = node.edges.first;
-                    while (edge_node != null) : (edge_node = edge_node.?.next) {
-                        const edge: *const perf.SectionsTree.Edge = @fieldParentPtr("edge_node", edge_node.?);
-                        try iterTree(edge.target, edge.label, offset + 4);
-                    }
-                }
-            }.iterTree;
-
-            try iterTree(tree.root, "", 0);
-
-            log.info("render / frame: {}", .{math.percent(gfx.Renderer.sections.sub(.draw).avg().toFloat64(.us) / sections.sub(.frame).avg().toFloat64(.us))});
+            log.info("frame[{}] t: {d:.3}s", .{ global.frameIndex(), global.timeSinceStart().toFloat(.s) });
+            allocators.logCapacities();
+            perf.logPerf();
         }
     };
 }

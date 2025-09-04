@@ -64,7 +64,7 @@ pub fn LogAllocator(
         const Self = @This();
 
         pub fn allocator(self: *Self) Allocator {
-            return if (enabled) .{
+            return if (comptime enabled and std.log.logEnabled(message_level, scope)) .{
                 .ptr = self,
                 .vtable = &.{
                     .alloc = alloc,

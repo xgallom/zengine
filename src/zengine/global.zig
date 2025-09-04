@@ -5,6 +5,8 @@ pub const allocators = @import("allocators.zig");
 const math = @import("math.zig");
 const time = @import("time.zig");
 
+const spaces_buf_count = 1 << 10;
+
 const Self = struct {
     exe_path: []const u8,
     assets_path: []const u8,
@@ -21,7 +23,7 @@ const Self = struct {
             allocators.global(),
             &.{ exe_path, "..", "..", "assets" },
         );
-        const spaces_buf = try allocators.gpa().alloc(u8, 1 << 10);
+        const spaces_buf = try allocators.gpa().alloc(u8, spaces_buf_count);
         for (spaces_buf) |*space| space.* = ' ';
 
         self.* = .{
@@ -122,7 +124,7 @@ pub inline fn timeSinceLastFrame() time.Time {
 
 pub inline fn spaces(count: usize) []const u8 {
     assert(is_init);
-    assert(count < global_state.spaces_buf.len);
+    assert(count <= spaces_buf_count);
     return global_state.spaces_buf[0..count];
 }
 

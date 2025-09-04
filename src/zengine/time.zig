@@ -38,9 +38,9 @@ pub const Unit = enum {
     }
 
     pub fn convert(comptime from: Unit, comptime to: Unit, value: anytype) @TypeOf(value) {
-        if (from == to) {
+        if (comptime from == to) {
             return value;
-        } else if (@intFromEnum(to) > @intFromEnum(from)) {
+        } else if (comptime (@intFromEnum(to) > @intFromEnum(from))) {
             return value / makePer(from, to);
         } else {
             return value * makePer(to, from);

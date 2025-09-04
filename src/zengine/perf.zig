@@ -2,9 +2,13 @@ const std = @import("std");
 const assert = std.debug.assert;
 
 const allocators = @import("allocators.zig");
+const global = @import("global.zig");
+const math = @import("math.zig");
 const time = @import("time.zig");
 const KeyTree = @import("key_tree.zig").KeyTree;
 const RadixTree = @import("radix_tree.zig").RadixTree;
+
+const log = std.log.scoped(.perf);
 
 const framerate_buf_count = 1 << 8;
 const framerate_idx_mask: usize = framerate_buf_count - 1;
@@ -13,7 +17,8 @@ const frametime_buf_count = 1 << 8;
 const frametime_idx_mask: usize = frametime_buf_count - 1;
 const frametime_over_bit: usize = 1 << 9;
 
-pub const SectionsTree = KeyTree([]const u8, .{});
+const Batch = @Vector(std.simd.suggestVectorLength(u64) orelse 2, u64);
+pub const SectionsTree = KeyTree(struct { key: []const u8, value: *Section }, .{ .insertion_order = .insert_last });
 
 const Self = struct {
     framerate_buf: []u64,
@@ -22,25 +27,28 @@ const Self = struct {
     sections: SectionHashMap,
     tree: SectionsTree,
 
-    const SectionHashMap = std.StringArrayHashMapUnmanaged(Section);
+    const SectionHashMap = std.StringArrayHashMapUnmanaged(*Section);
 
     fn init(self: *Self) !void {
-        const allocator = allocators.gpa();
-        const framerate_buf = try allocator.alloc(u64, framerate_buf_count);
+        const gpa = allocators.gpa();
+        const framerate_buf = try gpa.alloc(u64, framerate_buf_count);
         @memset(framerate_buf, 0);
 
         self.* = .{
             .framerate_buf = framerate_buf,
-            .sections = try .init(allocator, &.{}, &.{}),
-            .tree = try .init(allocator, 128),
+            .sections = try .init(gpa, &.{}, &.{}),
+            .tree = try .init(gpa, 128),
         };
     }
 
     fn deinit(self: *Self) void {
-        const allocator = allocators.gpa();
-        defer allocator.free(self.framerate_buf);
-        defer self.sections.deinit(allocator);
-        defer self.tree.deinit();
+        const gpa = allocators.gpa();
+        gpa.free(self.framerate_buf);
+        var iter = self.sections.iterator();
+        while (iter.next()) |i| gpa.destroy(i.value_ptr.*);
+        self.sections.unlockPointers();
+        self.sections.deinit(gpa);
+        self.tree.deinit();
     }
 
     fn update(self: *Self, now: u64) void {
@@ -95,7 +103,11 @@ const Section = struct {
         self.idx = next_idx;
     }
 
-    pub fn computeAvg(self: *Section) u64 {
+    fn avgTime(self: *const Section) time.Time {
+        return .{ .ns = self.avg };
+    }
+
+    fn computeAvg(self: *Section) u64 {
         var acc: u64 = 0;
         const end_idx = @min(self.idx, frametime_buf_count);
         if (end_idx == 0) return 0;
@@ -119,7 +131,11 @@ pub fn commitGraph() !void {
     assert(!is_constructed);
 
     var iter = global_state.sections.iterator();
-    while (iter.next()) |i| try global_state.tree.insert(i.key_ptr.*, i.key_ptr.*);
+    while (iter.next()) |i| try global_state.tree.insert(
+        i.key_ptr.*,
+        .{ .key = i.key_ptr.*, .value = i.value_ptr.* },
+    );
+    global_state.sections.lockPointers();
     is_constructed = true;
 }
 
@@ -136,7 +152,42 @@ pub fn update(now: u64) void {
 
 pub fn updateAvg() void {
     var iter = global_state.sections.iterator();
-    while (iter.next()) |i| i.value_ptr.avg = i.value_ptr.computeAvg();
+    while (iter.next()) |i| i.value_ptr.*.avg = i.value_ptr.*.computeAvg();
+}
+
+pub fn logPerf() void {
+    assert(is_init);
+    assert(is_constructed);
+
+    log.info("framerate: {}", .{framerate()});
+
+    const iterTree = struct {
+        fn iterTree(node: *const SectionsTree.Node, label: []const u8, offset: usize) !void {
+            if (node.value) |index| {
+                const avg = index.value.avgTime();
+                log.info("{s}[{s}] {d:.3}us", .{
+                    global.spaces(offset),
+                    label,
+                    avg.toFloat64(.us),
+                });
+            } else {
+                log.info("{s}[{s}]", .{ global.spaces(offset), label });
+            }
+            var edge_node = node.edges.first;
+            while (edge_node != null) : (edge_node = edge_node.?.next) {
+                const edge: *const SectionsTree.Edge = @fieldParentPtr("edge_node", edge_node.?);
+                try iterTree(&edge.target, edge.label, offset + 4);
+            }
+        }
+    }.iterTree;
+
+    try iterTree(global_state.tree.root, "", 0);
+
+    log.info("render / frame: {d:.3}%", .{
+        math.percent(
+            getAvg("gfx.Renderer.draw").toFloat64(.us) / getAvg("main.frame").toFloat64(.us),
+        ),
+    });
 }
 
 pub inline fn framerate() u32 {
@@ -144,14 +195,14 @@ pub inline fn framerate() u32 {
     return global_state.framerate;
 }
 
-pub inline fn getAvg(label: []const u8) !time.Time {
+pub inline fn getAvg(label: []const u8) time.Time {
     assert(is_init);
     assert(is_constructed);
-    if (global_state.sections.getPtr(label)) |ptr| return .{ .ns = ptr.avg };
-    return error.NotFound;
+    if (global_state.sections.get(label)) |value| return value.avgTime();
+    unreachable;
 }
 
-pub fn sectionsTree() *const SectionsTree {
+pub inline fn sectionsTree() *const SectionsTree {
     return &global_state.tree;
 }
 
@@ -229,7 +280,10 @@ pub fn TaggedSection(comptime _tag: []const u8) type {
         pub fn register() !void {
             assert(is_init);
             assert(!is_constructed);
-            try global_state.sections.putNoClobber(allocators.gpa(), tag, .{});
+            const value = try allocators.gpa().create(Section);
+            errdefer allocators.gpa().destroy(value);
+            value.* = .{};
+            try global_state.sections.putNoClobber(allocators.gpa(), tag, value);
         }
 
         pub fn sub(comptime sub_label: @TypeOf(.enum_literal)) type {
@@ -273,7 +327,7 @@ pub fn TaggedSection(comptime _tag: []const u8) type {
 
         pub fn getPtr() *Section {
             assert(is_init);
-            const self = global_state.sections.getPtr(tag);
+            const self = global_state.sections.get(tag);
             assert(self != null);
             return self.?;
         }

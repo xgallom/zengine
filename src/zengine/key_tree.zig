@@ -6,8 +6,17 @@ const std = @import("std");
 const assert = std.debug.assert;
 const log = std.log.scoped(.key_tree);
 
+pub const InsertionOrder = enum {
+    ordered,
+    insert_first,
+    insert_last,
+};
+
 /// Key tree data structure
-pub fn KeyTree(comptime V: type, comptime options: std.heap.MemoryPoolOptions) type {
+pub fn KeyTree(comptime V: type, comptime options: struct {
+    pool_options: std.heap.MemoryPoolOptions = .{},
+    insertion_order: InsertionOrder = .ordered,
+}) type {
     return struct {
         pool: Pool,
         root: *Node = undefined,
@@ -15,25 +24,22 @@ pub fn KeyTree(comptime V: type, comptime options: std.heap.MemoryPoolOptions) t
         pub const Self = @This();
         pub const Value = V;
 
-        const Pool = std.heap.MemoryPoolExtra(PoolItem, options);
-        const PoolItem = union {
-            node: Node,
-            edge: Edge,
-        };
+        const Pool = std.heap.MemoryPoolExtra(Edge, options.pool_options);
 
         pub const Edges = std.SinglyLinkedList;
 
         pub const Edge = struct {
             edge_node: Edges.Node,
             label: []const u8,
-            target: *Node,
+            target: Node,
         };
 
         pub const Node = struct {
-            value: ?Value = null,
-            edges: Edges = .{},
+            value: ?Value,
+            edges: Edges,
 
-            fn deinit(node: *Node, self: *Self) usize {
+            pub fn deinit(node: *Node, self: *Self) usize {
+                log.warn("deinit", .{});
                 const count = node.clearEdges(self);
                 self.destroyNode(node);
                 return count + 1;
@@ -44,7 +50,6 @@ pub fn KeyTree(comptime V: type, comptime options: std.heap.MemoryPoolOptions) t
                 while (node.edges.popFirst()) |edge_node| {
                     const edge: *Edge = @fieldParentPtr("edge_node", edge_node);
                     count += edge.target.deinit(self);
-                    self.destroyEdge(edge);
                 }
                 return count;
             }
@@ -57,7 +62,7 @@ pub fn KeyTree(comptime V: type, comptime options: std.heap.MemoryPoolOptions) t
         // Initializes the tree
         pub fn init(allocator: std.mem.Allocator, preheat: usize) !Self {
             var result = Self{ .pool = try Pool.initPreheated(allocator, preheat) };
-            result.root = try result.createNode(null);
+            result.root = &(try result.createEdge(&.{}, null)).target;
             return result;
         }
 
@@ -85,7 +90,7 @@ pub fn KeyTree(comptime V: type, comptime options: std.heap.MemoryPoolOptions) t
 
                     if (std.mem.eql(u8, edge.label, label)) {
                         log.debug("traverse edge", .{});
-                        walk = edge.target;
+                        walk = &edge.target;
                         continue :walk;
                     }
                 }
@@ -113,7 +118,7 @@ pub fn KeyTree(comptime V: type, comptime options: std.heap.MemoryPoolOptions) t
 
                     if (std.mem.eql(u8, edge.label, label)) {
                         log.debug("traverse edge", .{});
-                        walk = edge.target;
+                        walk = &edge.target;
                         continue :walk;
                     }
                 }
@@ -126,9 +131,13 @@ pub fn KeyTree(comptime V: type, comptime options: std.heap.MemoryPoolOptions) t
         }
 
         fn addNode(self: *Self, parent: *Node, label: []const u8) !*Node {
-            const node = try self.createNode(null);
-            orderedInsert(&parent.edges.first, try self.createEdge(label, node));
-            return node;
+            const edge = try self.createEdge(label, null);
+            switch (comptime options.insertion_order) {
+                .ordered => orderedInsert(&parent.edges.first, edge),
+                .insert_first => parent.edges.prepend(&edge.edge_node),
+                .insert_last => lastInsert(&parent.edges.first, edge),
+            }
+            return &edge.target;
         }
 
         fn orderedInsert(head: *?*Edges.Node, edge: *Edge) void {
@@ -147,24 +156,30 @@ pub fn KeyTree(comptime V: type, comptime options: std.heap.MemoryPoolOptions) t
             current.next = edge_node;
         }
 
+        fn lastInsert(head: *?*Edges.Node, edge: *Edge) void {
+            const edge_node = &edge.edge_node;
+            if (head.* == null) {
+                head.* = edge_node;
+            } else {
+                head.*.?.findLast().insertAfter(edge_node);
+            }
+        }
+
         fn order(lhs: *Edge, rhs: *Edge) std.math.Order {
             return std.mem.order(u8, lhs.label, rhs.label);
         }
 
-        fn createNode(self: *Self, value: ?Value) !*Node {
-            const pool_item: *PoolItem = try self.pool.create();
-            pool_item.* = .{ .node = .{ .value = value } };
-            return &pool_item.node;
-        }
-
-        fn createEdge(self: *Self, label: []const u8, target: *Node) !*Edge {
-            const pool_item: *PoolItem = try self.pool.create();
-            pool_item.* = .{ .edge = .{
+        fn createEdge(self: *Self, label: []const u8, value: ?Value) !*Edge {
+            const edge = try self.pool.create();
+            edge.* = .{
                 .edge_node = .{},
                 .label = label,
-                .target = target,
-            } };
-            return &pool_item.edge;
+                .target = .{
+                    .value = value,
+                    .edges = .{},
+                },
+            };
+            return edge;
         }
 
         fn createLabel(self: *Self, label: []const u8) ![]const u8 {
@@ -175,11 +190,12 @@ pub fn KeyTree(comptime V: type, comptime options: std.heap.MemoryPoolOptions) t
         }
 
         fn destroyNode(self: *Self, node: *Node) void {
-            self.pool.destroy(@ptrCast(node));
+            log.warn("destroy {X}", .{@intFromPtr(node)});
+            self.pool.destroy(@fieldParentPtr("target", node));
         }
 
         fn destroyEdge(self: *Self, edge: *Edge) void {
-            self.pool.destroy(@ptrCast(edge));
+            self.pool.destroy(edge);
         }
     };
 }

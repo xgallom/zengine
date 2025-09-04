@@ -43,6 +43,7 @@ pub fn build(b: *std.Build) void {
         .root_module = b.addModule("compile_shaders", .{
             .root_source_file = b.path("src/compile_shaders.zig"),
             .target = b.graph.host,
+            .optimize = optimize,
         }),
     });
 
