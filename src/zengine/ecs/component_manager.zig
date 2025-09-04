@@ -23,8 +23,8 @@ fn AnyComponentManager(comptime C: type, comptime AL: type) type {
 
         pub fn init(allocator: std.mem.Allocator, capacity: usize) !Self {
             var self = Self{
-                .components = try ArrayList.init(allocator, capacity, 0),
-                .component_flags = try FlagsBitSet.initEmpty(allocator, capacity),
+                .components = try .init(allocator, capacity, 0),
+                .component_flags = try .initEmpty(allocator, capacity),
             };
             self.remove(try self.push(undefined));
             return self;
@@ -39,12 +39,11 @@ fn AnyComponentManager(comptime C: type, comptime AL: type) type {
             self.lock.lock();
             defer self.lock.unlock();
 
-            _ = @atomicLoad(usize, &self.components.components.capacity, .seq_cst);
-            _ = @atomicLoad(usize, &self.component_flags.bit_length, .seq_cst);
-            log.info("before {} {any}", .{ std.Thread.getCurrentId(), self });
+            // std.Thread.sleep(1_000_000_000);
+            const cap = @atomicLoad(usize, &self.components.components.capacity, .seq_cst);
+            const bit_len = @atomicLoad(usize, &self.component_flags.bit_length, .seq_cst);
+            log.info("before {X} {X} {} {}", .{ std.Thread.getCurrentId(), @intFromPtr(self), cap, bit_len });
 
-            self.lock.unlock();
-            self.lock.lock();
             const entity = try self.components.push(value);
             log.info("after {} {}", .{ self.components.cap(), self.components.len() });
 

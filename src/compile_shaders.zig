@@ -1,5 +1,10 @@
 const std = @import("std");
-const fatal = std.zig.fatal;
+const fatal = std.process.fatal;
+
+const log = std.log.scoped(.compile_shaders);
+
+var stdout_writer = std.fs.File.stdout().writer(&.{});
+const stdout = &stdout_writer.interface;
 
 const usage =
     \\Usage: ./shader_compile [options]
@@ -32,7 +37,7 @@ fn parseArguments(allocator: std.mem.Allocator) !?Arguments {
         while (n < args.len) : (n += 1) {
             const arg = args[n];
             if (std.mem.eql(u8, "-h", arg) or std.mem.eql(u8, "--help", arg)) {
-                try std.io.getStdOut().writeAll(usage);
+                try stdout.writeAll(usage);
                 return null;
             } else if (std.mem.eql(u8, "--input-dir", arg)) {
                 n += 1;
@@ -79,7 +84,7 @@ pub fn main() !void {
 
     const arguments = try parseArguments(arena) orelse return;
 
-    std.log.info(
+    log.info(
         \\running with:
         \\  --input-dir: {s}
         \\  --output-dir: {s}
@@ -101,6 +106,7 @@ pub fn main() !void {
         .{ .extension = ".spv" },
         .{ .extension = ".msl" },
         .{ .extension = ".dxil" },
+        .{ .extension = ".json" },
     };
 
     while (try iterator.next()) |file| {
@@ -109,11 +115,11 @@ pub fn main() !void {
         const input_basename = input_filename[0 .. input_filename.len - input_extension.len];
 
         if (!std.mem.eql(u8, ".hlsl", input_extension)) {
-            std.log.info("skipping {s}", .{input_filename});
+            log.info("skipping {s}", .{input_filename});
             continue;
         }
 
-        std.log.info("processing input file {s}", .{input_filename});
+        log.info("processing input file {s}", .{input_filename});
         const input_path = try std.fs.path.join(arena, &.{ arguments.input_directory, input_filename });
 
         for (output_configs) |output_config| {
@@ -140,7 +146,7 @@ pub fn main() !void {
                     if (result.term.Exited != 0) {
                         fatal("failed conversion for {s}: {s}", .{ output_filename, result.stderr });
                     } else {
-                        std.log.info("processed output file {s}", .{output_filename});
+                        log.info("processed output file {s}", .{output_filename});
                     }
                 },
                 else => fatal("shadercross run failed for {s}", .{output_filename}),
@@ -153,8 +159,8 @@ pub fn main() !void {
                 };
 
                 switch (update_stat) {
-                    .stale => std.log.info("updated install file {s}", .{output_filename}),
-                    .fresh => std.log.info("file {s} is already installed", .{output_filename}),
+                    .stale => log.info("updated install file {s}", .{output_filename}),
+                    .fresh => log.info("file {s} is already installed", .{output_filename}),
                 }
             }
         }

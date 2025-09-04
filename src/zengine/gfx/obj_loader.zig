@@ -4,7 +4,7 @@ const allocators = @import("../allocators.zig");
 const mesh = @import("mesh.zig");
 
 const assert = std.debug.assert;
-const log = std.log.scoped(.gfx);
+const log = std.log.scoped(.gfx_obj_loader);
 
 pub fn loadFile(allocator: std.mem.Allocator, path: []const u8) !mesh.TriangleMesh {
     var result = mesh.TriangleMesh.init(allocator);
@@ -13,26 +13,30 @@ pub fn loadFile(allocator: std.mem.Allocator, path: []const u8) !mesh.TriangleMe
     var file = try std.fs.openFileAbsolute(path, .{});
     defer file.close();
 
-    var reader = file.reader();
+    const buf = try allocators.scratch().alloc(u8, 1 << 8);
+    var reader = file.reader(buf);
 
-    const buf = try allocators.scratch().alloc(u8, 1024);
-
-    while (try reader.readUntilDelimiterOrEof(buf, '\n')) |line| {
+    while (reader.interface.takeDelimiterExclusive('\n')) |line| {
         switch (line[0]) {
             '#' => continue,
             'v' => {
                 const vertex = try parseVertex(line);
-                try result.vertices.append(result.allocator, vertex);
+                try result.appendVertex(vertex);
             },
             'f' => {
                 const face = try parseFace(line);
                 if (face[0] >= result.vertices.items.len) return error.InvalidIndex;
                 if (face[1] >= result.vertices.items.len) return error.InvalidIndex;
                 if (face[2] >= result.vertices.items.len) return error.InvalidIndex;
-                try result.faces.append(result.allocator, face);
+                try result.appendFace(face);
             },
             else => return error.SyntaxError,
         }
+    } else |err| switch (err) {
+        error.EndOfStream => {},
+        error.StreamTooLong,
+        error.ReadFailed,
+        => |e| return e,
     }
 
     return result;

@@ -38,42 +38,78 @@ pub fn vectorNBT(comptime N: comptime_int, comptime NB: comptime_int, comptime T
         pub const len = N;
         pub const batch_len = scalar.len;
 
-        const scalar = batchNT(NB, T);
+        pub const scalar = batchNT(NB, T);
         pub const dense = vectorNT(N, types.BatchNT(NB, T));
 
         /// advances the vector in address space to next batch,
         /// assumes bounds checking
-        pub fn increment(self: *CSelf) void {
+        pub fn increment(self: *Self, dims: usize) void {
+            assert(dims <= len);
+            const s = sliceLen(self);
+            for (0..dims) |n| {
+                s[n] = @ptrCast(@as([*]Scalar, @ptrCast(s[n])) + 1);
+            }
+        }
+
+        pub fn cincrement(self: *CSelf, dims: usize) void {
+            assert(dims <= len);
             const s = sliceLenConst(self);
-            for (0..len) |n| {
-                s[n] += 1;
+            for (0..dims) |n| {
+                s[n] = @ptrCast(@as([*]const Scalar, @ptrCast(s[n])) + 1);
             }
         }
 
         /// moves the vector in address space to previous batch,
         /// assumes bounds checking
-        pub fn decrement(self: *CSelf) void {
-            const s = sliceLenConst(self);
-            for (0..len) |n| {
-                s[n] -= 1;
+        pub fn decrement(self: *Self, dims: usize) void {
+            assert(dims <= len);
+            const s = sliceLen(self);
+            for (0..dims) |n| {
+                s[n] = @ptrCast(@as([*]Scalar, @ptrCast(s[n])) - 1);
             }
         }
 
-        pub fn slice(comptime L: usize, self: *const Self) []Item {
+        pub fn cdecrement(self: *CSelf, dims: usize) void {
+            assert(dims <= len);
+            const s = sliceLenConst(self);
+            for (0..dims) |n| {
+                s[n] = @ptrCast(@as([*]const Scalar, @ptrCast(s[n])) - 1);
+            }
+        }
+
+        pub fn slice(comptime L: usize, self: *Self) []Item {
             comptime assert(L <= len);
             return self[0..L];
         }
 
-        pub fn sliceConst(comptime L: usize, self: *const CSelf) []CItem {
+        pub fn cslice(comptime L: usize, self: *const Self) []const Item {
             comptime assert(L <= len);
             return self[0..L];
         }
 
-        pub fn sliceLen(self: *const Self) []Item {
+        pub fn sliceConst(comptime L: usize, self: *CSelf) []CItem {
+            comptime assert(L <= len);
+            return self[0..L];
+        }
+
+        pub fn csliceConst(comptime L: usize, self: *const CSelf) []const CItem {
+            comptime assert(L <= len);
+            return self[0..L];
+        }
+
+        pub fn sliceLen(self: *Self) []Item {
             return slice(len, self);
         }
 
-        pub fn sliceLenConst(self: *const CSelf) []CItem {
+        pub fn csliceLen(self: *const Self) []const Item {
+            return slice(len, self);
+        }
+
+        pub fn sliceLenConst(self: *CSelf) []CItem {
+            return sliceConst(len, self);
+        }
+
+        pub fn csliceLenConst(self: *const CSelf) []const CItem {
             return sliceConst(len, self);
         }
 
@@ -146,44 +182,46 @@ pub fn vectorNBT(comptime N: comptime_int, comptime NB: comptime_int, comptime T
             }
         }
 
-        pub usingnamespace if (N == 3) struct {
-            /// Y = L x R
-            pub fn cross(result: *Self, lhs: *const CSelf, rhs: *const CSelf) void {
-                result[0].* = lhs[1].* * rhs[2].* - lhs[2].* * rhs[1].*;
-                result[1].* = lhs[2].* * rhs[0].* - lhs[0].* * rhs[2].*;
-                result[2].* = lhs[0].* * rhs[1].* - lhs[1].* * rhs[0].*;
-            }
-        } else struct {};
+        /// Y = L x R
+        pub fn cross(result: *Self, lhs: *const CSelf, rhs: *const CSelf) void {
+            if (N == 3) {} else unreachable;
+            result[0].* = lhs[1].* * rhs[2].* - lhs[2].* * rhs[1].*;
+            result[1].* = lhs[2].* * rhs[0].* - lhs[0].* * rhs[2].*;
+            result[2].* = lhs[0].* * rhs[1].* - lhs[1].* * rhs[0].*;
+        }
 
-        pub fn iterate(self: *Self, count: usize) Iterator {
+        pub fn iterate(self: *const Self, count: usize, dims: usize) Iterator {
             var result = Iterator{
+                .dims = dims,
+                .remaining = scalar.batchLen(count),
                 .data = self.*,
-                .remaining = scalar.batch_len(count),
             };
-            decrement(&result.data);
+            decrement(&result.data, dims);
             return result;
         }
 
         pub const Iterator = struct {
-            data: Self,
+            dims: usize,
             remaining: usize,
+            data: Self,
 
             pub fn next(self: *Iterator) ?*const Self {
                 if (self.remaining == 0) return null;
                 self.remaining -= 1;
-                increment(&self.data);
+                increment(&self.data, self.dims);
                 return &self.data;
             }
         };
 
         pub const CIterator = struct {
-            data: CSelf,
+            dims: usize,
             remaining: usize,
+            data: CSelf,
 
             pub fn next(self: *Iterator) ?*const CSelf {
                 if (self.remaining == 0) return null;
                 self.remaining -= 1;
-                increment(&self.data);
+                increment(&self.data, self.dims);
                 return &self.data;
             }
         };

@@ -11,51 +11,39 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
         .link_libc = true,
+        .pic = true,
     });
 
-    // zengine.addSystemIncludePath(b.path("include"));
-    // zengine.addLibraryPath(b.path("lib"));
-    // zengine.linkSystemLibrary("SDL3", .{ .needed = true });
+    zengine.linkSystemLibrary("SDL3", .{ .needed = true });
+    zengine.addIncludePath(b.path("cimgui"));
 
-    // zengine.addFrameworkPath(b.path("frameworks/SDL3.xcframework/macos-arm64_x86_64"));
-    // zengine.linkFramework("SDL3", .{ .needed = true });
-
-    const lib = b.addStaticLibrary(.{
-        .name = "zengine",
-        .root_source_file = b.path("src/zengine/zengine.zig"),
-        .target = target,
-        .optimize = optimize,
-        .link_libc = true,
-    });
-
-    // lib.addSystemIncludePath(b.path("include"));
-    // lib.addLibraryPath(b.path("lib"));
-    lib.linkSystemLibrary("SDL3");
-
-    const exe = b.addExecutable(.{
-        .name = "zeng",
+    const exe_mod = b.addModule("main", .{
         .root_source_file = b.path("src/main.zig"),
         .target = target,
         .optimize = optimize,
         .link_libc = true,
     });
 
-    // exe.addSystemIncludePath(b.path("include"));
-    // exe.addLibraryPath(b.path("lib"));
-    exe.linkSystemLibrary("SDL3");
+    exe_mod.addImport("zengine", zengine);
 
-    // exe.addFrameworkPath(b.path("frameworks/SDL3.xcframework/macos-arm64_x86_64"));
-    // exe.addRPath(b.path("frameworks/SDL3.xcframework/macos-arm64_x86_64"));
-    // exe.linkFramework("SDL3");
+    const lib = b.addLibrary(.{
+        .name = "zengine",
+        .root_module = zengine,
+    });
 
-    exe.root_module.addImport("zengine", zengine);
+    const exe = b.addExecutable(.{
+        .name = "zeng",
+        .root_module = exe_mod,
+    });
 
     b.installArtifact(exe);
 
     const compile_shaders = b.addExecutable(.{
         .name = "compile_shaders",
-        .root_source_file = b.path("src/compile_shaders.zig"),
-        .target = b.graph.host,
+        .root_module = b.addModule("compile_shaders", .{
+            .root_source_file = b.path("src/compile_shaders.zig"),
+            .target = b.graph.host,
+        }),
     });
 
     // switch (target.result.os.tag) {
@@ -65,11 +53,11 @@ pub fn build(b: *std.Build) void {
 
     const compile_shaders_cmd = b.addRunArtifact(compile_shaders);
     compile_shaders_cmd.addArg("--input-dir");
-    compile_shaders_cmd.addDirectoryArg(b.path("shaders"));
+    compile_shaders_cmd.addDirectoryArg(b.path("shaders/src"));
     compile_shaders_cmd.addArg("--output-dir");
     const shaders_output = compile_shaders_cmd.addOutputDirectoryArg("shaders");
     compile_shaders_cmd.addArg("--include-dir");
-    compile_shaders_cmd.addDirectoryArg(b.path("include/shaders"));
+    compile_shaders_cmd.addDirectoryArg(b.path("shaders/include"));
 
     const install_shaders_directory = b.addInstallDirectory(.{
         .source_dir = shaders_output,
@@ -91,23 +79,13 @@ pub fn build(b: *std.Build) void {
     const run_step = b.step("run", "Run the app");
     run_step.dependOn(&run_cmd.step);
 
-    const lib_unit_tests = b.addTest(.{
-        .root_source_file = b.path("src/zengine/zengine.zig"),
-        .target = target,
-        .optimize = optimize,
+    const unit_tests = b.addTest(.{
+        .root_module = zengine,
     });
-    const run_lib_unit_tests = b.addRunArtifact(lib_unit_tests);
-
-    const exe_unit_tests = b.addTest(.{
-        .root_source_file = b.path("src/main.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
-    const run_exe_unit_tests = b.addRunArtifact(exe_unit_tests);
+    const run_unit_tests = b.addRunArtifact(unit_tests);
 
     const test_step = b.step("test", "Run unit tests");
-    test_step.dependOn(&run_lib_unit_tests.step);
-    test_step.dependOn(&run_exe_unit_tests.step);
+    test_step.dependOn(&run_unit_tests.step);
 
     const install_docs = b.addInstallDirectory(.{
         .source_dir = lib.getEmittedDocs(),

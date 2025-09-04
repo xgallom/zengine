@@ -3,6 +3,7 @@
 //!
 
 const std = @import("std");
+const assert = std.debug.assert;
 
 pub const CameraControls = struct {
     control_matrix: u32 = 0,
@@ -17,15 +18,33 @@ pub const CameraControls = struct {
         roll_neg = 0x10,
         roll_pos = 0x20,
 
-        z_neg = 0x0100,
-        z_pos = 0x0200,
-        x_neg = 0x0400,
-        x_pos = 0x0800,
-        y_neg = 0x1000,
-        y_pos = 0x2000,
+        z_neg = 0x40,
+        z_pos = 0x80,
+        x_neg = 0x0100,
+        x_pos = 0x0200,
+        y_neg = 0x0400,
+        y_pos = 0x0800,
 
-        fov_neg = 0x01_0000,
-        fov_pos = 0x02_0000,
+        fov_neg = 0x1000,
+        fov_pos = 0x2000,
+
+        first_custom = 0x4000,
+        last_custom = 0x8000_0000,
+        _,
+
+        const max_custom = blk: {
+            var acc: usize = 0;
+            const min = @intFromEnum(Key.first_custom);
+            const max = @intFromEnum(Key.last_custom);
+            var walk: usize = min;
+            while (walk <= max) : (walk <<= 1) acc += 1;
+            break :blk acc;
+        };
+
+        pub fn custom(comptime idx: comptime_int) Key {
+            comptime assert(idx >= 0 and idx < max_custom);
+            return @enumFromInt(@intFromEnum(Key.first_custom) << idx);
+        }
     };
 
     pub fn map(key: Key) u32 {

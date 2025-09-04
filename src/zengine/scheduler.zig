@@ -11,7 +11,6 @@ pub const PromiseError = error{NotReady};
 pub fn Promise(comptime T: type) type {
     return struct {
         state: AtomicState,
-        next_handler: AnyTaskHandler,
         payload: T,
 
         pub const Self = @This();
@@ -24,10 +23,9 @@ pub fn Promise(comptime T: type) type {
         };
         pub const AtomicState = std.atomic.Value(State);
 
-        pub fn init(scheduler: *TaskScheduler) Self {
+        pub fn init() Self {
             return .{
                 .state = .init(.waiting),
-                .next_handler = .init(scheduler),
                 .payload = undefined,
             };
         }
@@ -50,14 +48,13 @@ pub fn Promise(comptime T: type) type {
         pub fn set(self: *Self, value: T) void {
             self.payload = value;
             self.state.store(.resolved, .release);
-            // self.next_handler.schedule();
         }
     };
 }
 
 pub fn Task(comptime invokeFn: anytype) type {
     return struct {
-        node: AnyTaskListNode,
+        any: AnyTask,
         promise: Promise(RetVal),
         args: Args,
 
@@ -70,83 +67,55 @@ pub fn Task(comptime invokeFn: anytype) type {
             .free = &freeAny,
         };
 
-        pub fn init(self: *Self, scheduler: *TaskScheduler, args: Args) void {
+        pub fn init(self: *Self, args: Args) void {
             self.* = .{
-                .node = .{
-                    .data = .{
-                        .ptr = @ptrCast(self),
-                        .vtable = vtable,
-                    },
+                .any = .{
+                    .vtable = vtable,
                 },
-                .promise = .init(scheduler),
+                .promise = .init(),
                 .args = args,
             };
         }
 
-        pub fn after(self: *Self, other: *AnyTaskListNode) void {
+        pub fn after(self: *Self, other: *AnyTaskList.Node) void {
             self.promise.next_handler.prepare(other);
         }
 
-        fn invokeAny(ptr: *anyopaque) void {
-            const self: *Self = @ptrCast(@alignCast(ptr));
+        fn invokeAny(any: *AnyTask) void {
+            const self: *Self = @fieldParentPtr("any", any);
             self.promise.set(@call(.auto, invokeFn, self.args));
         }
 
-        fn freeAny(ptr: *anyopaque, allocator: std.mem.Allocator) void {
-            const self: *Self = @ptrCast(@alignCast(ptr));
+        fn freeAny(any: *AnyTask, allocator: std.mem.Allocator) void {
+            const self: *Self = @fieldParentPtr("any", any);
             allocator.destroy(self);
         }
     };
 }
 
 pub const AnyTask = struct {
-    ptr: *anyopaque,
+    node: AnyTaskList.Node = .{},
     vtable: VTable,
 
     pub const VTable = struct {
-        invoke: *const fn (ptr: *anyopaque) void,
-        free: *const fn (ptr: *anyopaque, allocator: std.mem.Allocator) void,
+        invoke: *const fn (any: *AnyTask) void,
+        free: *const fn (any: *AnyTask, allocator: std.mem.Allocator) void,
     };
 
     pub fn invoke(self: *AnyTask) void {
-        self.vtable.invoke(self.ptr);
+        self.vtable.invoke(self);
     }
 
     pub fn free(self: *AnyTask, allocator: std.mem.Allocator) void {
-        self.vtable.free(self.ptr, allocator);
+        self.vtable.free(self, allocator);
     }
 };
 
-const AnyTaskList = std.DoublyLinkedList(AnyTask);
-const AnyTaskListNode = AnyTaskList.Node;
-
-pub const AnyTaskHandler = struct {
-    scheduler: *TaskScheduler,
-    task_node: AtomicTaskListNode,
-
-    const Self = @This();
-    const AtomicTaskListNode = std.atomic.Value(?*AnyTaskListNode);
-
-    pub fn init(scheduler: *TaskScheduler) Self {
-        return .{
-            .scheduler = scheduler,
-            .task_node = .init(null),
-        };
-    }
-
-    pub fn prepare(self: *Self, task_node: *AnyTaskListNode) void {
-        self.task_node.store(task_node, .unordered);
-    }
-
-    // pub fn schedule(self: *Self) void {
-    //     if (self.task_node.load(.acquire)) |task_node| self.scheduler.schedule(task_node);
-    // }
-};
+const AnyTaskList = std.DoublyLinkedList;
 
 /// A managed list of tasks synchronized by a mutex
 pub const TaskScheduler = struct {
     allocator: std.mem.Allocator,
-    // created_tasks: AnyTaskList = .{},
     scheduled_tasks: AnyTaskList = .{},
     finished_tasks: AnyTaskList = .{},
     workers: Workers,
@@ -156,47 +125,22 @@ pub const TaskScheduler = struct {
     running: bool = false,
 
     const Self = @This();
-    const Workers = std.ArrayListUnmanaged(Worker);
+    const Workers = std.ArrayList(Worker);
 
     pub fn init(allocator: std.mem.Allocator) !Self {
         const max_workers = (std.Thread.getCpuCount() catch 2) - 1;
         return .{
             .allocator = allocator,
-            .workers = try Workers.initCapacity(allocator, max_workers),
+            .workers = try .initCapacity(allocator, max_workers),
         };
     }
 
     pub fn deinit(self: *Self) void {
-        // self.cleanupTaskList(&self.created_tasks);
         self.join();
         self.cleanupTaskList(&self.scheduled_tasks);
         self.cleanupTaskList(&self.finished_tasks);
         self.workers.deinit(self.allocator);
     }
-
-    // /// Creates a new task
-    // pub fn prepare(self: *Self, comptime invoke: anytype, args: std.meta.ArgsTuple(@TypeOf(invoke))) !*Task(invoke) {
-    //     self.mutex.lock();
-    //     defer self.mutex.unlock();
-    //
-    //     const task = try self.allocator.create(Task(invoke));
-    //     task.init(self, args);
-    //     self.created_tasks.prepend(&task.node);
-    //     return task;
-    // }
-    //
-    // fn scheduleImpl(self: *Self, node: *AnyTaskListNode) void {
-    //     self.created_tasks.remove(node);
-    //     self.scheduled_tasks.prepend(node);
-    // }
-    //
-    // /// Schedules a task created with `prepare` for execution
-    // pub fn schedule(self: *Self, node: *AnyTaskListNode) void {
-    //     self.mutex.lock();
-    //     defer self.mutex.unlock();
-    //
-    //     self.scheduleImpl(node);
-    // }
 
     /// Creates a new task immediately scheduling it for execution
     pub fn prepend(self: *Self, comptime invoke: anytype, args: std.meta.ArgsTuple(@TypeOf(invoke))) !*Task(invoke) {
@@ -204,16 +148,10 @@ pub const TaskScheduler = struct {
         defer self.mutex.unlock();
 
         const task = try self.allocator.create(Task(invoke));
-        task.init(self, args);
-        self.scheduled_tasks.prepend(&task.node);
+        task.init(args);
+        self.scheduled_tasks.prepend(&task.any.node);
         return task;
     }
-
-    // pub fn worker(self: *Self) !*Worker {
-    //     const worker = try self.allocator.create(Worker);
-    //     worker.init(self);
-    //     try worker.spawn();
-    // }
 
     fn pop(self: *Self) ?*AnyTask {
         self.mutex.lock();
@@ -221,9 +159,9 @@ pub const TaskScheduler = struct {
 
         while (self.running) {
             log.debug("pop thread id {}", .{std.Thread.getCurrentId()});
-            if (self.scheduled_tasks.pop()) |task| {
-                self.finished_tasks.prepend(task);
-                return &task.data;
+            if (self.scheduled_tasks.pop()) |node| {
+                self.finished_tasks.prepend(node);
+                return @as(*AnyTask, @fieldParentPtr("node", node));
             } else {
                 log.debug("end signal id {}", .{std.Thread.getCurrentId()});
                 self.end.signal();
@@ -274,7 +212,10 @@ pub const TaskScheduler = struct {
     }
 
     fn cleanupTaskList(self: *Self, task_list: *AnyTaskList) void {
-        while (task_list.pop()) |task| task.data.free(self.allocator);
+        while (task_list.pop()) |node| {
+            const task: *AnyTask = @fieldParentPtr("node", node);
+            task.free(self.allocator);
+        }
     }
 
     const Worker = struct {

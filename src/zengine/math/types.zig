@@ -73,13 +73,13 @@ pub const Index = u32;
 pub const FaceIndex = Vector3T(Index);
 pub const LineFaceIndex = Vector2T(Index);
 
-pub const Axis3 = enum {
+pub const Axis3 = enum(u2) {
     x,
     y,
     z,
     pub const len = 3;
 };
-pub const Axis4 = enum {
+pub const Axis4 = enum(u2) {
     x,
     y,
     z,

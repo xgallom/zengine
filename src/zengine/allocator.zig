@@ -1,17 +1,8 @@
 const std = @import("std");
-const sdl = @import("ext/sdl.zig");
+const sdl = @import("ext.zig").sdl;
 
 const Allocator = std.mem.Allocator;
 const Alignment = std.mem.Alignment;
-
-fn alignedAlloc(size: usize, alignment: usize) ?[*]u8 {
-    const ptr = sdl.SDL_aligned_alloc(alignment, size);
-    return @ptrCast(@alignCast(ptr));
-}
-
-fn alignedFree(ptr: [*]u8) void {
-    sdl.SDL_aligned_free(@ptrCast(ptr));
-}
 
 const RawSDLAllocator = struct {
     const vtable = Allocator.VTable{
@@ -31,6 +22,15 @@ const RawSDLAllocator = struct {
         _ = ret_addr;
         alignedFree(memory.ptr);
     }
+
+    fn alignedAlloc(size: usize, alignment: usize) ?[*]u8 {
+        const ptr = sdl.SDL_aligned_alloc(alignment, size);
+        return @ptrCast(@alignCast(ptr));
+    }
+
+    fn alignedFree(ptr: [*]u8) void {
+        sdl.SDL_aligned_free(@ptrCast(ptr));
+    }
 };
 
 pub const raw_sdl_allocator: Allocator = .{
@@ -38,79 +38,68 @@ pub const raw_sdl_allocator: Allocator = .{
     .vtable = &RawSDLAllocator.vtable,
 };
 
-// pub const SDLAllocator = struct {
-//     buffer_allocator: std.heap.ArenaAllocator,
-//     buffer_list: BufferList,
-//
-//     const Self = @This();
-//     const BufferList = std.SinglyLinkedList([]u8);
-//     const vtable = Allocator.VTable{
-//         .alloc = alloc,
-//         .resize = resize,
-//         .remap = remap,
-//         .free = free,
-//     };
-//
-//     pub fn init() Self {
-//         .{
-//             .buffer_allocator = std.heap.ArenaAllocator.init(raw_sdl_allocator),
-//             .buffer_list = .{},
-//         };
-//     }
-//
-//     pub fn deinit() std.heap.Check {
-//         // TODO: Implement
-//         return .leak;
-//     }
-//
-//     pub fn allocator(self: *Self) Allocator {
-//         return .{
-//             .ptr = self,
-//             .vtable = &vtable,
-//         };
-//     }
-//
-//     fn insertBuffer(self: *Self, buf: []u8) !void {
-//         const node_ptr = alignedAlloc(@sizeOf(BufferList.Node), @alignOf(BufferList.Node));
-//         if (node_ptr) |ptr| {
-//             const node: *BufferList.Node = @ptrCast(@alignCast(ptr));
-//             node.data = buf;
-//             self.buffer_list.prepend(node);
-//         } else {
-//             return Allocator.Error.OutOfMemory;
-//         }
-//     }
-//
-//     fn removeBuffer(self: *Self, buf: []u8) !void {
-//         var node = &self.buffer_list.first;
-//         while (node.* != null) : (node = &node.*.?.next) {
-//             if (node.*.?.data.ptr == buf.ptr) {
-//                 node.* = node.*.?.next;
-//                 return;
-//             }
-//         }
-//         return error.NotFound;
-//     }
-//
-//     fn alloc(ctx: *anyopaque, len: usize, alignment: Alignment, ret_addr: usize) ?[*]u8 {
-//         const self: *Self = @ptrCast(@alignCast(ctx));
-//         return alignedAlloc(len, alignment.toByteUnits());
-//     }
-//
-//     fn resize(ctx: *anyopaque, memory: []u8, alignment: Alignment, new_len: usize, ret_addr: usize) bool {
-//         const self: *Self = @ptrCast(@alignCast(ctx));
-//         _ = &self;
-//
-//         return false;
-//     }
-//
-//     fn remap(ctx: *anyopaque, memory: []u8, alignment: Alignment, new_len: usize, ret_addr: usize) ?[*]u8 {}
-//
-//     fn free(ctx: *anyopaque, memory: []u8, alignment: Alignment, ret_addr: usize) void {
-//         _ = ret_addr;
-//         const self: *Self = @ptrCast(@alignCast(ctx));
-//         _ = &self;
-//
-//         alignedFree(buf.ptr);
-//     }
-// };
+pub fn LogAllocator(
+    comptime message_level: std.log.Level,
+    comptime scope: @TypeOf(.enum_literal),
+    comptime enabled: bool,
+) type {
+    const log = std.log.scoped(scope);
+    const logFn = switch (message_level) {
+        .debug => log.debug,
+        .info => log.info,
+        .warn => log.warn,
+        .err => log.err,
+    };
+
+    return struct {
+        backing_allocator: Allocator,
+
+        const vtable = Allocator.VTable{
+            .alloc = alloc,
+            .resize = resize,
+            .remap = remap,
+            .free = free,
+        };
+
+        const Self = @This();
+
+        pub fn allocator(self: *Self) Allocator {
+            return if (enabled) .{
+                .ptr = self,
+                .vtable = &.{
+                    .alloc = alloc,
+                    .resize = resize,
+                    .remap = remap,
+                    .free = free,
+                },
+            } else self.backing_allocator;
+        }
+
+        fn alloc(ptr: *anyopaque, len: usize, alignment: Alignment, ret_addr: usize) ?[*]u8 {
+            const self: *Self = @ptrCast(@alignCast(ptr));
+            const result = self.backing_allocator.rawAlloc(len, alignment, ret_addr);
+            logFn("alloc[{}]@{} {}", .{ len, alignment, result != null });
+            return result;
+        }
+
+        fn resize(ptr: *anyopaque, memory: []u8, alignment: Alignment, new_len: usize, ret_addr: usize) bool {
+            const self: *Self = @ptrCast(@alignCast(ptr));
+            const result = self.backing_allocator.rawResize(memory, alignment, new_len, ret_addr);
+            logFn("resize {X}[{} -> {}]@{} {}", .{ @intFromPtr(memory.ptr), memory.len, new_len, alignment, result });
+            return result;
+        }
+
+        fn remap(ptr: *anyopaque, memory: []u8, alignment: Alignment, new_len: usize, ret_addr: usize) ?[*]u8 {
+            const self: *Self = @ptrCast(@alignCast(ptr));
+            const result = self.backing_allocator.rawRemap(memory, alignment, new_len, ret_addr);
+            logFn("remap {X}[{} -> {}]@{} {}", .{ @intFromPtr(memory.ptr), memory.len, new_len, alignment, result != null });
+            return result;
+        }
+
+        fn free(ptr: *anyopaque, memory: []u8, alignment: Alignment, ret_addr: usize) void {
+            const self: *Self = @ptrCast(@alignCast(ptr));
+            self.backing_allocator.rawFree(memory, alignment, ret_addr);
+            logFn("free {X}[{}]@{}", .{ @intFromPtr(memory.ptr), memory.len, alignment });
+        }
+    };
+}

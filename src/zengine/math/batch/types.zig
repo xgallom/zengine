@@ -10,11 +10,11 @@ pub const Scalar = types.Scalar;
 pub const Scalar64 = types.Scalar64;
 
 /// optimal length of a vector for type f32,
-/// defaults to 8 (x64 256, ARM 128 - 1024)
-pub const batch_len = std.simd.suggestVectorLength(Scalar) orelse 8;
+/// defaults to 4 (x64 128, ARM 128 - 1024)
+pub const batch_len = std.simd.suggestVectorLength(Scalar) orelse 4;
 /// optimal length of a vector for type f64,
-/// defaults to 4 (x64 256, ARM 128 - 1024)
-pub const batch_len64 = std.simd.suggestVectorLength(Scalar64) orelse 4;
+/// defaults to 2 (x64 128, ARM 128 - 1024)
+pub const batch_len64 = std.simd.suggestVectorLength(Scalar64) orelse 2;
 
 /// batch of N elements of type T
 pub fn BatchNT(comptime N: comptime_int, comptime T: type) type {
@@ -23,11 +23,11 @@ pub fn BatchNT(comptime N: comptime_int, comptime T: type) type {
 
 /// mutable pointer to a batch of N elements of type T
 pub fn PrimitiveNT(comptime N: comptime_int, comptime T: type) type {
-    return [*]BatchNT(N, T);
+    return *BatchNT(N, T);
 }
 /// const pointer to a batch of N elements of type T
 pub fn CPrimitiveNT(comptime N: comptime_int, comptime T: type) type {
-    return [*]const BatchNT(N, T);
+    return *const BatchNT(N, T);
 }
 
 /// underlying type of a vector of N mutable pointers to batches of NB elements of type T
@@ -80,12 +80,20 @@ pub fn MatrixMxNBT(comptime M: comptime_int, comptime N: comptime_int, comptime 
 pub fn CMatrixMxNBT(comptime M: comptime_int, comptime N: comptime_int, comptime NB: comptime_int, comptime T: type) type {
     return types.MatrixMxNT(M, N, CPrimitiveNT(NB, T));
 }
+/// underlying type of a matrix of M rows and N columns of batches of NB elements of type T
+/// - operations of dense matrix are implemented in math.matrix
+pub fn DenseMatrixMxNBT(comptime M: comptime_int, comptime N: comptime_int, comptime NB: comptime_int, comptime T: type) type {
+    return types.MatrixMxNT(M, N, BatchNT(NB, T));
+}
 
 pub fn Matrix4x4BT(comptime NB: comptime_int, comptime T: type) type {
     return MatrixMxNBT(4, 4, NB, T);
 }
 pub fn CMatrix4x4BT(comptime NB: comptime_int, comptime T: type) type {
     return CMatrixMxNBT(4, 4, NB, T);
+}
+pub fn DenseMatrix4x4BT(comptime NB: comptime_int, comptime T: type) type {
+    return DenseMatrixMxNBT(4, 4, NB, T);
 }
 
 pub const Batch = BatchNT(batch_len, Scalar);
@@ -104,5 +112,7 @@ pub const CVector4f64 = CVectorNBT(4, batch_len64, Scalar64);
 pub const DenseVector4f64 = DenseVectorNBT(4, batch_len64, Scalar64);
 pub const Matrix4x4 = MatrixMxNBT(4, 4, batch_len, Scalar);
 pub const CMatrix4x4 = CMatrixMxNBT(4, 4, batch_len, Scalar);
+pub const DenseMatrix4x4 = DenseMatrixMxNBT(4, 4, batch_len, Scalar);
 pub const Matrix4x4f64 = MatrixMxNBT(4, 4, batch_len64, Scalar64);
 pub const CMatrix4x4f64 = CMatrixMxNBT(4, 4, batch_len64, Scalar64);
+pub const DenseMatrix4x4f64 = DenseMatrixMxNBT(4, 4, batch_len64, Scalar64);

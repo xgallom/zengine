@@ -1,6 +1,6 @@
 const std = @import("std");
 const assert = std.debug.assert;
-const log = std.log.scoped(.gfx);
+const log = std.log.scoped(.gfx_mesh);
 
 const math = @import("../math.zig");
 const sdl = @import("../ext.zig").sdl;
@@ -30,6 +30,22 @@ pub fn Mesh(comptime V: type, comptime I: type) type {
         pub fn deinit(self: *Self) void {
             self.vertices.deinit(self.allocator);
             self.faces.deinit(self.allocator);
+        }
+
+        pub fn appendVertex(self: *Self, vertex: Vertex) !void {
+            try self.vertices.append(self.allocator, vertex);
+        }
+
+        pub fn appendVertices(self: *Self, vertices: []const Vertex) !void {
+            try self.vertices.appendSlice(self.allocator, vertices);
+        }
+
+        pub fn appendFace(self: *Self, face: FaceIndex) !void {
+            try self.faces.append(self.allocator, face);
+        }
+
+        pub fn appendFaces(self: *Self, faces: []const FaceIndex) !void {
+            try self.faces.appendSlice(self.allocator, faces);
         }
 
         pub fn createGpuBuffers(self: *Self, gpu_device: ?*sdl.SDL_GPUDevice) !void {

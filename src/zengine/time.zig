@@ -7,57 +7,165 @@ const sdl = @import("ext.zig").sdl;
 
 const assert = std.debug.assert;
 
-pub fn getNow() u64 {
+pub inline fn getNow() u64 {
     return sdl.SDL_GetTicks();
 }
 
-/// Struct for measuring time since creation and update
+pub fn getMS() Time {
+    return .{ .ms = getNow() };
+}
+
+pub inline fn getNano() u64 {
+    return sdl.SDL_GetTicksNS();
+}
+
+pub fn getNS() Time {
+    return .{ .ns = getNano() };
+}
+
+pub const Unit = enum {
+    ns,
+    us,
+    ms,
+    s,
+    min,
+    hour,
+    day,
+    week,
+
+    pub fn makePer(comptime left: Unit, comptime right: Unit) comptime_int {
+        return @field(std.time, @tagName(left) ++ "_per_" ++ @tagName(right));
+    }
+
+    pub fn convert(comptime from: Unit, comptime to: Unit, value: anytype) @TypeOf(value) {
+        if (from == to) {
+            return value;
+        } else if (@intFromEnum(to) > @intFromEnum(from)) {
+            return value / makePer(from, to);
+        } else {
+            return value * makePer(to, from);
+        }
+    }
+};
+
+pub const Time = union(Unit) {
+    ns: u64,
+    us: u64,
+    ms: u64,
+    s: u64,
+    min: u64,
+    hour: u64,
+    day: u64,
+    week: u64,
+
+    pub fn toTime(from: Time, comptime to: Unit) Time {
+        return @unionInit(Time, @tagName(to), from.toValue(to));
+    }
+
+    pub fn toValue(time: Time, comptime to: Unit) u64 {
+        return switch (@as(Unit, time)) {
+            inline else => |from| Unit.convert(from, to, @field(time, @tagName(from))),
+        };
+    }
+
+    pub fn toFloat(time: Time, comptime to: Unit) f32 {
+        return switch (@as(Unit, time)) {
+            inline else => |from| Unit.convert(
+                from,
+                to,
+                @as(f32, @floatFromInt(@field(time, @tagName(from)))),
+            ),
+        };
+    }
+
+    pub fn toFloat64(time: Time, comptime to: Unit) f64 {
+        return switch (@as(Unit, time)) {
+            inline else => |from| Unit.convert(
+                from,
+                to,
+                @as(f64, @floatFromInt(@field(time, @tagName(from)))),
+            ),
+        };
+    }
+};
+
+/// Struct for measuring time
 pub const Clock = struct {
     start_time: u64 = 0,
-    updated_at: u64 = 0,
 
     const Self = @This();
 
     pub fn init(now: u64) Self {
         return .{
             .start_time = now,
-            .updated_at = now,
         };
     }
 
-    pub fn update(self: *Self, now: u64) void {
-        self.updated_at = now;
+    pub fn isRunning(self: *const Self) bool {
+        return self.start_time != 0;
     }
 
-    pub fn sinceStart(self: *const Self, now: u64) u64 {
-        return now - self.start_time;
+    pub fn start(self: *Self, now: u64) void {
+        self.start_time = now;
     }
 
-    pub fn sinceUpdate(self: *const Self, now: u64) u64 {
-        return now - self.updated_at;
+    pub fn elapsed(self: *const Self, now: u64) u64 {
+        assert(self.isRunning());
+        return now -| self.start_time;
+    }
+
+    pub fn reset(self: *Self) void {
+        self.start_time = 0;
+    }
+
+    pub fn pause(self: *const Self, pause_clock: *Self, now: u64) void {
+        assert(self.isRunning());
+        pause_clock.start(now);
+    }
+
+    pub fn unpause(self: *Self, pause_clock: *Self, now: u64) void {
+        assert(self.isRunning());
+        self.start_time = @min(self.start_time +| pause_clock.elapsed(now), now);
+        pause_clock.reset();
     }
 };
 
-/// Struct for measuring repeated intervals based on ms clock
+/// Struct for firing intervals
 pub const Timer = struct {
     updated_at: u64 = 0,
-    interval_ms: u64,
+    interval: u64,
 
     const Self = @This();
 
-    pub fn init(interval_ms: u64) Self {
-        return .{ .interval_ms = interval_ms };
-    }
-
-    pub fn update(self: *Self, now: u64) void {
-        if (self.isArmed(now)) self.updated_at = now;
+    pub fn init(interval: u64) Self {
+        return .{ .interval = interval };
     }
 
     pub fn isArmed(self: *const Self, now: u64) bool {
-        return now - self.updated_at >= self.interval_ms;
+        return now -| self.updated_at >= self.interval;
+    }
+
+    pub fn set(self: *Self, now: u64) void {
+        self.updated_at = now;
+    }
+
+    pub fn reset(self: *Self) void {
+        self.updated_at = 0;
+    }
+
+    pub fn updated(self: *Self, now: u64) bool {
+        if (self.isArmed(now)) {
+            self.set(now);
+            return true;
+        }
+        return false;
+    }
+
+    pub inline fn update(self: *Self, now: u64) void {
+        _ = self.updated(now);
     }
 };
 
-pub fn msToSec(ms: u64) f32 {
-    return @as(f32, @floatFromInt(ms)) / 1000.0;
+pub fn toSeconds(time: Time) f32 {
+    return time.toFloat(.s);
 }

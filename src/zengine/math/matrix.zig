@@ -188,119 +188,127 @@ pub fn matrixMxNT(comptime M: comptime_int, comptime N: comptime_int, comptime T
             }
         }
 
-        pub usingnamespace if (rows == 4 and cols == 4) struct {
-            pub const Vector3 = types.VectorNT(3, T);
-            pub const vector3 = vectorNT(3, T);
+        const Vector3 = types.VectorNT(3, T);
+        const vector3 = vectorNT(3, T);
 
-            pub fn worldTransform(result: *Self) void {
-                result.* = .{
+        pub fn worldTransform(result: *Self) void {
+            if (rows == 4 and cols == 4) {} else unreachable;
+            result.* = .{
+                .{ scalar.one, scalar.zero, scalar.zero, scalar.zero },
+                .{ scalar.zero, scalar.one, scalar.zero, scalar.zero },
+                .{ scalar.zero, scalar.zero, scalar.one, scalar.zero },
+                .{ scalar.zero, scalar.zero, scalar.zero, scalar.one },
+            };
+        }
+
+        pub fn perspectiveFov(result: *Self, field_of_view: Scalar, width: Scalar, height: Scalar, near_plane: Scalar, far_plane: Scalar) void {
+            if (rows == 4 and cols == 4) {} else unreachable;
+            const y = scalar.one / @tan(scalar.init(0.5) * field_of_view);
+            const x = y * height / width;
+
+            result.* = .{
+                .{ x, scalar.zero, scalar.zero, scalar.zero },
+                .{ scalar.zero, y, scalar.zero, scalar.zero },
+                .{ scalar.zero, scalar.zero, far_plane / (near_plane - far_plane), (near_plane * far_plane) / (near_plane - far_plane) },
+                .{ scalar.zero, scalar.zero, scalar.neg_one, scalar.zero },
+            };
+        }
+
+        pub fn camera(result: *Self, position: *const Vector3, direction: *const Vector3, up: *const Vector3) void {
+            if (rows == 4 and cols == 4) {} else unreachable;
+            var coordinates: vector3.Coords = undefined;
+            vector3.cameraCoords(&coordinates, direction, up);
+
+            const x = &coordinates.x;
+            const y = &coordinates.y;
+            const z = &coordinates.z;
+
+            result.* = .{
+                .{ x[0], x[1], x[2], -vector3.dot(x, position) },
+                .{ y[0], y[1], y[2], -vector3.dot(y, position) },
+                .{ z[0], z[1], z[2], -vector3.dot(z, position) },
+                .{ scalar.zero, scalar.zero, scalar.zero, scalar.one },
+            };
+        }
+
+        pub fn lookAt(result: *Self, position: *const Vector3, target: *const Vector3, up: *const Vector3) void {
+            if (rows == 4 and cols == 4) {} else unreachable;
+            var direction = target.*;
+            vector3.sub(&direction, position);
+            camera(result, position, &direction, up);
+        }
+
+        pub fn scaleXYZ(operand: *Self, scales: *const Vector3) void {
+            if (rows == 4 and cols == 4) {} else unreachable;
+            const operation = scalingXYZ(scales);
+            const input = operand.*;
+            dot(operand, &operation, &input);
+        }
+
+        pub fn scalingXYZ(scales: *const Vector3) Self {
+            if (rows == 4 and cols == 4) {} else unreachable;
+            return .{
+                .{ scales[0], scalar.zero, scalar.zero, scalar.zero },
+                .{ scalar.zero, scales[1], scalar.zero, scalar.zero },
+                .{ scalar.zero, scalar.zero, scales[2], scalar.zero },
+                .{ scalar.zero, scalar.zero, scalar.zero, scalar.one },
+            };
+        }
+
+        pub fn rotateEuler(operand: *Self, rotation: *const types.Euler, order: types.EulerOrder) void {
+            if (rows == 4 and cols == 4) {} else unreachable;
+            const operations: [types.Axis3.len]Self = .{
+                // x
+                .{
                     .{ scalar.one, scalar.zero, scalar.zero, scalar.zero },
+                    .{ scalar.zero, @cos(rotation[0]), -@sin(rotation[0]), scalar.zero },
+                    .{ scalar.zero, @sin(rotation[0]), @cos(rotation[0]), scalar.zero },
+                    .{ scalar.zero, scalar.zero, scalar.zero, scalar.one },
+                },
+                // y
+                .{
+                    .{ @cos(rotation[1]), scalar.zero, @sin(rotation[1]), scalar.zero },
                     .{ scalar.zero, scalar.one, scalar.zero, scalar.zero },
+                    .{ -@sin(rotation[1]), scalar.zero, @cos(rotation[1]), scalar.zero },
+                    .{ scalar.zero, scalar.zero, scalar.zero, scalar.one },
+                },
+                // z
+                .{
+                    .{ @cos(rotation[2]), -@sin(rotation[2]), scalar.zero, scalar.zero },
+                    .{ @sin(rotation[2]), @cos(rotation[2]), scalar.zero, scalar.zero },
                     .{ scalar.zero, scalar.zero, scalar.one, scalar.zero },
                     .{ scalar.zero, scalar.zero, scalar.zero, scalar.one },
-                };
-            }
-
-            pub fn perspectiveFov(result: *Self, field_of_view: Scalar, width: Scalar, height: Scalar, near_plane: Scalar, far_plane: Scalar) void {
-                const y = scalar.one / @tan(scalar.init(0.5) * field_of_view);
-                const x = y * height / width;
-
-                result.* = .{
-                    .{ x, scalar.zero, scalar.zero, scalar.zero },
-                    .{ scalar.zero, y, scalar.zero, scalar.zero },
-                    .{ scalar.zero, scalar.zero, far_plane / (near_plane - far_plane), (near_plane * far_plane) / (near_plane - far_plane) },
-                    .{ scalar.zero, scalar.zero, scalar.neg_one, scalar.zero },
-                };
-            }
-
-            pub fn camera(result: *Self, position: *const Vector3, direction: *const Vector3, up: *const Vector3) void {
-                var coordinates: vector3.Coords = undefined;
-                vector3.cameraCoords(&coordinates, direction, up);
-
-                const x = &coordinates.x;
-                const y = &coordinates.y;
-                const z = &coordinates.z;
-
-                result.* = .{
-                    .{ x[0], x[1], x[2], -vector3.dot(x, position) },
-                    .{ y[0], y[1], y[2], -vector3.dot(y, position) },
-                    .{ z[0], z[1], z[2], -vector3.dot(z, position) },
-                    .{ scalar.zero, scalar.zero, scalar.zero, scalar.one },
-                };
-            }
-
-            pub fn lookAt(result: *Self, position: *const Vector3, target: *const Vector3, up: *const Vector3) void {
-                var direction = target.*;
-                vector3.sub(&direction, position);
-                camera(result, position, &direction, up);
-            }
-
-            pub fn scaleXYZ(operand: *Self, scales: *const Vector3) void {
-                const operation = scalingXYZ(scales);
+                },
+            };
+            inline for (order.axes()) |axis| {
                 const input = operand.*;
-                dot(operand, &operation, &input);
+                dot(operand, &operations[@intFromEnum(axis)], &input);
             }
+        }
 
-            pub fn scalingXYZ(scales: *const Vector3) Self {
-                return .{
-                    .{ scales[0], scalar.zero, scalar.zero, scalar.zero },
-                    .{ scalar.zero, scales[1], scalar.zero, scalar.zero },
-                    .{ scalar.zero, scalar.zero, scales[2], scalar.zero },
-                    .{ scalar.zero, scalar.zero, scalar.zero, scalar.one },
-                };
-            }
+        pub fn rotationEuler(rotation: *const types.Euler, order: types.EulerOrder) Self {
+            if (rows == 4 and cols == 4) {} else unreachable;
+            var result = identity;
+            rotateEuler(&result, rotation, order);
+            return result;
+        }
 
-            pub fn rotateEuler(operand: *Self, rotation: *const types.Euler, order: types.EulerOrder) void {
-                const operations: [types.Axis3.len]Self = .{
-                    // x
-                    .{
-                        .{ scalar.one, scalar.zero, scalar.zero, scalar.zero },
-                        .{ scalar.zero, @cos(rotation[0]), -@sin(rotation[0]), scalar.zero },
-                        .{ scalar.zero, @sin(rotation[0]), @cos(rotation[0]), scalar.zero },
-                        .{ scalar.zero, scalar.zero, scalar.zero, scalar.one },
-                    },
-                    // y
-                    .{
-                        .{ @cos(rotation[1]), scalar.zero, @sin(rotation[1]), scalar.zero },
-                        .{ scalar.zero, scalar.one, scalar.zero, scalar.zero },
-                        .{ -@sin(rotation[1]), scalar.zero, @cos(rotation[1]), scalar.zero },
-                        .{ scalar.zero, scalar.zero, scalar.zero, scalar.one },
-                    },
-                    // z
-                    .{
-                        .{ @cos(rotation[2]), -@sin(rotation[2]), scalar.zero, scalar.zero },
-                        .{ @sin(rotation[2]), @cos(rotation[2]), scalar.zero, scalar.zero },
-                        .{ scalar.zero, scalar.zero, scalar.one, scalar.zero },
-                        .{ scalar.zero, scalar.zero, scalar.zero, scalar.one },
-                    },
-                };
-                inline for (order.axes()) |axis| {
-                    const input = operand.*;
-                    dot(operand, &operations[@intFromEnum(axis)], &input);
-                }
-            }
+        pub fn translateXYZ(operand: *Self, translation: *const Vector3) void {
+            if (rows == 4 and cols == 4) {} else unreachable;
+            const operation = translationXYZ(translation);
+            const input = operand.*;
+            dot(operand, &operation, &input);
+        }
 
-            pub fn rotationEuler(rotation: *const types.Euler, order: types.EulerOrder) Self {
-                var result = identity;
-                rotateEuler(&result, rotation, order);
-                return result;
-            }
-
-            pub fn translateXYZ(operand: *Self, translation: *const Vector3) void {
-                const operation = translationXYZ(translation);
-                const input = operand.*;
-                dot(operand, &operation, &input);
-            }
-
-            pub fn translationXYZ(translation: *const Vector3) Self {
-                return .{
-                    .{ scalar.one, scalar.zero, scalar.zero, translation[0] },
-                    .{ scalar.zero, scalar.one, scalar.zero, translation[1] },
-                    .{ scalar.zero, scalar.zero, scalar.one, translation[2] },
-                    .{ scalar.zero, scalar.zero, scalar.zero, scalar.one },
-                };
-            }
-        } else struct {};
+        pub fn translationXYZ(translation: *const Vector3) Self {
+            if (rows == 4 and cols == 4) {} else unreachable;
+            return .{
+                .{ scalar.one, scalar.zero, scalar.zero, translation[0] },
+                .{ scalar.zero, scalar.one, scalar.zero, translation[1] },
+                .{ scalar.zero, scalar.zero, scalar.one, translation[2] },
+                .{ scalar.zero, scalar.zero, scalar.zero, scalar.one },
+            };
+        }
     };
 }
 

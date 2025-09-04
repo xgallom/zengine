@@ -4,72 +4,81 @@ const assert = std.debug.assert;
 const math = @import("../math.zig");
 const batch = math.batch;
 
-pub const Vertices = struct {
-    allocator: std.mem.Allocator,
-    items: [dims][*]batch.Batch,
-    /// the number of vertices stored, not the same as number of batches
-    len: usize,
+allocator: std.mem.Allocator,
+items: [4][*]batch.Batch,
+/// the number of vertices stored, not the same as number of batches
+len: usize,
 
-    const Self = @This();
-    const ArrayList = std.ArrayList(batch.Batch);
+const Self = @This();
+const ArrayList = std.ArrayList(batch.Batch);
 
-    const dims = 4;
+const dims = 3;
 
-    pub fn init(allocator: std.mem.Allocator) Self {
-        return .{
-            .allocator = allocator,
-            .items = .{ &[_]batch.Batch{}, &[_]batch.Batch{}, &[_]batch.Batch{}, &[_]batch.Batch{} },
-            .len = 0,
-        };
+pub fn init(allocator: std.mem.Allocator) !Self {
+    const none = &[_]batch.Batch{};
+    const w = (try allocator.alloc(batch.Batch, 1)).ptr;
+    w[0] = batch.batch.one;
+    return .{
+        .allocator = allocator,
+        .items = .{ none, none, none, w },
+        .len = 0,
+    };
+}
+
+pub fn deinit(self: *Self) void {
+    for (0..dims) |n| {
+        var array_list = self.itemArrayList(n);
+        array_list.deinit(self.allocator);
+    }
+    self.allocator.free(self.items[3][0..1]);
+}
+
+pub fn push(self: *Self, vertices: []const math.Vertex) !void {
+    const total_len = self.len + vertices.len;
+    const capacity = batch.batch.batchLen(total_len);
+    inline for (0..dims) |d| {
+        var array_list = self.itemArrayList(d);
+        try array_list.ensureTotalCapacityPrecise(self.allocator, capacity);
+        self.items[d] = array_list.items.ptr;
     }
 
-    pub fn deinit(self: *Self) void {
-        for (0..dims) |n| {
-            var array_list = self.item_array_list(n);
-            array_list.deinit();
+    for (0..vertices.len) |v| {
+        const dest = self.len + v;
+        const dest_index = batch.batch.batchIndex(dest);
+        const dest_offset = batch.batch.batchOffset(dest);
+        inline for (0..dims) |d| {
+            self.items[d][dest_index][dest_offset] = vertices[v][d];
         }
     }
 
-    pub fn push(self: *Self, vertices: []const math.Vertex) !void {
-        const total_len = self.len + vertices.len;
-        const capacity = batch.batch.batch_len(total_len);
-        for (0..dims) |n| {
-            var array_list = self.item_array_list(n);
-            try array_list.ensureTotalCapacityPrecise(capacity);
-            self.items[n] = array_list.items.ptr;
-        }
+    self.len = total_len;
+}
 
-        for (0..vertices.len) |v| {
-            const dest = self.len + v;
-            const dest_index = batch.batch.batchIndex(dest);
-            const dest_offset = batch.batch.batchOffset(dest);
-            for (0..dims) |n| {
-                self.items[n][dest_index][dest_offset] = vertices[v][n];
-            }
-        }
+pub fn itemArrayList(self: *const Self, index: usize) ArrayList {
+    assert(index < dims);
+    const real_len = self.batchLen();
+    return .{
+        .items = self.items[index][0..real_len],
+        .capacity = real_len,
+    };
+}
 
-        self.len = total_len;
-    }
+pub fn batchLen(self: *const Self) usize {
+    return batch.batch.batchLen(self.len);
+}
 
-    pub fn itemArrayList(self: *const Self, index: usize) ArrayList {
-        assert(index < dims);
-        const real_len = self.batch_len();
-        return .{
-            .allocator = self.allocator,
-            .items = self.items[index][0..real_len],
-            .capacity = real_len,
-        };
-    }
+pub fn toVector3(self: *const Self) batch.Vector3 {
+    return .{ @ptrCast(self.items[0]), @ptrCast(self.items[1]), @ptrCast(self.items[2]) };
+}
 
-    pub fn batchLen(self: *const Self) usize {
-        return batch.batch.batch_len(self.len);
-    }
+pub fn toVector4(self: *const Self) batch.Vector4 {
+    return self.items;
+}
 
-    pub fn toVector(self: *const Self) batch.Vector4 {
-        return self.items;
-    }
+pub fn iterate3(self: *Self) batch.vector3.Iterator {
+    return batch.vector3.iterate(&self.toVector3(), self.len, dims);
+}
 
-    pub fn iterate(self: *Self) batch.vector4.Iterator {
-        return batch.vector4.iterate(&self.items, self.len);
-    }
-};
+pub fn iterate4(self: *Self) batch.vector4.Iterator {
+    return batch.vector4.iterate(@ptrCast(&self.items), self.len, dims);
+}
