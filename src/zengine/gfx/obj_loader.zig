@@ -1,9 +1,10 @@
 const std = @import("std");
-const math = @import("../math.zig");
+const assert = std.debug.assert;
+
 const allocators = @import("../allocators.zig");
+const math = @import("../math.zig");
 const mesh = @import("mesh.zig");
 
-const assert = std.debug.assert;
 const log = std.log.scoped(.gfx_obj_loader);
 
 pub fn loadFile(allocator: std.mem.Allocator, path: []const u8) !mesh.TriangleMesh {

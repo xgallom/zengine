@@ -4,6 +4,7 @@
 
 const std = @import("std");
 const assert = std.debug.assert;
+
 const log = std.log.scoped(.key_tree);
 
 pub const InsertionOrder = enum {

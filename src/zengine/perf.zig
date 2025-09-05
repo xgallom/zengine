@@ -1,14 +1,19 @@
+//!
+//! The zengine performance measuring module
+//!
+
 const std = @import("std");
 const assert = std.debug.assert;
 
 const allocators = @import("allocators.zig");
 const global = @import("global.zig");
-const math = @import("math.zig");
-const time = @import("time.zig");
 const KeyTree = @import("key_tree.zig").KeyTree;
+const math = @import("math.zig");
 const RadixTree = @import("radix_tree.zig").RadixTree;
+const time = @import("time.zig");
 
 const log = std.log.scoped(.perf);
+pub const perf_sections = sections(@This(), &.{ .log, .update_avg });
 
 const framerate_buf_count = 1 << 8;
 const framerate_idx_mask: usize = framerate_buf_count - 1;
@@ -17,7 +22,6 @@ const frametime_buf_count = 1 << 8;
 const frametime_idx_mask: usize = frametime_buf_count - 1;
 const frametime_over_bit: usize = 1 << 9;
 
-const Batch = @Vector(std.simd.suggestVectorLength(u64) orelse 2, u64);
 pub const SectionsTree = KeyTree(struct { key: []const u8, value: *Section }, .{ .insertion_order = .insert_last });
 
 const Self = struct {
@@ -124,6 +128,8 @@ pub fn init() !void {
     assert(!is_init);
     try global_state.init();
     is_init = true;
+
+    try perf_sections.register();
 }
 
 pub fn commitGraph() !void {
@@ -151,8 +157,13 @@ pub fn update(now: u64) void {
 }
 
 pub fn updateAvg() void {
+    assert(is_init);
+    assert(is_constructed);
+
+    perf_sections.sub(.update_avg).begin();
     var iter = global_state.sections.iterator();
     while (iter.next()) |i| i.value_ptr.*.avg = i.value_ptr.*.computeAvg();
+    perf_sections.sub(.update_avg).end();
 }
 
 pub fn logPerf() void {
@@ -161,31 +172,33 @@ pub fn logPerf() void {
 
     log.info("framerate: {}", .{framerate()});
 
-    const iterTree = struct {
+    const IterTree = struct {
         fn iterTree(node: *const SectionsTree.Node, label: []const u8, offset: usize) !void {
             if (node.value) |index| {
-                const avg = index.value.avgTime();
-                log.info("{s}[{s}] {d:.3}us", .{
+                const avg = index.value.avg;
+                log.info("{s}[{s}] {D}", .{
                     global.spaces(offset),
                     label,
-                    avg.toFloat64(.us),
+                    avg,
                 });
             } else {
                 log.info("{s}[{s}]", .{ global.spaces(offset), label });
             }
+
             var edge_node = node.edges.first;
             while (edge_node != null) : (edge_node = edge_node.?.next) {
                 const edge: *const SectionsTree.Edge = @fieldParentPtr("edge_node", edge_node.?);
                 try iterTree(&edge.target, edge.label, offset + 4);
             }
         }
-    }.iterTree;
+    };
 
-    try iterTree(global_state.tree.root, "", 0);
+    try IterTree.iterTree(global_state.tree.root, "", 0);
 
-    log.info("render / frame: {d:.3}%", .{
+    log.info("render / frame: {d:.2}%", .{
         math.percent(
-            getAvg("gfx.Renderer.draw").toFloat64(.us) / getAvg("main.frame").toFloat64(.us),
+            getAvg("gfx.Renderer.draw").toFloat().asValue() /
+                getAvg("main.frame").toFloat().asValue(),
         ),
     });
 }

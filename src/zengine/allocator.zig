@@ -1,8 +1,8 @@
 const std = @import("std");
-const sdl = @import("ext.zig").sdl;
-
 const Allocator = std.mem.Allocator;
 const Alignment = std.mem.Alignment;
+
+const sdl = @import("ext.zig").sdl;
 
 const RawSDLAllocator = struct {
     const vtable = Allocator.VTable{

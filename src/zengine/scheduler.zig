@@ -4,6 +4,8 @@
 
 const std = @import("std");
 const assert = std.debug.assert;
+const AnyTaskList = std.DoublyLinkedList;
+
 const log = std.log.scoped(.scheduler);
 
 pub const PromiseError = error{NotReady};
@@ -110,8 +112,6 @@ pub const AnyTask = struct {
         self.vtable.free(self, allocator);
     }
 };
-
-const AnyTaskList = std.DoublyLinkedList;
 
 /// A managed list of tasks synchronized by a mutex
 pub const TaskScheduler = struct {

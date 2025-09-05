@@ -3,12 +3,13 @@
 //!
 
 const std = @import("std");
+const assert = std.debug.assert;
 const builtin = @import("builtin");
+
+const allocators = @import("../allocators.zig");
 const sdl = @import("../ext.zig").sdl;
 const global = @import("../global.zig");
-const allocators = @import("../allocators.zig");
 
-const assert = std.debug.assert;
 const log = std.log.scoped(.gfx_shader);
 
 pub const OpenConfig = struct {

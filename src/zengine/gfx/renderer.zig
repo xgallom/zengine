@@ -3,18 +3,19 @@
 //!
 
 const std = @import("std");
+const assert = std.debug.assert;
+
 const allocators = @import("../allocators.zig");
+const Engine = @import("../Engine.zig");
 const sdl = @import("../ext.zig").sdl;
+const global = @import("../global.zig");
 const math = @import("../math.zig");
 const perf = @import("../perf.zig");
-const global = @import("../global.zig");
-const Engine = @import("../Engine.zig");
-const shader = @import("shader.zig");
-const TriangleMesh = @import("mesh.zig").TriangleMesh;
 const LineMesh = @import("mesh.zig").LineMesh;
 const obj_loader = @import("obj_loader.zig");
+const shader = @import("shader.zig");
+const TriangleMesh = @import("mesh.zig").TriangleMesh;
 
-const assert = std.debug.assert;
 const log = std.log.scoped(.gfx_renderer);
 pub const sections = perf.sections(@This(), &.{ .init, .draw });
 
@@ -57,8 +58,7 @@ pub const DrawError = error{
 pub fn init(engine: *const Engine) InitError!*Self {
     defer allocators.scratchFree();
 
-    try sections.sub(.init).register();
-    try sections.sub(.draw).register();
+    try sections.register();
     try sections.sub(.draw)
         .sections(&.{ .init, .cow1, .cow2, .cow3, .origin })
         .register();
@@ -519,7 +519,7 @@ pub fn draw(self: *const Self, engine: *const Engine) DrawError!bool {
     math.matrix4x4.dot(view, camera, world);
     math.matrix4x4.dot(view_projection, projection, view);
 
-    const time_s = global.timeSinceStart().toFloat(.s);
+    const time_s = global.timeSinceStart().toFloat().toValue32(.s);
     const aspect_ratio = @as(f32, @floatFromInt(engine.window_size.x)) / @as(f32, @floatFromInt(engine.window_size.y));
     const mouse_x = engine.mouse_pos.x / @as(f32, @floatFromInt(engine.window_size.x));
     const mouse_y = engine.mouse_pos.y / @as(f32, @floatFromInt(engine.window_size.y));

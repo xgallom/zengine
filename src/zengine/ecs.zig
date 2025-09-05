@@ -1,23 +1,21 @@
 const std = @import("std");
 const assert = std.debug.assert;
-
 pub const FlagsBitSet = std.DynamicBitSetUnmanaged;
+
+pub const component_array_list = @import("ecs/component_array_list.zig");
+const ComponentArrayList = component_array_list.ComponentArrayList;
+const PrimitiveComponentArrayList = component_array_list.PrimitiveComponentArrayList;
+pub const component_flags_array_list = @import("ecs/component_flags_array_list.zig");
+pub const ComponentFlagsArrayListUnmanaged = component_flags_array_list.ComponentFlagsArrayListUnmanaged;
+pub const component_manager = @import("ecs/component_manager.zig");
+pub const ComponentManager = component_manager.ComponentManager;
+pub const PrimitiveComponentManager = component_manager.PrimitiveComponentManager;
+
 pub const ComponentFlagsBitSet = std.StaticBitSet(512);
 pub const ComponentFlag = u32;
 
 pub const Entity = u32;
 pub const null_entity: Entity = 0;
-
-pub const component_array_list = @import("ecs/component_array_list.zig");
-const ComponentArrayList = component_array_list.ComponentArrayList;
-const PrimitiveComponentArrayList = component_array_list.PrimitiveComponentArrayList;
-
-pub const component_flags_array_list = @import("ecs/component_flags_array_list.zig");
-pub const ComponentFlagsArrayListUnmanaged = component_flags_array_list.ComponentFlagsArrayListUnmanaged;
-
-pub const component_manager = @import("ecs/component_manager.zig");
-pub const ComponentManager = component_manager.ComponentManager;
-pub const PrimitiveComponentManager = component_manager.PrimitiveComponentManager;
 
 pub const OpaqueComponentArrayList = ComponentArrayList(struct {});
 pub const OpaquePrimitiveComponentArrayList = PrimitiveComponentArrayList(u64);

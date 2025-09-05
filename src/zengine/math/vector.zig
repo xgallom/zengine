@@ -5,8 +5,8 @@
 const std = @import("std");
 const assert = std.debug.assert;
 
-const types = @import("types.zig");
 const scalarT = @import("scalar.zig").scalarT;
+const types = @import("types.zig");
 
 pub fn vectorNT(comptime N: comptime_int, comptime T: type) type {
     return struct {

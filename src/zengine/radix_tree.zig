@@ -4,6 +4,7 @@
 
 const std = @import("std");
 const assert = std.debug.assert;
+
 const log = std.log.scoped(.radix_tree);
 
 /// Radix tree data structure

@@ -3,10 +3,11 @@
 //!
 
 const std = @import("std");
+const assert = std.debug.assert;
+
 const allocators = @import("allocators.zig");
 const sdl = @import("ext.zig").sdl;
 
-const assert = std.debug.assert;
 const log = std.log.scoped(.engine);
 
 window: ?*sdl.SDL_Window = null,

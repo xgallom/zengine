@@ -1,16 +1,16 @@
 const std = @import("std");
-const builtin = @import("builtin");
-const sdl = @import("ext/sdl.zig");
 const assert = std.debug.assert;
+pub const Arena = std.heap.ArenaAllocator;
+const builtin = @import("builtin");
+
 const allocator = @import("allocator.zig");
+const sdl = @import("ext/sdl.zig");
 
 const log = std.log.scoped(.alloc);
 
 pub const GPA = std.heap.DebugAllocator(.{
     .enable_memory_limit = true,
 });
-pub const Arena = std.heap.ArenaAllocator;
-
 const LogAllocator = allocator.LogAllocator(.debug, .alloc, std.debug.runtime_safety);
 
 pub const ArenaKey = enum {
@@ -53,14 +53,14 @@ const Self = struct {
     }
 
     fn logCapacities(self: *const Self) void {
-        log.info("gpa: {Bi:.3} / {Bi:.3}", .{
+        log.info("gpa: {B:.3} / {B:.3}", .{
             self.gpa_state.total_requested_bytes,
             self.gpa_state.requested_memory_limit,
         });
 
         var iter = global_state.arena_states.iterator();
         while (iter.next()) |item| log.info(
-            "{t}: {Bi:.3}",
+            "{t}: {B:.3}",
             .{ item.key, item.value.queryCapacity() },
         );
     }

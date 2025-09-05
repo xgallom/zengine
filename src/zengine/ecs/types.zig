@@ -1,6 +1,6 @@
 const std = @import("std");
-
 pub const FlagsBitSet = std.DynamicBitSetUnmanaged;
+
 pub const ComponentFlagsBitSet = std.StaticBitSet(512);
 pub const ComponentFlag = u32;
 

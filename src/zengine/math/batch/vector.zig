@@ -24,9 +24,9 @@
 const std = @import("std");
 const assert = std.debug.assert;
 
-const types = @import("types.zig");
-const batchNT = @import("scalar.zig").batchNT;
 const vectorNT = @import("../vector.zig").vectorNT;
+const batchNT = @import("scalar.zig").batchNT;
+const types = @import("types.zig");
 
 pub fn vectorNBT(comptime N: comptime_int, comptime NB: comptime_int, comptime T: type) type {
     return struct {

@@ -1,16 +1,16 @@
 const std = @import("std");
 const assert = std.debug.assert;
-const log = std.log.scoped(.ecs);
 
 const component_array_list = @import("component_array_list.zig");
 const ComponentArrayList = component_array_list.ComponentArrayList;
 const PrimitiveComponentArrayList = component_array_list.PrimitiveComponentArrayList;
-
 const types = @import("types.zig");
 const FlagsBitSet = types.FlagsBitSet;
 const ComponentFlagsBitSet = types.ComponentFlagsBitSet;
 const ComponentFlag = types.ComponentFlag;
 const Entity = types.Entity;
+
+const log = std.log.scoped(.ecs);
 
 fn AnyComponentManager(comptime C: type, comptime AL: type) type {
     return struct {

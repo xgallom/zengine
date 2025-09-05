@@ -5,6 +5,7 @@
 //!
 
 const std = @import("std");
+
 const types = @import("../types.zig");
 pub const Scalar = types.Scalar;
 pub const Scalar64 = types.Scalar64;

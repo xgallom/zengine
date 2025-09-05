@@ -9,8 +9,8 @@
 const std = @import("std");
 const assert = std.debug.assert;
 
-const types = @import("types.zig");
 const scalarT = @import("scalar.zig").scalarT;
+const types = @import("types.zig");
 const vectorNT = @import("vector.zig").vectorNT;
 
 pub fn matrixMxNT(comptime M: comptime_int, comptime N: comptime_int, comptime T: type) type {

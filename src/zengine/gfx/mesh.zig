@@ -1,9 +1,10 @@
 const std = @import("std");
 const assert = std.debug.assert;
-const log = std.log.scoped(.gfx_mesh);
 
-const math = @import("../math.zig");
 const sdl = @import("../ext.zig").sdl;
+const math = @import("../math.zig");
+
+const log = std.log.scoped(.gfx_mesh);
 
 pub fn Mesh(comptime V: type, comptime I: type) type {
     return struct {

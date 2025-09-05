@@ -30,8 +30,8 @@
 const std = @import("std");
 const assert = std.debug.assert;
 
-const types = @import("types.zig");
 const batchNT = @import("scalar.zig").batchNT;
+const types = @import("types.zig");
 const vectorNBT = @import("vector.zig").vectorNBT;
 
 pub fn matrixMxNBT(comptime M: comptime_int, comptime N: comptime_int, comptime NB: comptime_int, comptime T: type) type {
