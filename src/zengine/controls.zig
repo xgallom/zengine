@@ -33,6 +33,10 @@ pub fn Controls(comptime K: type) type {
         pub fn hasAny(self: *const Self) bool {
             return self.control_matrix != 0;
         }
+
+        pub fn reset(self: *Self) void {
+            self.control_matrix = 0;
+        }
     };
 }
 

@@ -4,8 +4,7 @@
 
 const std = @import("std");
 
-pub const allocator = @import("allocator.zig");
-pub const raw_allocator = allocator.raw_sdl_allocator;
+pub const sdl_allocator = @import("sdl_allocator.zig");
 pub const allocators = @import("allocators.zig");
 pub const controls = @import("controls.zig");
 pub const ecs = @import("ecs.zig");

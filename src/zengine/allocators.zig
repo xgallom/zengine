@@ -3,15 +3,16 @@ const assert = std.debug.assert;
 pub const Arena = std.heap.ArenaAllocator;
 const builtin = @import("builtin");
 
-const allocator = @import("allocator.zig");
-const sdl = @import("ext/sdl.zig");
+const log_allocator = @import("log_allocator.zig");
+const sdl_allocator = @import("sdl_allocator.zig");
+const c = @import("ext.zig").c;
 
 const log = std.log.scoped(.alloc);
 
 pub const GPA = std.heap.DebugAllocator(.{
     .enable_memory_limit = true,
 });
-const LogAllocator = allocator.LogAllocator(.debug, .alloc, std.debug.runtime_safety);
+const LogAllocator = log_allocator.LogAllocator(.debug, .alloc, std.debug.runtime_safety);
 
 pub const ArenaKey = enum {
     global,
@@ -27,8 +28,8 @@ const Self = struct {
     arena_states: std.EnumArray(ArenaKey, Arena) = .initUndefined(),
     arenas: std.EnumArray(ArenaKey, std.mem.Allocator) = .initUndefined(),
 
-    fn init(self: *Self, core_allocator: std.mem.Allocator, memory_limit: usize) void {
-        self.core = core_allocator;
+    fn init(self: *Self, memory_limit: usize) void {
+        self.core = sdl_allocator.raw;
 
         self.gpa_state = GPA{
             .backing_allocator = self.core,
@@ -69,9 +70,9 @@ const Self = struct {
 var is_init = false;
 var global_state: Self = undefined;
 
-pub fn init(core_allocator: std.mem.Allocator, memory_limit: usize) !void {
+pub fn init(memory_limit: usize) !void {
     assert(!is_init);
-    global_state.init(core_allocator, memory_limit);
+    global_state.init(memory_limit);
     is_init = true;
 }
 
@@ -90,6 +91,11 @@ pub fn logCapacities() void {
 pub inline fn core() std.mem.Allocator {
     assert(is_init);
     return global_state.core;
+}
+
+pub inline fn sdl() type {
+    assert(is_init);
+    return sdl_allocator;
 }
 
 pub inline fn gpa() std.mem.Allocator {

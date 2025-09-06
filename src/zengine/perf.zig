@@ -50,7 +50,6 @@ const Self = struct {
         gpa.free(self.framerate_buf);
         var iter = self.sections.iterator();
         while (iter.next()) |i| gpa.destroy(i.value_ptr.*);
-        self.sections.unlockPointers();
         self.sections.deinit(gpa);
         self.tree.deinit();
     }
@@ -136,13 +135,20 @@ pub fn commitGraph() !void {
     assert(is_init);
     assert(!is_constructed);
 
+    global_state.sections.lockPointers();
     var iter = global_state.sections.iterator();
     while (iter.next()) |i| try global_state.tree.insert(
         i.key_ptr.*,
         .{ .key = i.key_ptr.*, .value = i.value_ptr.* },
     );
-    global_state.sections.lockPointers();
     is_constructed = true;
+}
+
+pub fn releaseGraph() void {
+    assert(is_init);
+    assert(is_constructed);
+    global_state.sections.unlockPointers();
+    is_constructed = false;
 }
 
 pub fn deinit() void {

@@ -32,7 +32,7 @@ float4 main(Input input) : SV_Target0 {
     const float2 mp = normalizeMousePos(mouse_pos);
     const float2 uv = normalizeUv(input.uv);
     const float2 uvr = normalizeUv(repeat(input.uv, 4));
-    const float2 idx = indexRepeat(input.uv, 4);
+    const float2 idx = repeatIndex(input.uv, 4);
     const float2 uvn = aspect * uv;
     const float2 uvnr = aspect * uvr;
     const float2 uva = abs(uv);

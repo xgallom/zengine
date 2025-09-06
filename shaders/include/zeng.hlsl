@@ -93,7 +93,7 @@ float2 repeat(float2 uv, float times) {
     return frac(uv * times);
 }
 
-float2 indexRepeat(float2 uv, float times) {
+float2 repeatIndex(float2 uv, float times) {
     return floor(uv * times);
 }
 

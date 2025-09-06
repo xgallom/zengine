@@ -14,21 +14,37 @@ pub fn build(b: *std.Build) void {
         .pic = true,
     });
 
+    zengine.addLibraryPath(b.path("SDL/build"));
+    zengine.addIncludePath(b.path("SDL/include"));
     zengine.linkSystemLibrary("SDL3", .{ .needed = true });
+
+    zengine.addLibraryPath(b.path("SDL_shadercross/build"));
+    zengine.addIncludePath(b.path("SDL_shadercross/include"));
+    zengine.linkSystemLibrary("SDL3_shadercross", .{ .needed = true });
+
+    zengine.addLibraryPath(b.path("cimgui/build"));
     zengine.addIncludePath(b.path("cimgui"));
-
-    const exe_mod = b.addModule("main", .{
-        .root_source_file = b.path("src/main.zig"),
-        .target = target,
-        .optimize = optimize,
-        .link_libc = true,
-    });
-
-    exe_mod.addImport("zengine", zengine);
+    zengine.linkSystemLibrary("cimgui", .{ .needed = true });
 
     const lib = b.addLibrary(.{
         .name = "zengine",
         .root_module = zengine,
+        .linkage = .dynamic,
+    });
+
+    // TODO: when -femit-h gets fixed
+    // const install_header = b.addInstallHeaderFile(lib.getEmittedH(), "zengine.h");
+    // b.getInstallStep().dependOn(&install_header.step);
+
+    const exe_mod = b.addModule("main", .{
+        .root_source_file = b.path("src/main.zig"),
+        .imports = &.{
+            .{ .name = "zengine", .module = zengine },
+        },
+        .target = target,
+        .optimize = optimize,
+        .link_libc = true,
+        .pic = true,
     });
 
     const exe = b.addExecutable(.{
@@ -38,19 +54,65 @@ pub fn build(b: *std.Build) void {
 
     b.installArtifact(exe);
 
-    const compile_shaders = b.addExecutable(.{
-        .name = "compile_shaders",
-        .root_module = b.addModule("compile_shaders", .{
-            .root_source_file = b.path("src/compile_shaders.zig"),
-            .target = b.graph.host,
-            .optimize = optimize,
-        }),
+    const install_assembly = b.addInstallBinFile(exe.getEmittedAsm(), "zeng.s");
+    b.getInstallStep().dependOn(&install_assembly.step);
+
+    const compile_shaders_mod = b.addModule("compile_shaders", .{
+        .root_source_file = b.path("src/compile_shaders.zig"),
+        .imports = &.{
+            .{ .name = "zengine", .module = zengine },
+        },
+        .target = b.graph.host,
+        .optimize = optimize,
     });
 
-    // switch (target.result.os.tag) {
-    //     .macos => b.installBinFile("lib/libSDL3.0.dylib", "SDL3.dylib"),
-    //     else => std.zig.fatal("Unsupported target os: {s}", .{@tagName(target.result.os.tag)}),
-    // }
+    const compile_shaders = b.addExecutable(.{
+        .name = "compile-shaders",
+        .root_module = compile_shaders_mod,
+    });
+
+    // TODO: Use instead of hlsl?
+    //
+    // const compile_shader = b.addExecutable(.{
+    //     .name = "shader.frag",
+    //     .root_module = b.addModule("shader", .{
+    //         .root_source_file = b.path("src/shader.zig"),
+    //         .target = b.resolveTargetQuery(.{
+    //             .cpu_arch = .spirv32,
+    //             .cpu_model = .{ .explicit = &std.Target.spirv.cpu.vulkan_v1_2 },
+    //             .os_tag = .vulkan,
+    //             .ofmt = .spirv,
+    //         }),
+    //         .optimize = optimize,
+    //     }),
+    //     .use_llvm = false,
+    //     .use_lld = false,
+    // });
+    //
+    // b.installArtifact(compile_shader);
+
+    switch (target.result.os.tag) {
+        .macos => {
+            // zengine.addRPathSpecial("$ORIGIN/../lib");
+            // b.getInstallStep().dependOn(&b.addInstallLibFile(
+            //     b.path("SDL/build/libSDL3.0.dylib"),
+            //     "libSDL3.0.dylib",
+            // ).step);
+            // b.getInstallStep().dependOn(&b.addInstallLibFile(
+            //     b.path("SDL/build/libSDL3.dylib"),
+            //     "libSDL3.dylib",
+            // ).step);
+            // b.getInstallStep().dependOn(&b.addInstallLibFile(
+            //     b.path("cimgui/build/libcimgui_with_backend.dylib"),
+            //     "libcimgui_with_backend.dylib",
+            // ).step);
+            // b.getInstallStep().dependOn(&b.addInstallLibFile(
+            //     b.path("cimgui/build/libcimgui_with_backend.dylib"),
+            //     "libcimgui.dylib",
+            // ).step);
+        },
+        else => std.process.fatal("Unsupported target os: {s}", .{@tagName(target.result.os.tag)}),
+    }
 
     const compile_shaders_cmd = b.addRunArtifact(compile_shaders);
     compile_shaders_cmd.addArg("--input-dir");
@@ -96,4 +158,8 @@ pub fn build(b: *std.Build) void {
 
     const docs_step = b.step("docs", "Install documentation");
     docs_step.dependOn(&install_docs.step);
+
+    const all_step = b.step("zengine", "Build zengine with docs");
+    all_step.dependOn(b.getInstallStep());
+    all_step.dependOn(&install_docs.step);
 }

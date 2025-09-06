@@ -6,13 +6,13 @@ const std = @import("std");
 const assert = std.debug.assert;
 
 const allocators = @import("allocators.zig");
-const sdl = @import("ext.zig").sdl;
+const c = @import("ext.zig").c;
 
 const log = std.log.scoped(.engine);
 
-window: ?*sdl.SDL_Window = null,
-window_size: sdl.SDL_Point = .{},
-mouse_pos: sdl.SDL_FPoint = .{},
+window: ?*c.SDL_Window = null,
+window_size: c.SDL_Point = .{},
+mouse_pos: c.SDL_FPoint = .{},
 
 const Self = @This();
 
@@ -22,8 +22,8 @@ const InitError = error{
 };
 
 pub fn init() !*Self {
-    if (!sdl.SDL_Init(sdl.SDL_INIT_VIDEO)) {
-        log.err("failed init: {s}", .{sdl.SDL_GetError()});
+    if (!c.SDL_Init(c.SDL_INIT_VIDEO)) {
+        log.err("failed init: {s}", .{c.SDL_GetError()});
         return InitError.InitFailed;
     }
 
@@ -33,21 +33,21 @@ pub fn init() !*Self {
 }
 
 pub fn initWindow(self: *Self) !void {
-    const window = sdl.SDL_CreateWindow(
+    const window = c.SDL_CreateWindow(
         "zeng - Zengine 0.1.0",
         1920,
         1080,
-        0,
+        c.SDL_WINDOW_HIGH_PIXEL_DENSITY,
     );
     if (window == null) {
-        log.err("failed creating window: {s}", .{sdl.SDL_GetError()});
+        log.err("failed creating window: {s}", .{c.SDL_GetError()});
         return InitError.WindowFailed;
     }
-    errdefer sdl.SDL_DestroyWindow(window);
+    errdefer c.SDL_DestroyWindow(window);
 
-    var window_size = sdl.SDL_Point{};
-    if (!sdl.SDL_GetWindowSizeInPixels(window, &window_size.x, &window_size.y)) {
-        log.err("failed obtaining window size: {s}", .{sdl.SDL_GetError()});
+    var window_size = c.SDL_Point{};
+    if (!c.SDL_GetWindowSizeInPixels(window, &window_size.x, &window_size.y)) {
+        log.err("failed obtaining window size: {s}", .{c.SDL_GetError()});
         return InitError.WindowFailed;
     }
 
@@ -56,7 +56,7 @@ pub fn initWindow(self: *Self) !void {
 }
 
 pub fn deinit(self: *Self) void {
-    defer sdl.SDL_Quit();
-    if (self.window != null) sdl.SDL_DestroyWindow(self.window);
+    defer c.SDL_Quit();
+    if (self.window != null) c.SDL_DestroyWindow(self.window);
     self.* = .{};
 }

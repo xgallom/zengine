@@ -5,10 +5,10 @@
 const std = @import("std");
 const assert = std.debug.assert;
 
-const sdl = @import("ext.zig").sdl;
+const c = @import("ext.zig").c;
 
 pub inline fn getNow() u64 {
-    return sdl.SDL_GetTicks();
+    return c.SDL_GetTicks();
 }
 
 pub fn getMS() Time {
@@ -16,7 +16,7 @@ pub fn getMS() Time {
 }
 
 pub inline fn getNano() u64 {
-    return sdl.SDL_GetTicksNS();
+    return c.SDL_GetTicksNS();
 }
 
 pub fn getNS() Time {

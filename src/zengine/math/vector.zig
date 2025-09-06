@@ -122,6 +122,12 @@ pub fn vectorNT(comptime N: comptime_int, comptime T: type) type {
             mulSub(direction, translation, multiplier);
         }
 
+        pub fn lookAt(result: *Self, position: *const Self, target: *const Self) void {
+            result.* = target.*;
+            sub(result, position);
+            normalize(result);
+        }
+
         pub fn cross(result: *Self, lhs: *const Self, rhs: *const Self) void {
             comptime assert(N == 3);
             result[0] = lhs[1] * rhs[2] - lhs[2] * rhs[1];
