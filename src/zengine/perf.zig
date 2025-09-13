@@ -226,7 +226,7 @@ pub inline fn sectionsTree() *const SectionsTree {
 }
 
 pub fn sections(comptime this: type, comptime labels: []const @TypeOf(.enum_literal)) type {
-    var label_names: []const []const u8 = &[_][]const u8{};
+    comptime var label_names: []const []const u8 = &[_][]const u8{};
     inline for (labels) |label| label_names = label_names ++ [_][]const u8{@tagName(label)};
     return TaggedSections(@typeName(this), label_names);
 }
@@ -234,8 +234,8 @@ pub fn sections(comptime this: type, comptime labels: []const @TypeOf(.enum_lite
 pub fn TaggedSections(comptime this: []const u8, comptime labels: []const []const u8) type {
     const root = TaggedSection(this);
 
-    var struct_fields: []const std.builtin.Type.StructField = &[_]std.builtin.Type.StructField{};
-    var enum_fields: []const std.builtin.Type.EnumField = &[_]std.builtin.Type.EnumField{};
+    comptime var struct_fields: []const std.builtin.Type.StructField = &[_]std.builtin.Type.StructField{};
+    comptime var enum_fields: []const std.builtin.Type.EnumField = &[_]std.builtin.Type.EnumField{};
     var idx = 0;
     inline for (labels) |label| {
         const SectionType = root.subTag(label);
@@ -314,7 +314,7 @@ pub fn TaggedSection(comptime _tag: []const u8) type {
         }
 
         pub fn sections(comptime sub_labels: []const @TypeOf(.enum_literal)) type {
-            var label_names: []const []const u8 = &[_][]const u8{};
+            comptime var label_names: []const []const u8 = &[_][]const u8{};
             inline for (sub_labels) |sub_label| label_names = label_names ++ [_][]const u8{@tagName(sub_label)};
             return TaggedSections(tag, label_names);
         }

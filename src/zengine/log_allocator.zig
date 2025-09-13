@@ -21,6 +21,7 @@ pub fn LogAllocator(
 
     return struct {
         backing_allocator: Allocator,
+        alloc_callback: ?*const fn (len: usize, alignment: Alignment) void,
 
         const vtable = Allocator.VTable{
             .alloc = alloc,
@@ -47,6 +48,7 @@ pub fn LogAllocator(
             const self: *Self = @ptrCast(@alignCast(ptr));
             const result = self.backing_allocator.rawAlloc(len, alignment, ret_addr);
             logFn("alloc[{}]@{} {}", .{ len, alignment, result != null });
+            if (self.alloc_callback) |cb| cb(len, alignment);
             return result;
         }
 

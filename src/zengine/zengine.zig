@@ -18,6 +18,7 @@ pub const perf = @import("perf.zig");
 const RadixTree = @import("radix_tree.zig").RadixTree;
 pub const scheduler = @import("scheduler.zig");
 pub const time = @import("time.zig");
+pub const ui = @import("ui.zig");
 
 test {
     std.testing.refAllDecls(@This());

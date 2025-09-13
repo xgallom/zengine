@@ -55,8 +55,8 @@ pub const CameraControls = Controls(enum(u32) {
     y_neg = 0x0400,
     y_pos = 0x0800,
 
-    fov_neg = 0x1000,
-    fov_pos = 0x2000,
+    scale_neg = 0x1000,
+    scale_pos = 0x2000,
 
     first_custom = 0x4000,
     last_custom = 0x8000_0000,

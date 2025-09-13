@@ -21,6 +21,48 @@ pub fn vectorNT(comptime N: comptime_int, comptime T: type) type {
         pub const one = splat(scalar.one);
         pub const neg_one = splat(scalar.neg_one);
 
+        pub const Map = struct {
+            self: *Self,
+
+            pub inline fn x(self: Map) *Scalar {
+                return &self.self[@intFromEnum(types.Axis4.x)];
+            }
+            pub inline fn y(self: Map) *Scalar {
+                return &self.self[@intFromEnum(types.Axis4.y)];
+            }
+            pub inline fn z(self: Map) *Scalar {
+                return &self.self[@intFromEnum(types.Axis4.z)];
+            }
+            pub inline fn w(self: Map) *Scalar {
+                return &self.self[@intFromEnum(types.Axis4.w)];
+            }
+        };
+
+        pub const CMap = struct {
+            self: *const Self,
+
+            pub inline fn x(self: CMap) Scalar {
+                return self.self[@intFromEnum(types.Axis4.x)];
+            }
+            pub inline fn y(self: CMap) Scalar {
+                return self.self[@intFromEnum(types.Axis4.y)];
+            }
+            pub inline fn z(self: CMap) Scalar {
+                return self.self[@intFromEnum(types.Axis4.z)];
+            }
+            pub inline fn w(self: CMap) Scalar {
+                return self.self[@intFromEnum(types.Axis4.w)];
+            }
+        };
+
+        pub inline fn map(self: *Self) Map {
+            return .{ .self = self };
+        }
+
+        pub inline fn cmap(self: *const Self) CMap {
+            return .{ .self = self };
+        }
+
         pub fn splat(value: Scalar) Self {
             var result: Self = undefined;
             for (0..len) |n| result[n] = value;

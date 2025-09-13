@@ -184,7 +184,7 @@ pub fn vectorNBT(comptime N: comptime_int, comptime NB: comptime_int, comptime T
 
         /// Y = L x R
         pub fn cross(result: *Self, lhs: *const CSelf, rhs: *const CSelf) void {
-            if (N == 3) {} else unreachable;
+            if (N == 3) {} else @compileError("Cross product requires 3 dimensions");
             result[0].* = lhs[1].* * rhs[2].* - lhs[2].* * rhs[1].*;
             result[1].* = lhs[2].* * rhs[0].* - lhs[0].* * rhs[2].*;
             result[2].* = lhs[0].* * rhs[1].* - lhs[1].* * rhs[0].*;

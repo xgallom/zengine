@@ -6,6 +6,7 @@ const std = @import("std");
 
 pub const batch = @import("math/batch.zig");
 pub const matrixMxNT = @import("math/matrix.zig").matrixMxNT;
+pub const quatT = @import("math/quat.zig").quatT;
 const types = @import("math/types.zig");
 pub const Scalar = types.Scalar;
 pub const Scalar64 = types.Scalar64;
@@ -27,7 +28,7 @@ pub const Vertex = types.Vertex;
 pub const Position = types.Position;
 pub const Displacement = types.Displacement;
 pub const Euler = types.Euler;
-pub const Quaternion = types.Quaternion;
+pub const Quat = types.Quat;
 pub const Index = types.Index;
 pub const FaceIndex = types.FaceIndex;
 pub const LineFaceIndex = types.LineFaceIndex;
@@ -47,6 +48,8 @@ pub const matrix3x3 = matrixMxNT(3, 3, types.Scalar);
 pub const matrix3x3f64 = matrixMxNT(3, 3, types.Scalar64);
 pub const matrix4x4 = matrixMxNT(4, 4, types.Scalar);
 pub const matrix4x4f64 = matrixMxNT(4, 4, types.Scalar64);
+
+pub const quat = quatT(types.Scalar);
 
 pub fn vector2T(comptime T: type) type {
     return vectorNT(2, T);

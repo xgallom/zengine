@@ -12,6 +12,7 @@ const c = zengine.ext.c;
 const scheduler = zengine.scheduler;
 const time = zengine.time;
 const Engine = zengine.Engine;
+const UI = zengine.ui.UI;
 const RadixTree = zengine.RadixTree;
 
 const log = std.log.scoped(.main);
@@ -58,6 +59,8 @@ pub fn main() !void {
     const renderer = try gfx.Renderer.init(engine);
     defer renderer.deinit(engine);
 
+    const ui = try UI.init(engine, renderer);
+    defer ui.deinit();
     log.info("window size: {}", .{engine.window_size});
 
     var task_list = try scheduler.TaskScheduler.init(allocators.gpa());
@@ -72,28 +75,27 @@ pub fn main() !void {
     try perf.commitGraph();
     defer perf.releaseGraph();
 
-    const main_scale = c.SDL_GetDisplayContentScale(c.SDL_GetPrimaryDisplay());
-    _ = c.igCreateContext(null);
-    const io = c.igGetIO_Nil().?;
-    io.*.ConfigFlags |= c.ImGuiConfigFlags_NavEnableKeyboard;
-    io.*.ConfigFlags |= c.ImGuiConfigFlags_DockingEnable;
-    c.igStyleColorsDark(null);
-    const style = c.igGetStyle().?;
-    c.ImGuiStyle_ScaleAllSizes(style, main_scale);
-    style.*.FontScaleDpi = main_scale;
-    io.*.ConfigDpiScaleFonts = true;
-    io.*.ConfigDpiScaleViewports = true;
+    var property_editor = zengine.ui.PropertyEditorWindow.init(allocators.gpa());
+    defer property_editor.deinit();
+    var editor_open = true;
 
-    _ = c.ImGui_ImplSDL3_InitForSDLGPU(engine.window);
-    var init_info: c.ImGui_ImplSDLGPU3_InitInfo = .{
-        .Device = renderer.gpu_device,
-        .ColorTargetFormat = c.SDL_GetGPUSwapchainTextureFormat(renderer.gpu_device, engine.window),
-        .MSAASamples = c.SDL_GPU_SAMPLECOUNT_1,
-    };
-    _ = c.ImGui_ImplSDLGPU3_Init(&init_info);
+    const gfx_node = try property_editor.appendNode(@typeName(gfx), "gfx");
+    try renderer.addToPropertyEditor(&property_editor, gfx_node);
+
     sections.sub(.init).end();
 
-    var show_demo_window = false;
+    const a = math.quat.init(std.math.degreesToRadians(90), &.{ 1, 0, 0 });
+    const b = math.quat.init(std.math.degreesToRadians(90), &.{ 0, 1, 0 });
+
+    var result: math.quat.Self = undefined;
+    var x: math.Quat = undefined;
+    math.quat.mulInto(&x, &b, &a);
+    math.quat.apply(&result, &x, &.{ 0, 1, 0, 1 });
+    // math.quat.apply(&result, &b, &x);
+    log.info("a: {any}", .{a});
+    log.info("b: {any}", .{b});
+    log.info("r: {any}", .{result});
+
     return mainloop: while (true) {
         const section = sections.sub(.frame);
         section.begin();
@@ -112,17 +114,18 @@ pub fn main() !void {
         section.sub(.init).end();
         section.sub(.input).begin();
 
-        if (show_demo_window) controls.reset();
+        if (ui.show_ui) controls.reset();
 
         var sdl_event: c.SDL_Event = undefined;
         while (c.SDL_PollEvent(&sdl_event)) {
-            if (show_demo_window and c.ImGui_ImplSDL3_ProcessEvent(&sdl_event)) {
+            if (ui.show_ui and c.ImGui_ImplSDL3_ProcessEvent(&sdl_event)) {
                 switch (sdl_event.type) {
                     c.SDL_EVENT_QUIT => break :mainloop,
                     c.SDL_EVENT_KEY_DOWN => {
                         if (sdl_event.key.repeat) break;
                         switch (sdl_event.key.key) {
-                            c.SDLK_1 => show_demo_window = !show_demo_window,
+                            c.SDLK_1 => ui.show_ui = !ui.show_ui,
+                            c.SDLK_2 => editor_open = !editor_open,
                             c.SDLK_ESCAPE => break :mainloop,
                             else => {},
                         }
@@ -149,13 +152,15 @@ pub fn main() !void {
                         c.SDLK_X => controls.set(.y_neg),
                         c.SDLK_SPACE => controls.set(.y_pos),
 
-                        c.SDLK_K => controls.set(.fov_neg),
-                        c.SDLK_L => controls.set(.fov_pos),
+                        c.SDLK_K => controls.set(.scale_neg),
+                        c.SDLK_L => controls.set(.scale_pos),
 
                         c.SDLK_LEFTBRACKET => controls.set(.custom(0)),
                         c.SDLK_RIGHTBRACKET => controls.set(.custom(1)),
+                        c.SDLK_0 => controls.set(.custom(2)),
 
-                        c.SDLK_1 => show_demo_window = !show_demo_window,
+                        c.SDLK_1 => ui.show_ui = !ui.show_ui,
+                        c.SDLK_2 => editor_open = !editor_open,
                         c.SDLK_ESCAPE => break :mainloop,
                         else => {},
                     }
@@ -174,17 +179,12 @@ pub fn main() !void {
                         c.SDLK_X => controls.clear(.y_neg),
                         c.SDLK_SPACE => controls.clear(.y_pos),
 
-                        c.SDLK_K => controls.clear(.fov_neg),
-                        c.SDLK_L => controls.clear(.fov_pos),
+                        c.SDLK_K => controls.clear(.scale_neg),
+                        c.SDLK_L => controls.clear(.scale_pos),
 
-                        c.SDLK_LEFTBRACKET => {
-                            controls.clear(.custom(0));
-                            // speed_change_timer.reset();
-                        },
-                        c.SDLK_RIGHTBRACKET => {
-                            controls.clear(.custom(1));
-                            // speed_change_timer.reset();
-                        },
+                        c.SDLK_LEFTBRACKET => controls.clear(.custom(0)),
+                        c.SDLK_RIGHTBRACKET => controls.clear(.custom(1)),
+                        c.SDLK_0 => controls.clear(.custom(2)),
 
                         else => {},
                     }
@@ -202,71 +202,96 @@ pub fn main() !void {
         section.sub(.input).end();
         section.sub(.update).begin();
 
-        var coordinates: math.vector3.Coords = undefined;
-        math.vector3.localCoords(&coordinates, &renderer.camera_direction, &renderer.camera_up);
+        var coords: math.vector3.Coords = undefined;
+        renderer.camera.coords(&coords);
 
         const delta = global.timeSinceLastFrame().toFloat().toValue32(.s);
         const rotation_speed = delta;
         const translation_speed = 20 * delta * speed_scale;
-        const fov_speed = 15 * delta;
+        const scale_speed = 15 * delta;
 
-        log.debug("coords_norm: {any}", .{coordinates});
+        log.debug("coords_norm: {any}", .{coords});
 
         // math.vector2.localCoords(&coordinates2, &.{ 0, 1 }, &.{ 1, 0 });
 
         if (controls.has(.yaw_neg))
-            math.vector3.rotateDirectionScale(&renderer.camera_direction, &coordinates.x, -rotation_speed);
+            math.vector3.rotateDirectionScale(&renderer.camera.direction, &coords.x, -rotation_speed);
         if (controls.has(.yaw_pos))
-            math.vector3.rotateDirectionScale(&renderer.camera_direction, &coordinates.x, rotation_speed);
+            math.vector3.rotateDirectionScale(&renderer.camera.direction, &coords.x, rotation_speed);
 
         if (controls.has(.pitch_neg))
-            math.vector3.rotateDirectionScale(&renderer.camera_direction, &coordinates.y, -rotation_speed);
+            math.vector3.rotateDirectionScale(&renderer.camera.direction, &coords.y, -rotation_speed);
         if (controls.has(.pitch_pos))
-            math.vector3.rotateDirectionScale(&renderer.camera_direction, &coordinates.y, rotation_speed);
+            math.vector3.rotateDirectionScale(&renderer.camera.direction, &coords.y, rotation_speed);
 
         // if (controls.has(.roll_neg))
-        //     math.vector3.rotateDirectionScale(&renderer.camera_up, &coordinates.x, -rotation_speed);
+        //     math.vector3.rotateDirectionScale(&renderer.camera.up, &coordinates.x, -rotation_speed);
         // if (controls.has(.roll_pos))
-        //     math.vector3.rotateDirectionScale(&renderer.camera_up, &coordinates.x, rotation_speed);
+        //     math.vector3.rotateDirectionScale(&renderer.camera.up, &coordinates.x, rotation_speed);
 
         if (controls.has(.x_neg))
-            math.vector3.translateScale(&renderer.camera_position, &coordinates.x, -translation_speed);
+            math.vector3.translateScale(&renderer.camera.position, &coords.x, -translation_speed);
         if (controls.has(.x_pos))
-            math.vector3.translateScale(&renderer.camera_position, &coordinates.x, translation_speed);
+            math.vector3.translateScale(&renderer.camera.position, &coords.x, translation_speed);
 
         if (controls.has(.y_neg))
-            math.vector3.translateScale(&renderer.camera_position, &renderer.camera_up, -translation_speed);
+            math.vector3.translateScale(&renderer.camera.position, &renderer.camera.up, -translation_speed);
         if (controls.has(.y_pos))
-            math.vector3.translateScale(&renderer.camera_position, &renderer.camera_up, translation_speed);
+            math.vector3.translateScale(&renderer.camera.position, &renderer.camera.up, translation_speed);
 
         if (controls.has(.z_neg))
-            math.vector3.translateDirectionScale(&renderer.camera_position, &coordinates.z, -translation_speed);
+            math.vector3.translateDirectionScale(&renderer.camera.position, &coords.z, -translation_speed);
         if (controls.has(.z_pos))
-            math.vector3.translateDirectionScale(&renderer.camera_position, &coordinates.z, translation_speed);
+            math.vector3.translateDirectionScale(&renderer.camera.position, &coords.z, translation_speed);
 
-        if (controls.has(.fov_neg))
-            renderer.fov -= fov_speed;
-        if (controls.has(.fov_pos))
-            renderer.fov += fov_speed;
+        {
+            const scale = switch (renderer.camera.kind) {
+                .ortographic => &renderer.camera.orto_scale,
+                .perspective => &renderer.camera.fov,
+            };
 
-        if (controls.has(.custom(0))) {
+            if (controls.has(.scale_neg))
+                scale.* -= scale_speed;
+            if (controls.has(.scale_pos))
+                scale.* += scale_speed;
+        }
+
+        if (controls.has(.custom(0)))
             speed_scale -= 5 * delta;
-            // if (speed_change_timer.updated(now)) speed_scale /= 2;
-        } else if (controls.has(.custom(1))) {
+        if (controls.has(.custom(1)))
             speed_scale += 5 * delta;
-            // if (speed_change_timer.updated(now)) speed_scale *= 2;
-        }
-        speed_change_timer.update(now);
+        _ = &speed_change_timer;
+        // speed_change_timer.update(now);
 
-        if (controls.hasAny()) {
-            math.vector3.normalize(&renderer.camera_direction);
-            renderer.fov = std.math.clamp(renderer.fov, 35, 130);
+        if (controls.has(.custom(2))) {
+            renderer.camera.kind = switch (renderer.camera.kind) {
+                .ortographic => .perspective,
+                .perspective => .ortographic,
+            };
+            controls.clear(.custom(2));
         }
+
+        math.vector3.normalize(&renderer.camera.direction);
+        renderer.camera.orto_scale = std.math.clamp(
+            renderer.camera.orto_scale,
+            gfx.Camera.orto_scale_min,
+            gfx.Camera.orto_scale_max,
+        );
+        renderer.camera.fov = std.math.clamp(
+            renderer.camera.fov,
+            gfx.Camera.fov_min,
+            gfx.Camera.fov_max,
+        );
 
         section.sub(.update).end();
         section.sub(.render).begin();
 
-        _ = try renderer.draw(engine, &show_demo_window);
+        _ = try renderer.draw(engine, ui);
+
+        // if (ui.show_ui) c.igShowDemoWindow(&ui.show_ui);
+        ui.draw(property_editor.element(), &editor_open);
+
+        _ = try renderer.endDraw(engine, ui);
 
         section.sub(.render).end();
 

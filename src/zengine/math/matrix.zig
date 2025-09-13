@@ -192,7 +192,7 @@ pub fn matrixMxNT(comptime M: comptime_int, comptime N: comptime_int, comptime T
         const vector3 = vectorNT(3, T);
 
         pub fn worldTransform(result: *Self) void {
-            if (rows == 4 and cols == 4) {} else unreachable;
+            if (rows == 4 and cols == 4) {} else @compileError("Wrong matrix dimensions");
             result.* = .{
                 .{ scalar.one, scalar.zero, scalar.zero, scalar.zero },
                 .{ scalar.zero, scalar.one, scalar.zero, scalar.zero },
@@ -201,9 +201,35 @@ pub fn matrixMxNT(comptime M: comptime_int, comptime N: comptime_int, comptime T
             };
         }
 
-        pub fn perspectiveFov(result: *Self, field_of_view: Scalar, width: Scalar, height: Scalar, near_plane: Scalar, far_plane: Scalar) void {
-            if (rows == 4 and cols == 4) {} else unreachable;
-            const y = scalar.one / @tan(scalar.init(0.5) * field_of_view);
+        pub fn ortographicSides(result: *Self, top: Scalar, right: Scalar, bottom: Scalar, left: Scalar, near_plane: Scalar, far_plane: Scalar) void {
+            if (rows == 4 and cols == 4) {} else @compileError("Wrong matrix dimensions");
+            const x = right - left;
+            const y = top - bottom;
+
+            result.* = .{
+                .{ 2 / x, scalar.zero, scalar.zero, -(right + left) / x },
+                .{ scalar.zero, 2 / y, scalar.zero, -(top + bottom) / y },
+                .{ scalar.zero, scalar.zero, 1 / (near_plane - far_plane), near_plane / (near_plane - far_plane) },
+                .{ scalar.zero, scalar.zero, scalar.zero, scalar.one },
+            };
+        }
+
+        pub fn ortographicScale(result: *Self, orto_scale: Scalar, width: Scalar, height: Scalar, near_plane: Scalar, far_plane: Scalar) void {
+            if (rows == 4 and cols == 4) {} else @compileError("Wrong matrix dimensions");
+            const y: Scalar = orto_scale;
+            const x = y * width / height;
+
+            result.* = .{
+                .{ 2 / x, scalar.zero, scalar.zero, scalar.zero },
+                .{ scalar.zero, 2 / y, scalar.zero, scalar.zero },
+                .{ scalar.zero, scalar.zero, 1 / (near_plane - far_plane), near_plane / (near_plane - far_plane) },
+                .{ scalar.zero, scalar.zero, scalar.zero, scalar.one },
+            };
+        }
+
+        pub fn perspectiveFov(result: *Self, fov: Scalar, width: Scalar, height: Scalar, near_plane: Scalar, far_plane: Scalar) void {
+            if (rows == 4 and cols == 4) {} else @compileError("Wrong matrix dimensions");
+            const y = scalar.one / @tan(scalar.init(0.5) * fov);
             const x = y * height / width;
 
             result.* = .{
@@ -215,7 +241,7 @@ pub fn matrixMxNT(comptime M: comptime_int, comptime N: comptime_int, comptime T
         }
 
         pub fn camera(result: *Self, position: *const Vector3, direction: *const Vector3, up: *const Vector3) void {
-            if (rows == 4 and cols == 4) {} else unreachable;
+            if (rows == 4 and cols == 4) {} else @compileError("Wrong matrix dimensions");
             var coordinates: vector3.Coords = undefined;
             vector3.cameraCoords(&coordinates, direction, up);
 
@@ -232,21 +258,21 @@ pub fn matrixMxNT(comptime M: comptime_int, comptime N: comptime_int, comptime T
         }
 
         pub fn lookAt(result: *Self, position: *const Vector3, target: *const Vector3, up: *const Vector3) void {
-            if (rows == 4 and cols == 4) {} else unreachable;
+            if (rows == 4 and cols == 4) {} else @compileError("Wrong matrix dimensions");
             var direction = target.*;
             vector3.sub(&direction, position);
             camera(result, position, &direction, up);
         }
 
         pub fn scaleXYZ(operand: *Self, scales: *const Vector3) void {
-            if (rows == 4 and cols == 4) {} else unreachable;
+            if (rows == 4 and cols == 4) {} else @compileError("Wrong matrix dimensions");
             const operation = scalingXYZ(scales);
             const input = operand.*;
             dot(operand, &operation, &input);
         }
 
         pub fn scalingXYZ(scales: *const Vector3) Self {
-            if (rows == 4 and cols == 4) {} else unreachable;
+            if (rows == 4 and cols == 4) {} else @compileError("Wrong matrix dimensions");
             return .{
                 .{ scales[0], scalar.zero, scalar.zero, scalar.zero },
                 .{ scalar.zero, scales[1], scalar.zero, scalar.zero },
@@ -256,7 +282,7 @@ pub fn matrixMxNT(comptime M: comptime_int, comptime N: comptime_int, comptime T
         }
 
         pub fn rotateEuler(operand: *Self, rotation: *const types.Euler, order: types.EulerOrder) void {
-            if (rows == 4 and cols == 4) {} else unreachable;
+            if (rows == 4 and cols == 4) {} else @compileError("Wrong matrix dimensions");
             const operations: [types.Axis3.len]Self = .{
                 // x
                 .{
@@ -287,21 +313,21 @@ pub fn matrixMxNT(comptime M: comptime_int, comptime N: comptime_int, comptime T
         }
 
         pub fn rotationEuler(rotation: *const types.Euler, order: types.EulerOrder) Self {
-            if (rows == 4 and cols == 4) {} else unreachable;
+            if (rows == 4 and cols == 4) {} else @compileError("Wrong matrix dimensions");
             var result = identity;
             rotateEuler(&result, rotation, order);
             return result;
         }
 
         pub fn translateXYZ(operand: *Self, translation: *const Vector3) void {
-            if (rows == 4 and cols == 4) {} else unreachable;
+            if (rows == 4 and cols == 4) {} else @compileError("Wrong matrix dimensions");
             const operation = translationXYZ(translation);
             const input = operand.*;
             dot(operand, &operation, &input);
         }
 
         pub fn translationXYZ(translation: *const Vector3) Self {
-            if (rows == 4 and cols == 4) {} else unreachable;
+            if (rows == 4 and cols == 4) {} else @compileError("Wrong matrix dimensions");
             return .{
                 .{ scalar.one, scalar.zero, scalar.zero, translation[0] },
                 .{ scalar.zero, scalar.one, scalar.zero, translation[1] },

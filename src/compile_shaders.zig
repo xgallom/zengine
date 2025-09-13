@@ -6,6 +6,7 @@ const allocators = zengine.allocators;
 const c = zengine.ext.c;
 
 const log = std.log.scoped(.compile_shaders);
+const sections = zengine.perf.sections(@This(), &.{ .init, .read, .compile, .write, .install });
 
 pub const std_options: std.Options = .{
     .log_level = .info,
@@ -123,6 +124,10 @@ pub fn main() !void {
     try allocators.init(1_000_000);
     defer allocators.deinit();
 
+    try zengine.perf.init();
+    defer zengine.perf.deinit();
+    try sections.register();
+
     const arguments = try parseArguments(allocators.global()) orelse return;
 
     if (!c.SDL_ShaderCross_Init()) fatal(
@@ -155,17 +160,22 @@ pub fn main() !void {
         arguments.input_directory,
         .{ .access_sub_paths = true, .iterate = true },
     );
+    defer input_dir.close();
 
     var output_dir = try std.fs.cwd().openDir(
         arguments.output_directory,
         .{ .access_sub_paths = true },
     );
+    defer output_dir.close();
 
     log.info("starting shader compilation", .{});
     var timer = try std.time.Timer.start();
     defer log.info("shader compilation took {D}", .{timer.lap()});
 
     var iter = input_dir.iterate();
+    // var file_list: std.ArrayList([]const u8) = .init();
+    // while (try iter.next()) |file| try file_list.append(file);
+
     while (try iter.next()) |file| {
         defer allocators.scratchRelease();
 
@@ -225,7 +235,7 @@ pub fn main() !void {
             .include_dir = if (arguments.include_directory) |dir| dir.ptr else null,
             .shader_stage = @intFromEnum(shader_stage),
             .enable_debug = std.debug.runtime_safety,
-            .name = (try std.mem.concatWithSentinel(allocators.scratch(), u8, &.{input_filename}, 0)).ptr,
+            .name = (try allocators.scratch().dupeZ(u8, input_filename)).ptr,
         };
 
         {
@@ -260,12 +270,7 @@ pub fn main() !void {
             .entrypoint = "main",
             .shader_stage = @intFromEnum(shader_stage),
             .enable_debug = std.debug.runtime_safety,
-            .name = (try std.mem.concatWithSentinel(
-                allocators.scratch(),
-                u8,
-                &.{output_filenames.get(.spirv)},
-                0,
-            )).ptr,
+            .name = (try allocators.scratch().dupeZ(u8, output_filenames.get(.spirv))).ptr,
         };
 
         {
@@ -334,7 +339,7 @@ fn parseArguments(allocator: std.mem.Allocator) !?Arguments {
                 n += 1;
                 if (n >= args.len) fatal("expected argument after '{s}'", .{arg});
                 if (include_directory != null) fatal("duplicated argument {s}", .{arg});
-                include_directory = try std.mem.concatWithSentinel(allocator, u8, &.{args[n]}, 0);
+                include_directory = try allocator.dupeZ(u8, args[n]);
             } else {
                 fatal("unrecognized argument: {s}", .{arg});
             }
@@ -357,12 +362,12 @@ fn readInputFileZ(allocator: std.mem.Allocator, filename: []const u8, dir: *std.
     defer allocators.scratch().free(reader_buf);
 
     var reader = file.reader(reader_buf);
-    const buf = try reader.interface.readAlloc(allocator, try reader.getSize());
+    const size = try reader.getSize();
+    const buf = try allocator.allocSentinel(u8, size, 0);
     errdefer allocator.free(buf);
 
-    const result = try allocator.realloc(buf, buf.len + 1);
-    result[buf.len] = 0;
-    return result[0..buf.len :0];
+    try reader.interface.readSliceAll(buf);
+    return buf;
 }
 
 fn writeOutputFile(data: []const u8, filename: []const u8, dir: *std.fs.Dir) !void {

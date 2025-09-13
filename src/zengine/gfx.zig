@@ -2,6 +2,7 @@
 //! The zengine graphics module
 //!
 
+pub const Camera = @import("gfx/Camera.zig");
 pub const Mesh = @import("gfx/mesh.zig").Mesh;
 pub const LineMesh = @import("gfx/mesh.zig").LineMesh;
 pub const TriangleMesh = @import("gfx/mesh.zig").TriangleMesh;

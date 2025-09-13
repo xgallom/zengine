@@ -15,6 +15,8 @@ const LineMesh = @import("mesh.zig").LineMesh;
 const obj_loader = @import("obj_loader.zig");
 const shader = @import("shader.zig");
 const TriangleMesh = @import("mesh.zig").TriangleMesh;
+const Camera = @import("Camera.zig");
+const ui_mod = @import("../ui.zig");
 
 const log = std.log.scoped(.gfx_renderer);
 pub const sections = perf.sections(@This(), &.{ .init, .draw });
@@ -28,14 +30,10 @@ full_graphics_pipeline: ?*c.SDL_GPUGraphicsPipeline,
 
 mesh: TriangleMesh,
 origin_mesh: LineMesh,
-viewport: c.SDL_GPUViewport,
 texture: ?*c.SDL_GPUTexture,
 stencil_texture: ?*c.SDL_GPUTexture,
 sampler: ?*c.SDL_GPUSampler,
-camera_position: math.Vector3,
-camera_direction: math.Vector3,
-camera_up: math.Vector3,
-fov: math.Scalar,
+camera: Camera,
 
 pub const InitError = error{
     GpuFailed,
@@ -411,22 +409,12 @@ pub fn init(engine: *const Engine) InitError!*Self {
         return InitError.CommandBufferFailed;
     }
 
-    // DEAD_CODE
-    const viewport = c.SDL_GPUViewport{
-        .x = -1,
-        .y = -1,
-        .w = 2,
-        .h = 2,
-        .min_depth = 0,
-        .max_depth = 1,
-    };
-
-    var camera_position: math.Vector3 = .{ -1, 1.1, -1.2 };
+    // var camera_position: math.Vector3 = .{ -1, 1.1, -1.2 };
+    var camera_position: math.Vector3 = .{ -1, 0, 0 };
     var camera_direction: math.Vector3 = undefined;
-    const fov = 130.0;
     const target = math.vector3.zero;
 
-    math.vector3.scale(&camera_position, 5000);
+    math.vector3.scale(&camera_position, 5);
     math.vector3.lookAt(&camera_direction, &camera_position, &target);
 
     const result = try allocators.global().create(Self);
@@ -437,14 +425,14 @@ pub fn init(engine: *const Engine) InitError!*Self {
         .full_graphics_pipeline = full_graphics_pipeline,
         .mesh = mesh,
         .origin_mesh = origin_mesh,
-        .viewport = viewport,
         .texture = texture,
         .stencil_texture = stencil_texture,
         .sampler = sampler,
-        .camera_position = camera_position,
-        .camera_direction = camera_direction,
-        .camera_up = comptime global.cameraUp(),
-        .fov = fov,
+        .camera = .{
+            .kind = .perspective,
+            .position = camera_position,
+            .direction = camera_direction,
+        },
     };
     return result;
 }
@@ -462,7 +450,7 @@ pub fn deinit(self: *Self, engine: *const Engine) void {
     defer c.SDL_ReleaseGPUTexture(self.gpu_device, self.stencil_texture);
 }
 
-pub fn draw(self: *const Self, engine: *const Engine, show_demo_window: *bool) DrawError!bool {
+pub fn draw(self: *const Self, engine: *const Engine, ui_ptr: ?*ui_mod.UI) DrawError!bool {
     const section = sections.sub(.draw);
     section.begin();
     defer section.end();
@@ -470,13 +458,27 @@ pub fn draw(self: *const Self, engine: *const Engine, show_demo_window: *bool) D
     section.sub(.cow1).beginPaused();
     section.sub(.cow2).beginPaused();
     section.sub(.cow3).beginPaused();
-    defer section.sub(.cow1).end();
-    defer section.sub(.cow2).end();
-    defer section.sub(.cow3).end();
 
     section.sub(.init).begin();
 
     log.debug("draw", .{});
+
+    if (ui_ptr) |ui| {
+        ui.beginDraw();
+        return true;
+    } else {
+        return self.endDraw(engine, ui_ptr);
+    }
+}
+
+pub fn endDraw(self: *const Self, engine: *const Engine, ui_ptr: ?*ui_mod.UI) DrawError!bool {
+    const section = sections.sub(.draw);
+    defer section.sub(.cow1).end();
+    defer section.sub(.cow2).end();
+    defer section.sub(.cow3).end();
+
+    if (ui_ptr) |ui| ui.endDraw();
+
     const gpu_device = self.gpu_device;
     const window = engine.window;
     const graphics_pipeline = self.graphics_pipeline;
@@ -484,43 +486,6 @@ pub fn draw(self: *const Self, engine: *const Engine, show_demo_window: *bool) D
     // const full_graphics_pipeline = self.full_graphics_pipeline;
 
     const fa = allocators.frame();
-
-    var draw_data: [*c]c.ImDrawData = undefined;
-    if (show_demo_window.*) {
-        c.ImGui_ImplSDLGPU3_NewFrame();
-        c.ImGui_ImplSDL3_NewFrame();
-        c.igNewFrame();
-
-        const viewport = c.igGetMainViewport();
-        // c.igSetNextWindowPos(viewport.*.WorkPos, 0, .{});
-        // c.igSetNextWindowSize(viewport.*.WorkSize, 0);
-        // c.igSetNextWindowViewport(viewport.*.ID);
-        // const window_flags = c.ImGuiWindowFlags_NoTitleBar |
-        //     c.ImGuiWindowFlags_NoCollapse |
-        //     c.ImGuiWindowFlags_NoResize |
-        //     c.ImGuiWindowFlags_NoMove |
-        //     c.ImGuiWindowFlags_NoBringToFrontOnFocus |
-        //     c.ImGuiWindowFlags_NoNavFocus |
-        //     c.ImGuiWindowFlags_NoBackground;
-
-        // _ = c.igBegin(
-        //     "Main Window",
-        //     show_demo_window,
-        //     window_flags,
-        // );
-
-        _ = c.igDockSpaceOverViewport(
-            0,
-            viewport,
-            c.ImGuiDockNodeFlags_PassthruCentralNode,
-            null,
-        );
-        c.igShowDemoWindow(show_demo_window);
-        // c.igEnd();
-
-        c.igRender();
-        draw_data = c.igGetDrawData();
-    }
 
     log.debug("command_buffer", .{});
     const command_buffer = c.SDL_AcquireGPUCommandBuffer(gpu_device);
@@ -555,26 +520,28 @@ pub fn draw(self: *const Self, engine: *const Engine, show_demo_window: *bool) D
     const pi = std.math.pi;
 
     math.matrix4x4.worldTransform(world);
-    math.matrix4x4.rotateEuler(world, &.{ -time_s * pi / 10, -time_s * pi / 9, 0 }, .xyz);
-    math.matrix4x4.perspectiveFov(
+    // math.matrix4x4.rotateEuler(world, &.{ -time_s * pi / 10, -time_s * pi / 9, 0 }, .xyz);
+    self.camera.projection(
         projection,
-        std.math.degreesToRadians(self.fov),
         @floatFromInt(engine.window_size.x),
         @floatFromInt(engine.window_size.y),
         7.5,
-        10000.0,
+        10_000.0,
     );
-    math.matrix4x4.camera(
-        camera,
-        &self.camera_position,
-        &self.camera_direction,
-        &self.camera_up,
-    );
+    // math.matrix4x4.perspectiveFov(
+    //     projection,
+    //     std.math.degreesToRadians(self.fov),
+    //     @floatFromInt(engine.window_size.x),
+    //     @floatFromInt(engine.window_size.y),
+    //     7.5,
+    //     10_000.0,
+    // );
+    self.camera.transform(camera);
     math.matrix4x4.dot(view, camera, world);
     math.matrix4x4.dot(view_projection, projection, view);
 
-    log.debug("camera_position: {any}", .{self.camera_position});
-    log.debug("camera_direction: {any}", .{self.camera_direction});
+    log.debug("camera_position: {any}", .{self.camera.position});
+    log.debug("camera_direction: {any}", .{self.camera.direction});
 
     var uniform_buffer = try fa.alloc(f32, 32);
     @memcpy(uniform_buffer[0..16], math.matrix4x4.sliceLenConst(view_projection));
@@ -785,30 +752,7 @@ pub fn draw(self: *const Self, engine: *const Engine, show_demo_window: *bool) D
         c.SDL_EndGPURenderPass(render_pass);
     }
 
-    if (show_demo_window.*) {
-        c.ImGui_ImplSDLGPU3_PrepareDrawData(draw_data, command_buffer);
-
-        log.debug("imgui render pass", .{});
-        const render_pass = c.SDL_BeginGPURenderPass(
-            command_buffer,
-            &c.SDL_GPUColorTargetInfo{
-                .texture = swapchain_texture,
-                .load_op = c.SDL_GPU_LOADOP_LOAD,
-                .store_op = c.SDL_GPU_STOREOP_STORE,
-            },
-            1,
-            null,
-        );
-        if (render_pass == null) {
-            log.err("failed to begin render_pass: {s}", .{c.SDL_GetError()});
-            return DrawError.DrawFailed;
-        }
-
-        c.ImGui_ImplSDLGPU3_RenderDrawData(draw_data, command_buffer, render_pass, null);
-
-        log.debug("end imgui render pass", .{});
-        c.SDL_EndGPURenderPass(render_pass);
-    }
+    if (ui_ptr) |ui| try ui.submitPass(command_buffer, swapchain_texture);
 
     // {
     //     log.debug("render_pass 2", .{});
@@ -853,7 +797,24 @@ pub fn draw(self: *const Self, engine: *const Engine, show_demo_window: *bool) D
 
 pub fn format(self: *const Self, w: *std.io.Writer) !void {
     try w.print(
-        ".{{ .camera_position = {any}, .camera_direction = {any}, .fov = {} }}",
-        .{ self.camera_position, self.camera_direction, self.fov },
+        ".{{ .camera_position = {any}, .camera_direction = {any}, .kind = {t}, .{s} = {} }}",
+        .{
+            self.camera.position,
+            self.camera.direction,
+            @as(Camera.Kind, self.camera.kind),
+            switch (self.camera.kind) {
+                .ortographic => "scale",
+                .perspective => "fov",
+            },
+            switch (self.camera.kind) {
+                .ortographic => self.camera.orto_scale,
+                .perspective => self.camera.fov,
+            },
+        },
     );
+}
+
+pub fn addToPropertyEditor(self: *Self, property_editor: *ui_mod.PropertyEditorWindow, item: *ui_mod.PropertyEditorWindow.Item) !void {
+    const node = try property_editor.appendChildNode(item, @typeName(Self), "Renderer");
+    _ = try property_editor.appendChild(node, self.camera.propertyEditor());
 }

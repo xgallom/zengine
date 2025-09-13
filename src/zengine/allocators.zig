@@ -23,12 +23,14 @@ pub const ArenaKey = enum {
 const Self = struct {
     core: std.mem.Allocator = undefined,
     gpa_state: GPA = undefined,
-    log_state: LogAllocator,
+    log_state: LogAllocator = undefined,
     gpa: std.mem.Allocator = undefined,
     arena_states: std.EnumArray(ArenaKey, Arena) = .initUndefined(),
     arenas: std.EnumArray(ArenaKey, std.mem.Allocator) = .initUndefined(),
+    max_alloc: usize = 0,
 
     fn init(self: *Self, memory_limit: usize) void {
+        self.* = .{};
         self.core = sdl_allocator.raw;
 
         self.gpa_state = GPA{
@@ -37,6 +39,7 @@ const Self = struct {
         };
         self.log_state = LogAllocator{
             .backing_allocator = self.gpa_state.allocator(),
+            .alloc_callback = &updateMaxAlloc,
         };
         self.gpa = self.log_state.allocator();
 
@@ -80,7 +83,19 @@ pub fn deinit() void {
     assert(is_init);
     const result = global_state.deinit();
     is_init = false;
+    if (global_state.max_alloc != 0) log.info(
+        "max allocated: {Bi}",
+        .{global_state.max_alloc},
+    );
     assert(result == .ok);
+}
+
+fn updateMaxAlloc(_: usize, _: std.mem.Alignment) void {
+    assert(is_init);
+    global_state.max_alloc = @max(
+        global_state.max_alloc,
+        global_state.gpa_state.total_requested_bytes,
+    );
 }
 
 pub fn logCapacities() void {

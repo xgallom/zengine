@@ -55,6 +55,7 @@ pub fn Promise(comptime T: type) type {
 }
 
 pub fn Task(comptime invokeFn: anytype) type {
+    if (comptime @typeInfo(@TypeOf(invokeFn)) != .@"fn") @compileError("invoke must be a function");
     return struct {
         any: AnyTask,
         promise: Promise(RetVal),
@@ -79,10 +80,6 @@ pub fn Task(comptime invokeFn: anytype) type {
             };
         }
 
-        pub fn after(self: *Self, other: *AnyTaskList.Node) void {
-            self.promise.next_handler.prepare(other);
-        }
-
         fn invokeAny(any: *AnyTask) void {
             const self: *Self = @fieldParentPtr("any", any);
             self.promise.set(@call(.auto, invokeFn, self.args));
@@ -104,11 +101,11 @@ pub const AnyTask = struct {
         free: *const fn (any: *AnyTask, allocator: std.mem.Allocator) void,
     };
 
-    pub fn invoke(self: *AnyTask) void {
+    pub inline fn invoke(self: *AnyTask) void {
         self.vtable.invoke(self);
     }
 
-    pub fn free(self: *AnyTask, allocator: std.mem.Allocator) void {
+    pub inline fn free(self: *AnyTask, allocator: std.mem.Allocator) void {
         self.vtable.free(self, allocator);
     }
 };
