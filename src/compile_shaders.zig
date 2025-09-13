@@ -13,7 +13,7 @@ pub const std_options: std.Options = .{
 };
 
 const usage =
-    \\Usage: ./shader_compile [options]
+    \\Usage: ./compile-shaders [options]
     \\
     \\Options:
     \\  --input-dir INPUT_DIRECTORY

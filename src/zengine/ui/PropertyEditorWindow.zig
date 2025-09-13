@@ -137,13 +137,13 @@ fn appendImpl(self: *const Self, items: *std.DoublyLinkedList, src_item: Item) !
 }
 
 pub fn draw(self: *Self, ui: *const UI, is_open: *bool) void {
-    c.igSetNextWindowSize(.{ .x = 480, .y = 450 }, c.ImGuiCond_FirstUseEver);
+    c.igSetNextWindowSize(.{ .x = 630, .y = 480 }, c.ImGuiCond_FirstUseEver);
     if (!c.igBegin("Property Editor", is_open, 0)) {
         c.igEnd();
         return;
     }
 
-    if (c.igBeginChild_Str("##tree", .{ .x = 300 }, c.ImGuiChildFlags_ResizeX | c.ImGuiChildFlags_Borders | c.ImGuiChildFlags_NavFlattened, 0)) {
+    if (c.igBeginChild_Str("##tree", .{ .x = 240 }, c.ImGuiChildFlags_ResizeX | c.ImGuiChildFlags_Borders | c.ImGuiChildFlags_NavFlattened, 0)) {
         c.igSetNextItemWidth(-std.math.floatMin(f32));
         c.igSetNextItemShortcut(c.ImGuiMod_Ctrl | c.ImGuiKey_F, c.ImGuiInputFlags_Tooltip);
         c.igPushItemFlag(c.ImGuiItemFlags_NoNavDefaultFocus, true);
@@ -176,7 +176,7 @@ pub fn draw(self: *Self, ui: *const UI, is_open: *bool) void {
         c.igSeparatorEx(c.ImGuiSeparatorFlags_Horizontal, item.sepWidth());
         if (c.igBeginTable("##properties", 2, c.ImGuiTableFlags_Resizable | c.ImGuiTableFlags_ScrollY, .{}, 0)) {
             c.igPushID_Str(item.id);
-            c.igTableSetupColumn("", c.ImGuiTableColumnFlags_WidthFixed, 50, 0);
+            c.igTableSetupColumn("", c.ImGuiTableColumnFlags_WidthFixed, 120, 0);
             c.igTableSetupColumn("", c.ImGuiTableColumnFlags_WidthStretch, 2, 0);
 
             ui.draw(item.element, is_open);

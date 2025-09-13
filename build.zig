@@ -6,6 +6,14 @@ pub fn build(b: *std.Build) void {
 
     const compile_shaders_opt = b.option(bool, "compile-shaders", "Force shader compilation");
 
+    const build_ext = b.addSystemCommand(&.{"build-scripts/build-external.sh"});
+    const build_ext_step = b.step("ext", "Builds external dependencies");
+    build_ext_step.dependOn(&build_ext.step);
+
+    const clean_ext = b.addSystemCommand(&.{"build-scripts/clean-external.sh"});
+    const clean_ext_step = b.step("clean-ext", "Cleans external dependencies");
+    clean_ext_step.dependOn(&clean_ext.step);
+
     const zengine = b.addModule("zengine", .{
         .root_source_file = b.path("src/zengine/zengine.zig"),
         .target = target,
@@ -14,16 +22,12 @@ pub fn build(b: *std.Build) void {
         .pic = true,
     });
 
-    zengine.addLibraryPath(b.path("SDL/build"));
-    zengine.addIncludePath(b.path("SDL/include"));
+    zengine.addLibraryPath(b.path("external/build/lib"));
+    zengine.addIncludePath(b.path("external/build/include"));
+    zengine.addIncludePath(b.path("external/cimgui"));
+
     zengine.linkSystemLibrary("SDL3", .{ .needed = true });
-
-    zengine.addLibraryPath(b.path("SDL_shadercross/build"));
-    zengine.addIncludePath(b.path("SDL_shadercross/include"));
     zengine.linkSystemLibrary("SDL3_shadercross", .{ .needed = true });
-
-    zengine.addLibraryPath(b.path("cimgui/build"));
-    zengine.addIncludePath(b.path("cimgui"));
     zengine.linkSystemLibrary("cimgui", .{ .needed = true });
 
     const lib = b.addLibrary(.{
@@ -36,20 +40,18 @@ pub fn build(b: *std.Build) void {
     // const install_header = b.addInstallHeaderFile(lib.getEmittedH(), "zengine.h");
     // b.getInstallStep().dependOn(&install_header.step);
 
-    const exe_mod = b.addModule("main", .{
-        .root_source_file = b.path("src/main.zig"),
-        .imports = &.{
-            .{ .name = "zengine", .module = zengine },
-        },
-        .target = target,
-        .optimize = optimize,
-        .link_libc = true,
-        .pic = true,
-    });
-
     const exe = b.addExecutable(.{
         .name = "zeng",
-        .root_module = exe_mod,
+        .root_module = b.addModule("main", .{
+            .root_source_file = b.path("src/main.zig"),
+            .imports = &.{
+                .{ .name = "zengine", .module = zengine },
+            },
+            .target = target,
+            .optimize = optimize,
+            .link_libc = true,
+            .pic = true,
+        }),
     });
 
     b.installArtifact(exe);
@@ -57,18 +59,16 @@ pub fn build(b: *std.Build) void {
     const install_assembly = b.addInstallBinFile(exe.getEmittedAsm(), "zeng.s");
     b.getInstallStep().dependOn(&install_assembly.step);
 
-    const compile_shaders_mod = b.addModule("compile_shaders", .{
-        .root_source_file = b.path("src/compile_shaders.zig"),
-        .imports = &.{
-            .{ .name = "zengine", .module = zengine },
-        },
-        .target = b.graph.host,
-        .optimize = optimize,
-    });
-
     const compile_shaders = b.addExecutable(.{
         .name = "compile-shaders",
-        .root_module = compile_shaders_mod,
+        .root_module = b.addModule("compile_shaders", .{
+            .root_source_file = b.path("src/compile_shaders.zig"),
+            .imports = &.{
+                .{ .name = "zengine", .module = zengine },
+            },
+            .target = b.graph.host,
+            .optimize = optimize,
+        }),
     });
 
     // TODO: Use instead of hlsl?
@@ -115,12 +115,12 @@ pub fn build(b: *std.Build) void {
     }
 
     const compile_shaders_cmd = b.addRunArtifact(compile_shaders);
+    compile_shaders_cmd.addArg("--include-dir");
+    compile_shaders_cmd.addDirectoryArg(b.path("shaders/include"));
     compile_shaders_cmd.addArg("--input-dir");
     compile_shaders_cmd.addDirectoryArg(b.path("shaders/src"));
     compile_shaders_cmd.addArg("--output-dir");
     const shaders_output = compile_shaders_cmd.addOutputDirectoryArg("shaders");
-    compile_shaders_cmd.addArg("--include-dir");
-    compile_shaders_cmd.addDirectoryArg(b.path("shaders/include"));
 
     const install_shaders_directory = b.addInstallDirectory(.{
         .source_dir = shaders_output,
