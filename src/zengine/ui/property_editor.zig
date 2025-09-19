@@ -12,15 +12,17 @@ const UI = @import("UI.zig");
 const log = std.log.scoped(.ui_property_editor);
 // pub const sections = perf.sections(@This(), &.{ .init, .draw });
 
-pub fn PropertyEditor(comptime C: type, comptime name: ?[*:0]const u8) type {
+pub fn PropertyEditor(comptime C: type) type {
+    return PropertyEditorCore(C);
+}
+
+pub fn PropertyEditorCore(comptime C: type) type {
     comptime assert(@typeInfo(C) == .@"struct");
     const type_info = @typeInfo(C).@"struct";
 
     return struct {
         component: *Component,
 
-        pub const component_id = @typeName(C);
-        pub const component_name = name orelse component_id;
         pub const fields = type_info.fields;
         pub const Self = @This();
         pub const Component = C;
@@ -72,9 +74,10 @@ pub fn PropertyEditor(comptime C: type, comptime name: ?[*:0]const u8) type {
                     .float => |float| {
                         const field_min = field.name ++ "_min";
                         const field_max = field.name ++ "_max";
-                        const min: field.type = if (@hasDecl(Component, field_min)) @field(Component, field_min) else 0.0;
-                        const max: field.type = if (@hasDecl(Component, field_max)) @field(Component, field_max) else 1.0;
-                        const speed: f32 = if (@hasDecl(Component, field.name ++ "_speed")) @field(Component, field.name ++ "_speed") else 0.001;
+                        const field_speed = field.name ++ "_speed";
+                        const min: field.type = if (@hasDecl(Component, field_min)) @field(Component, field_min) else -std.math.inf(field.type);
+                        const max: field.type = if (@hasDecl(Component, field_max)) @field(Component, field_max) else std.math.inf(field.type);
+                        const speed: f32 = if (@hasDecl(Component, field_speed)) @field(Component, field_speed) else 0.1;
                         const data_type = comptime switch (float.bits) {
                             1...32 => c.ImGuiDataType_Float,
                             33...64 => c.ImGuiDataType_Double,
@@ -94,7 +97,7 @@ pub fn PropertyEditor(comptime C: type, comptime name: ?[*:0]const u8) type {
                         c.igSetNextItemWidth(-std.math.floatMin(f32));
                         _ = c.igInputText("##Editor", field_ptr.ptr, len, 0, null, null);
                     },
-                    .array => |array| {
+                    inline .array, .vector => |array| {
                         if (array.child == u8) {
                             const len = if (array.sentinel() == 0) array.len + 1 else array.len;
                             c.igSetNextItemWidth(-std.math.floatMin(f32));
@@ -129,9 +132,10 @@ pub fn PropertyEditor(comptime C: type, comptime name: ?[*:0]const u8) type {
                                 .float => |float| {
                                     const field_min = field.name ++ "_min";
                                     const field_max = field.name ++ "_max";
-                                    const min: field.type = if (@hasDecl(Component, field_min)) @field(Component, field_min) else @splat(0.0);
-                                    const max: field.type = if (@hasDecl(Component, field_max)) @field(Component, field_max) else @splat(1.0);
-                                    const speed: f32 = if (@hasDecl(Component, field.name ++ "_speed")) @field(Component, field.name ++ "_speed") else 0.001;
+                                    const field_speed = field.name ++ "_speed";
+                                    const min: field.type = if (@hasDecl(Component, field_min)) @field(Component, field_min) else @splat(-std.math.inf(array.child));
+                                    const max: field.type = if (@hasDecl(Component, field_max)) @field(Component, field_max) else @splat(std.math.inf(array.child));
+                                    const speed: f32 = if (@hasDecl(Component, field_speed)) @field(Component, field_speed) else 0.1;
                                     const data_type = comptime switch (float.bits) {
                                         1...32 => c.ImGuiDataType_Float,
                                         33...64 => c.ImGuiDataType_Double,

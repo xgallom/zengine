@@ -1,17 +1,17 @@
 const std = @import("std");
 
-pub fn build(b: *std.Build) void {
+pub fn build(b: *std.Build) !void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
     const compile_shaders_opt = b.option(bool, "compile-shaders", "Force shader compilation");
 
     const build_ext = b.addSystemCommand(&.{"build-scripts/build-external.sh"});
-    const build_ext_step = b.step("ext", "Builds external dependencies");
+    const build_ext_step = b.step("ext", "Build external dependencies");
     build_ext_step.dependOn(&build_ext.step);
 
     const clean_ext = b.addSystemCommand(&.{"build-scripts/clean-external.sh"});
-    const clean_ext_step = b.step("clean-ext", "Cleans external dependencies");
+    const clean_ext_step = b.step("clean-ext", "Clean external dependencies");
     clean_ext_step.dependOn(&clean_ext.step);
 
     const zengine = b.addModule("zengine", .{
@@ -26,9 +26,9 @@ pub fn build(b: *std.Build) void {
     zengine.addIncludePath(b.path("external/build/include"));
     zengine.addIncludePath(b.path("external/cimgui"));
 
-    zengine.linkSystemLibrary("SDL3", .{ .needed = true });
-    zengine.linkSystemLibrary("SDL3_shadercross", .{ .needed = true });
-    zengine.linkSystemLibrary("cimgui", .{ .needed = true });
+    zengine.linkSystemLibrary("SDL3", .{});
+    zengine.linkSystemLibrary("SDL3_shadercross", .{});
+    zengine.linkSystemLibrary("cimgui", .{});
 
     const lib = b.addLibrary(.{
         .name = "zengine",
@@ -59,6 +59,36 @@ pub fn build(b: *std.Build) void {
     const install_assembly = b.addInstallBinFile(exe.getEmittedAsm(), "zeng.s");
     b.getInstallStep().dependOn(&install_assembly.step);
 
+    // const build_ext = b.addExecutable(.{
+    //     .name = "build-external",
+    //     .root_module = b.addModule("build_external", .{
+    //         .root_source_file = b.path("src/build_external.zig"),
+    //         .target = b.graph.host,
+    //         .optimize = optimize,
+    //     }),
+    // });
+    //
+    // const build_ext_cmd = b.addRunArtifact(build_ext);
+    // build_ext_cmd.addArg("--input-dir");
+    // build_ext_cmd.addDirectoryArg(b.path("external"));
+    // build_ext_cmd.addArg("--cache-dir");
+    // _ = build_ext_cmd.addOutputDirectoryArg("cache");
+    // build_ext_cmd.addArg("--output-dir");
+    // const build_ext_output = build_ext_cmd.addOutputDirectoryArg("build");
+    //
+    // const build_ext_install = b.addInstallDirectory(.{
+    //     .source_dir = build_ext_output,
+    //     .install_dir = .prefix,
+    //     .install_subdir = "",
+    // });
+    //
+    // b.getInstallStep().dependOn(&build_ext_install.step);
+    //
+    // build_ext_cmd.has_side_effects = compile_ext_opt orelse false;
+    //
+    // const build_ext_step = b.step("ext", "Builds external dependencies");
+    // build_ext_step.dependOn(&build_ext_install.step);
+
     const compile_shaders = b.addExecutable(.{
         .name = "compile-shaders",
         .root_module = b.addModule("compile_shaders", .{
@@ -70,6 +100,9 @@ pub fn build(b: *std.Build) void {
             .optimize = optimize,
         }),
     });
+
+    _ = try compile_shaders.step.addDirectoryWatchInput(b.path("shaders/include"));
+    _ = try compile_shaders.step.addDirectoryWatchInput(b.path("shaders/src"));
 
     // TODO: Use instead of hlsl?
     //
@@ -122,13 +155,13 @@ pub fn build(b: *std.Build) void {
     compile_shaders_cmd.addArg("--output-dir");
     const shaders_output = compile_shaders_cmd.addOutputDirectoryArg("shaders");
 
-    const install_shaders_directory = b.addInstallDirectory(.{
+    const install_shaders_dir = b.addInstallDirectory(.{
         .source_dir = shaders_output,
         .install_dir = .prefix,
         .install_subdir = "shaders",
     });
 
-    b.getInstallStep().dependOn(&install_shaders_directory.step);
+    b.getInstallStep().dependOn(&install_shaders_dir.step);
 
     compile_shaders_cmd.has_side_effects = compile_shaders_opt orelse false;
 

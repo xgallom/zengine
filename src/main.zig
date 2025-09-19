@@ -33,6 +33,8 @@ pub const std_options: std.Options = .{
     // },
 };
 
+pub const zengine_options: zengine.Options = .{};
+
 pub fn main() !void {
     // memory limit 1GB, SDL allocations are not tracked
     try allocators.init(1_000_000_000);
@@ -75,13 +77,6 @@ pub fn main() !void {
     try perf.commitGraph();
     defer perf.releaseGraph();
 
-    var property_editor = zengine.ui.PropertyEditorWindow.init(allocators.gpa());
-    defer property_editor.deinit();
-    var editor_open = true;
-
-    const gfx_node = try property_editor.appendNode(@typeName(gfx), "gfx");
-    try renderer.addToPropertyEditor(&property_editor, gfx_node);
-
     sections.sub(.init).end();
 
     const a = math.quat.init(std.math.degreesToRadians(90), &.{ 1, 0, 0 });
@@ -95,6 +90,105 @@ pub fn main() !void {
     log.info("a: {any}", .{a});
     log.info("b: {any}", .{b});
     log.info("r: {any}", .{result});
+
+    const AudioFormat = enum(c_int) {
+        unknown = c.SDL_AUDIO_UNKNOWN,
+        u8 = c.SDL_AUDIO_U8,
+        s8 = c.SDL_AUDIO_S8,
+        s16be = c.SDL_AUDIO_S16BE,
+        s32be = c.SDL_AUDIO_S32BE,
+        f32be = c.SDL_AUDIO_F32BE,
+        s16 = c.SDL_AUDIO_S16,
+        s32 = c.SDL_AUDIO_S32,
+        f32 = c.SDL_AUDIO_F32,
+
+        fn asText(format: @This()) []const u8 {
+            return switch (format) {
+                inline else => |fmt| @tagName(fmt),
+            };
+        }
+    };
+
+    var in_device_count: c_int = undefined;
+    var in_devices: []c.SDL_AudioDeviceID = undefined;
+    in_devices.ptr = c.SDL_GetAudioRecordingDevices(&in_device_count) orelse unreachable;
+    in_devices.len = @intCast(in_device_count);
+    var in_infos = try std.ArrayList(struct {
+        name: [*:0]const u8,
+        spec: c.SDL_AudioSpec,
+        sample_frames: c_int,
+    }).initCapacity(allocators.global(), in_devices.len);
+    defer allocators.sdl().free(in_devices.ptr);
+    for (in_devices) |id| {
+        const info = in_infos.addOneAssumeCapacity();
+        if (!c.SDL_GetAudioDeviceFormat(id, &info.spec, &info.sample_frames)) {
+            log.err("failed getting audio spec for device {}: {s}", .{ id, c.SDL_GetError() });
+            return;
+        }
+        const name = c.SDL_GetAudioDeviceName(id);
+        if (name == null) {
+            log.err("failed getting name for audio device {}: {s}", .{ id, c.SDL_GetError() });
+            return;
+        }
+        info.name = name.?;
+    }
+    for (in_infos.items, in_devices) |info, id| {
+        const name = info.name;
+        const spec = info.spec;
+        const sample_frames = info.sample_frames;
+        log.info("audio in[{}]: {s} @{}Hz {t} {}ch {}f", .{
+            id,
+            name,
+            spec.freq,
+            @as(AudioFormat, @enumFromInt(spec.format)),
+            spec.channels,
+            sample_frames,
+        });
+    }
+
+    var out_device_count: c_int = undefined;
+    var out_devices: []c.SDL_AudioDeviceID = undefined;
+    out_devices.ptr = c.SDL_GetAudioPlaybackDevices(&out_device_count) orelse unreachable;
+    out_devices.len = @intCast(out_device_count);
+    var out_infos = try std.ArrayList(struct {
+        name: [*:0]const u8,
+        spec: c.SDL_AudioSpec,
+        sample_frames: c_int,
+    }).initCapacity(allocators.global(), out_devices.len);
+    defer allocators.sdl().free(out_devices.ptr);
+    for (out_devices) |id| {
+        const info = out_infos.addOneAssumeCapacity();
+        if (!c.SDL_GetAudioDeviceFormat(id, &info.spec, &info.sample_frames)) {
+            log.err("failed getting audio spec for device {}: {s}", .{ id, c.SDL_GetError() });
+            return;
+        }
+        const name = c.SDL_GetAudioDeviceName(id);
+        if (name == null) {
+            log.err("failed getting name for audio device {}: {s}", .{ id, c.SDL_GetError() });
+            return;
+        }
+        info.name = name.?;
+    }
+    for (out_infos.items, out_devices) |info, id| {
+        const name = info.name;
+        const spec = info.spec;
+        const sample_frames = info.sample_frames;
+        log.info("audio out[{}]: {s} @{}Hz {t} {}ch {}f", .{
+            id,
+            name,
+            spec.freq,
+            @as(AudioFormat, @enumFromInt(spec.format)),
+            spec.channels,
+            sample_frames,
+        });
+    }
+
+    var property_editor = zengine.ui.PropertyEditorWindow.init(allocators.frame());
+    defer property_editor.deinit();
+    const gfx_node = try property_editor.appendNode(@typeName(gfx), "gfx");
+    try renderer.propertyEditorNode(&property_editor, gfx_node);
+
+    var editor_open = true;
 
     return mainloop: while (true) {
         const section = sections.sub(.frame);
@@ -114,7 +208,9 @@ pub fn main() !void {
         section.sub(.init).end();
         section.sub(.input).begin();
 
-        if (ui.show_ui) controls.reset();
+        if (ui.show_ui) {
+            controls.reset();
+        }
 
         var sdl_event: c.SDL_Event = undefined;
         while (c.SDL_PollEvent(&sdl_event)) {
@@ -124,8 +220,8 @@ pub fn main() !void {
                     c.SDL_EVENT_KEY_DOWN => {
                         if (sdl_event.key.repeat) break;
                         switch (sdl_event.key.key) {
-                            c.SDLK_1 => ui.show_ui = !ui.show_ui,
-                            c.SDLK_2 => editor_open = !editor_open,
+                            c.SDLK_F1 => ui.show_ui = !ui.show_ui,
+                            c.SDLK_F2 => editor_open = !editor_open,
                             c.SDLK_ESCAPE => break :mainloop,
                             else => {},
                         }
@@ -157,10 +253,10 @@ pub fn main() !void {
 
                         c.SDLK_LEFTBRACKET => controls.set(.custom(0)),
                         c.SDLK_RIGHTBRACKET => controls.set(.custom(1)),
-                        c.SDLK_0 => controls.set(.custom(2)),
+                        c.SDLK_EQUALS => controls.set(.custom(2)),
 
-                        c.SDLK_1 => ui.show_ui = !ui.show_ui,
-                        c.SDLK_2 => editor_open = !editor_open,
+                        c.SDLK_F1 => ui.show_ui = !ui.show_ui,
+                        c.SDLK_F2 => editor_open = !editor_open,
                         c.SDLK_ESCAPE => break :mainloop,
                         else => {},
                     }
@@ -184,7 +280,7 @@ pub fn main() !void {
 
                         c.SDLK_LEFTBRACKET => controls.clear(.custom(0)),
                         c.SDLK_RIGHTBRACKET => controls.clear(.custom(1)),
-                        c.SDLK_0 => controls.clear(.custom(2)),
+                        c.SDLK_EQUALS => controls.clear(.custom(2)),
 
                         else => {},
                     }
@@ -202,8 +298,10 @@ pub fn main() !void {
         section.sub(.input).end();
         section.sub(.update).begin();
 
+        const camera = renderer.cameras.getPtr("default");
+
         var coords: math.vector3.Coords = undefined;
-        renderer.camera.coords(&coords);
+        camera.coords(&coords);
 
         const delta = global.timeSinceLastFrame().toFloat().toValue32(.s);
         const rotation_speed = delta;
@@ -215,14 +313,14 @@ pub fn main() !void {
         // math.vector2.localCoords(&coordinates2, &.{ 0, 1 }, &.{ 1, 0 });
 
         if (controls.has(.yaw_neg))
-            math.vector3.rotateDirectionScale(&renderer.camera.direction, &coords.x, -rotation_speed);
+            math.vector3.rotateDirectionScale(&camera.direction, &coords.x, -rotation_speed);
         if (controls.has(.yaw_pos))
-            math.vector3.rotateDirectionScale(&renderer.camera.direction, &coords.x, rotation_speed);
+            math.vector3.rotateDirectionScale(&camera.direction, &coords.x, rotation_speed);
 
         if (controls.has(.pitch_neg))
-            math.vector3.rotateDirectionScale(&renderer.camera.direction, &coords.y, -rotation_speed);
+            math.vector3.rotateDirectionScale(&camera.direction, &coords.y, -rotation_speed);
         if (controls.has(.pitch_pos))
-            math.vector3.rotateDirectionScale(&renderer.camera.direction, &coords.y, rotation_speed);
+            math.vector3.rotateDirectionScale(&camera.direction, &coords.y, rotation_speed);
 
         // if (controls.has(.roll_neg))
         //     math.vector3.rotateDirectionScale(&renderer.camera.up, &coordinates.x, -rotation_speed);
@@ -230,24 +328,24 @@ pub fn main() !void {
         //     math.vector3.rotateDirectionScale(&renderer.camera.up, &coordinates.x, rotation_speed);
 
         if (controls.has(.x_neg))
-            math.vector3.translateScale(&renderer.camera.position, &coords.x, -translation_speed);
+            math.vector3.translateScale(&camera.position, &coords.x, -translation_speed);
         if (controls.has(.x_pos))
-            math.vector3.translateScale(&renderer.camera.position, &coords.x, translation_speed);
+            math.vector3.translateScale(&camera.position, &coords.x, translation_speed);
 
         if (controls.has(.y_neg))
-            math.vector3.translateScale(&renderer.camera.position, &renderer.camera.up, -translation_speed);
+            math.vector3.translateScale(&camera.position, &camera.up, -translation_speed);
         if (controls.has(.y_pos))
-            math.vector3.translateScale(&renderer.camera.position, &renderer.camera.up, translation_speed);
+            math.vector3.translateScale(&camera.position, &camera.up, translation_speed);
 
         if (controls.has(.z_neg))
-            math.vector3.translateDirectionScale(&renderer.camera.position, &coords.z, -translation_speed);
+            math.vector3.translateDirectionScale(&camera.position, &coords.z, -translation_speed);
         if (controls.has(.z_pos))
-            math.vector3.translateDirectionScale(&renderer.camera.position, &coords.z, translation_speed);
+            math.vector3.translateDirectionScale(&camera.position, &coords.z, translation_speed);
 
         {
-            const scale = switch (renderer.camera.kind) {
-                .ortographic => &renderer.camera.orto_scale,
-                .perspective => &renderer.camera.fov,
+            const scale = switch (camera.kind) {
+                .ortographic => &camera.orto_scale,
+                .perspective => &camera.fov,
             };
 
             if (controls.has(.scale_neg))
@@ -264,21 +362,21 @@ pub fn main() !void {
         // speed_change_timer.update(now);
 
         if (controls.has(.custom(2))) {
-            renderer.camera.kind = switch (renderer.camera.kind) {
+            camera.kind = switch (camera.kind) {
                 .ortographic => .perspective,
                 .perspective => .ortographic,
             };
             controls.clear(.custom(2));
         }
 
-        math.vector3.normalize(&renderer.camera.direction);
-        renderer.camera.orto_scale = std.math.clamp(
-            renderer.camera.orto_scale,
+        math.vector3.normalize(&camera.direction);
+        camera.orto_scale = std.math.clamp(
+            camera.orto_scale,
             gfx.Camera.orto_scale_min,
             gfx.Camera.orto_scale_max,
         );
-        renderer.camera.fov = std.math.clamp(
-            renderer.camera.fov,
+        camera.fov = std.math.clamp(
+            camera.fov,
             gfx.Camera.fov_min,
             gfx.Camera.fov_max,
         );

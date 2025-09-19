@@ -75,6 +75,6 @@ pub fn projection(self: *const Self, result: *math.Matrix4x4, width: f32, height
     }
 }
 
-pub fn propertyEditor(self: *Self) ui.PropertyEditor(Self, "Camera") {
+pub fn propertyEditor(self: *Self) ui.PropertyEditor(Self) {
     return .init(self);
 }

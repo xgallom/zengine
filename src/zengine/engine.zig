@@ -22,7 +22,7 @@ const InitError = error{
 };
 
 pub fn init() !*Self {
-    if (!c.SDL_Init(c.SDL_INIT_VIDEO)) {
+    if (!c.SDL_Init(c.SDL_INIT_VIDEO | c.SDL_INIT_AUDIO)) {
         log.err("failed init: {s}", .{c.SDL_GetError()});
         return InitError.InitFailed;
     }

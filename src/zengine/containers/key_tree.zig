@@ -17,6 +17,7 @@ pub const InsertionOrder = enum {
 pub fn KeyTree(comptime V: type, comptime options: struct {
     pool_options: std.heap.MemoryPoolOptions = .{},
     insertion_order: InsertionOrder = .ordered,
+    separator: u8 = '.',
 }) type {
     return struct {
         pool: Pool,
@@ -79,7 +80,7 @@ pub fn KeyTree(comptime V: type, comptime options: struct {
 
         pub fn getPtr(self: *const Self, key: []const u8) ?*Value {
             var walk = self.root;
-            var iter = std.mem.splitScalar(u8, key, '.');
+            var iter = std.mem.splitScalar(u8, key, options.separator);
 
             walk: while (iter.next()) |label| {
                 var edge_node = walk.edges.first;
@@ -106,7 +107,7 @@ pub fn KeyTree(comptime V: type, comptime options: struct {
         /// Inserts new value into the tree
         pub fn insert(self: *Self, key: []const u8, value: Value) !void {
             var walk = self.root;
-            var iter = std.mem.splitScalar(u8, key, '.');
+            var iter = std.mem.splitScalar(u8, key, options.separator);
 
             log.debug("insert [{s}]: ", .{key});
             walk: while (iter.next()) |label| {

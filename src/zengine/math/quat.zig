@@ -19,6 +19,7 @@ pub fn quatT(comptime T: type) type {
 
         pub const scalar = scalarT(T);
         pub const vector = vectorNT(4, T);
+        const vector3 = vectorNT(3, T);
 
         pub const identity: Self = .{ scalar.zero, scalar.zero, scalar.zero, scalar.one };
 
@@ -40,19 +41,11 @@ pub fn quatT(comptime T: type) type {
             return sliceConst(len, self);
         }
 
-        pub inline fn idx(self: *Self, axis: types.Axis4) *Scalar {
-            return &self[@intFromEnum(axis)];
-        }
-
-        pub inline fn idx3c(self: *const Vector3, axis: types.Axis3) Scalar {
-            return self[@intFromEnum(axis)];
-        }
-
         pub fn init(angle: Scalar, axis: *const Vector3) Self {
             var result: Self = undefined;
             const r = vector.map(&result);
-            const a = vectorNT(3, Scalar).cmap(axis);
-            idx(&result, .w).* = @cos(angle / 2);
+            const a = vector3.cmap(axis);
+            r.w().* = @cos(angle / 2);
             const s = @sin(angle / 2);
             r.x().* = s * a.x();
             r.y().* = s * a.y();
@@ -68,37 +61,23 @@ pub fn quatT(comptime T: type) type {
         pub fn mulInto(result: *Self, lhs: *const Self, rhs: *const Self) void {
             const l = vector.cmap(lhs);
             const r = vector.cmap(rhs);
-            const y = vector.map(result);
-            y.x().* = l.w() * r.x() + l.x() * r.w() + l.y() * r.z() - l.z() * r.y();
-            y.y().* = l.w() * r.y() + l.y() * r.w() - l.x() * r.z() + l.z() * r.x();
-            y.z().* = l.w() * r.z() + l.z() * r.w() + l.x() * r.y() - l.y() * r.x();
-            y.w().* = l.w() * r.w() - l.x() * r.x() - l.y() * r.y() - l.z() * r.z();
-        }
-
-        pub fn scale(self: *Self, multiplier: Scalar) void {
-            for (0..len) |n| self[n] *= multiplier;
-        }
-
-        pub fn scaleRecip(self: *Self, multiplier: Scalar) void {
-            const recip = scalar.one / multiplier;
-            for (0..len) |n| self[n] *= recip;
+            result.* = .{
+                l.w() * r.x() + l.x() * r.w() + l.y() * r.z() - l.z() * r.y(),
+                l.w() * r.y() + l.y() * r.w() - l.x() * r.z() + l.z() * r.x(),
+                l.w() * r.z() + l.z() * r.w() + l.x() * r.y() - l.y() * r.x(),
+                l.w() * r.w() - l.x() * r.x() - l.y() * r.y() - l.z() * r.z(),
+            };
         }
 
         pub fn magSqr(self: *const Self) Scalar {
             return dot(self, self);
         }
 
-        pub fn mag(self: *const Self) Scalar {
-            return @sqrt(magSqr(self));
-        }
-
-        pub fn normalize(self: *Self) void {
-            const vector_length = scalar.one / mag(self);
-            for (0..len) |n| self[n] *= vector_length;
-        }
-
         pub fn conjugate(self: *Self) void {
-            for (0..len - 1) |n| self[n] *= -1;
+            const s = vector.map(self);
+            s.x().* *= -1;
+            s.y().* *= -1;
+            s.z().* *= -1;
         }
 
         pub fn inverse(self: *Self) void {

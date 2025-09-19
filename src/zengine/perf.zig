@@ -7,9 +7,9 @@ const assert = std.debug.assert;
 
 const allocators = @import("allocators.zig");
 const global = @import("global.zig");
-const KeyTree = @import("key_tree.zig").KeyTree;
+const KeyTree = @import("containers.zig").KeyTree;
 const math = @import("math.zig");
-const RadixTree = @import("radix_tree.zig").RadixTree;
+const SwapWrapper = @import("containers.zig").SwapWrapper;
 const time = @import("time.zig");
 
 const log = std.log.scoped(.perf);
@@ -22,7 +22,9 @@ const frametime_buf_count = 1 << 8;
 const frametime_idx_mask: usize = frametime_buf_count - 1;
 const frametime_over_bit: usize = 1 << 9;
 
-pub const SectionsTree = KeyTree(struct { key: []const u8, value: *Section }, .{ .insertion_order = .insert_last });
+pub const KeyIndex = struct { key: []const u8, value: *Section };
+pub const SectionsTree = KeyTree(KeyIndex, .{ .insertion_order = .insert_last });
+pub const SectionsList = SwapWrapper(std.ArrayList(KeyIndex), .{});
 
 const Self = struct {
     framerate_buf: []u64,
@@ -30,6 +32,7 @@ const Self = struct {
     framerate: u32 = 1,
     sections: SectionHashMap,
     tree: SectionsTree,
+    list: SectionsList,
 
     const SectionHashMap = std.StringArrayHashMapUnmanaged(*Section);
 
@@ -38,10 +41,17 @@ const Self = struct {
         const framerate_buf = try gpa.alloc(u64, framerate_buf_count);
         @memset(framerate_buf, 0);
 
+        const initListItem = struct {
+            fn initListItem() !std.ArrayList(KeyIndex) {
+                return .initCapacity(allocators.gpa(), 128);
+            }
+        }.initListItem;
+
         self.* = .{
             .framerate_buf = framerate_buf,
             .sections = try .init(gpa, &.{}, &.{}),
             .tree = try .init(gpa, 128),
+            .list = try .initCall(initListItem),
         };
     }
 
@@ -52,6 +62,7 @@ const Self = struct {
         while (iter.next()) |i| gpa.destroy(i.value_ptr.*);
         self.sections.deinit(gpa);
         self.tree.deinit();
+        self.list.deinit(.{gpa});
     }
 
     fn update(self: *Self, now: u64) void {
@@ -62,6 +73,10 @@ const Self = struct {
         }
         self.framerate_idx = (self.framerate_idx + 1) & framerate_idx_mask;
         self.framerate_buf[self.framerate_idx] = now;
+    }
+
+    fn beginSection(self: *Self, comptime tag: []const u8, ptr: *Section) !void {
+        try self.list.getPtr().append(allocators.gpa(), .{ .key = tag, .value = ptr });
     }
 };
 
@@ -320,7 +335,9 @@ pub fn TaggedSection(comptime _tag: []const u8) type {
         }
 
         pub fn begin() void {
-            getPtr().begin();
+            const ptr = getPtr();
+            global_state.beginSection(tag, ptr) catch unreachable;
+            ptr.begin();
         }
 
         pub fn beginPaused() void {

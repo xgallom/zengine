@@ -147,3 +147,7 @@ pub fn Mesh(comptime V: type, comptime I: type) type {
 
 pub const TriangleMesh = Mesh(math.Vertex, math.FaceIndex);
 pub const LineMesh = Mesh(math.Vertex, math.LineFaceIndex);
+pub const AnyMesh = union(enum) {
+    triangle: TriangleMesh,
+    line: LineMesh,
+};

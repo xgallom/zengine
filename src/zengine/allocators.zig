@@ -1,8 +1,13 @@
+//!
+//! The zengine global allocators module
+//!
+
 const std = @import("std");
 const assert = std.debug.assert;
 pub const Arena = std.heap.ArenaAllocator;
 const builtin = @import("builtin");
 
+const options = @import("zengine.zig").options;
 const log_allocator = @import("log_allocator.zig");
 const sdl_allocator = @import("sdl_allocator.zig");
 const c = @import("ext.zig").c;
@@ -29,9 +34,9 @@ const Self = struct {
     arenas: std.EnumArray(ArenaKey, std.mem.Allocator) = .initUndefined(),
     max_alloc: usize = 0,
 
-    fn init(self: *Self, memory_limit: usize) void {
+    fn init(self: *Self, core_allocator: std.mem.Allocator, memory_limit: usize) void {
         self.* = .{};
-        self.core = sdl_allocator.raw;
+        self.core = core_allocator;
 
         self.gpa_state = GPA{
             .backing_allocator = self.core,
@@ -75,7 +80,7 @@ var global_state: Self = undefined;
 
 pub fn init(memory_limit: usize) !void {
     assert(!is_init);
-    global_state.init(memory_limit);
+    global_state.init(sdl_allocator.raw, memory_limit);
     is_init = true;
 }
 
@@ -109,7 +114,6 @@ pub inline fn core() std.mem.Allocator {
 }
 
 pub inline fn sdl() type {
-    assert(is_init);
     return sdl_allocator;
 }
 

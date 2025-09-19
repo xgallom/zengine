@@ -25,15 +25,19 @@ pub fn vectorNT(comptime N: comptime_int, comptime T: type) type {
             self: *Self,
 
             pub inline fn x(self: Map) *Scalar {
+                comptime assert(len > @intFromEnum(types.Axis4.x));
                 return &self.self[@intFromEnum(types.Axis4.x)];
             }
             pub inline fn y(self: Map) *Scalar {
+                comptime assert(len > @intFromEnum(types.Axis4.y));
                 return &self.self[@intFromEnum(types.Axis4.y)];
             }
             pub inline fn z(self: Map) *Scalar {
+                comptime assert(len > @intFromEnum(types.Axis4.z));
                 return &self.self[@intFromEnum(types.Axis4.z)];
             }
             pub inline fn w(self: Map) *Scalar {
+                comptime assert(len > @intFromEnum(types.Axis4.w));
                 return &self.self[@intFromEnum(types.Axis4.w)];
             }
         };
@@ -42,15 +46,19 @@ pub fn vectorNT(comptime N: comptime_int, comptime T: type) type {
             self: *const Self,
 
             pub inline fn x(self: CMap) Scalar {
+                comptime assert(len > @intFromEnum(types.Axis4.x));
                 return self.self[@intFromEnum(types.Axis4.x)];
             }
             pub inline fn y(self: CMap) Scalar {
+                comptime assert(len > @intFromEnum(types.Axis4.y));
                 return self.self[@intFromEnum(types.Axis4.y)];
             }
             pub inline fn z(self: CMap) Scalar {
+                comptime assert(len > @intFromEnum(types.Axis4.z));
                 return self.self[@intFromEnum(types.Axis4.z)];
             }
             pub inline fn w(self: CMap) Scalar {
+                comptime assert(len > @intFromEnum(types.Axis4.w));
                 return self.self[@intFromEnum(types.Axis4.w)];
             }
         };
