@@ -692,8 +692,6 @@ fn subSectionType(comptime section_type: SectionType) SectionType {
 }
 
 fn sectionLabel(comptime parent_label: ?[]const u8, comptime tag: []const u8, comptime section_type: SectionType) []const u8 {
-    // @compileLog(parent_label, tag, section_type);
-    // if (comptime std.mem.eql(u8, tag, "main.main")) @compileError("");
     if (comptime parent_label) |pl| {
         return switch (comptime section_type) {
             .root => pl ++ "." ++ tag,

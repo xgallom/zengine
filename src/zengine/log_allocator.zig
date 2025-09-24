@@ -47,11 +47,10 @@ pub fn LogAllocator(
         fn alloc(ptr: *anyopaque, len: usize, alignment: Alignment, ret_addr: usize) ?[*]u8 {
             const self: *Self = @ptrCast(@alignCast(ptr));
             const result = self.backing_allocator.rawAlloc(len, alignment, ret_addr);
-            if (comptime std.log.logEnabled(message_level, scope)) logFn("alloc[{}]@{} {}", .{
-                len,
-                alignment,
-                result != null,
-            });
+            if (comptime std.log.logEnabled(message_level, scope)) logFn(
+                "alloc[{}]@{} {}",
+                .{ len, alignment, result != null },
+            );
             if (self.alloc_callback) |cb| cb(len, alignment);
             return result;
         }
@@ -59,37 +58,30 @@ pub fn LogAllocator(
         fn resize(ptr: *anyopaque, memory: []u8, alignment: Alignment, new_len: usize, ret_addr: usize) bool {
             const self: *Self = @ptrCast(@alignCast(ptr));
             const result = self.backing_allocator.rawResize(memory, alignment, new_len, ret_addr);
-            if (comptime std.log.logEnabled(message_level, scope)) logFn("resize {X}[{} -> {}]@{} {}", .{
-                @intFromPtr(memory.ptr),
-                memory.len,
-                new_len,
-                alignment,
-                result,
-            });
+            if (comptime std.log.logEnabled(message_level, scope)) logFn(
+                "resize {X}[{} -> {}]@{} {}",
+                .{ @intFromPtr(memory.ptr), memory.len, new_len, alignment, result },
+            );
             return result;
         }
 
         fn remap(ptr: *anyopaque, memory: []u8, alignment: Alignment, new_len: usize, ret_addr: usize) ?[*]u8 {
             const self: *Self = @ptrCast(@alignCast(ptr));
             const result = self.backing_allocator.rawRemap(memory, alignment, new_len, ret_addr);
-            if (comptime std.log.logEnabled(message_level, scope)) logFn("remap {X}[{} -> {}]@{} {}", .{
-                @intFromPtr(memory.ptr),
-                memory.len,
-                new_len,
-                alignment,
-                result != null,
-            });
+            if (comptime std.log.logEnabled(message_level, scope)) logFn(
+                "remap {X}[{} -> {}]@{} {}",
+                .{ @intFromPtr(memory.ptr), memory.len, new_len, alignment, result != null },
+            );
             return result;
         }
 
         fn free(ptr: *anyopaque, memory: []u8, alignment: Alignment, ret_addr: usize) void {
             const self: *Self = @ptrCast(@alignCast(ptr));
             self.backing_allocator.rawFree(memory, alignment, ret_addr);
-            if (comptime std.log.logEnabled(message_level, scope)) logFn("free {X}[{}]@{}", .{
-                @intFromPtr(memory.ptr),
-                memory.len,
-                alignment,
-            });
+            if (comptime std.log.logEnabled(message_level, scope)) logFn(
+                "free {X}[{}]@{}",
+                .{ @intFromPtr(memory.ptr), memory.len, alignment },
+            );
         }
     };
 }

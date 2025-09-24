@@ -55,7 +55,7 @@ pub fn Promise(comptime T: type) type {
 }
 
 pub fn Task(comptime invokeFn: anytype) type {
-    if (comptime @typeInfo(@TypeOf(invokeFn)) != .@"fn") @compileError("invoke must be a function");
+    comptime if (@typeInfo(@TypeOf(invokeFn)) != .@"fn") @compileError("invoke must be a function");
     return struct {
         any: AnyTask,
         promise: Promise(RetVal),

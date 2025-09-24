@@ -176,9 +176,9 @@ pub fn Tree(comptime V: type, comptime options: struct {
         }
 
         fn order(lhs: *Node, rhs: *Node) std.math.Order {
-            if (comptime options.order_fn == null) {
+            comptime if (options.order_fn == null) {
                 @compileError("Can not use ordered insert without a compare function");
-            }
+            };
             return options.order_fn.?(lhs.value.?, rhs.value.?);
         }
 
