@@ -176,8 +176,8 @@ pub fn main() !void {
         });
     }
 
-    for (1..101) |n| {
-        const key = try std.fmt.allocPrint(allocators.scratch(), "camera_{:02}", .{n});
+    for (0..10) |n| {
+        const key = try std.fmt.allocPrint(allocators.scratch(), "camera_{:02}", .{n + 1});
         _ = try renderer.cameras.insert(key, .{});
     }
 
