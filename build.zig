@@ -1,16 +1,33 @@
 const std = @import("std");
 
+const ExtCommand = enum {
+    external,
+    sdl,
+    shadercross,
+    cimgui,
+    cimplot,
+};
+
 pub fn build(b: *std.Build) !void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
     const compile_shaders_opt = b.option(bool, "compile-shaders", "Force shader compilation");
+    const ext_cmd_opt = b.option(ExtCommand, "ext-command", "Project to use for external compilation") orelse .external;
 
-    const build_ext = b.addSystemCommand(&.{"build-scripts/build-external.sh"});
+    const build_ext_cmd = try std.fs.path.join(b.allocator, &.{
+        "build-scripts",
+        b.fmt("build-{t}.sh", .{ext_cmd_opt}),
+    });
+    const build_ext = b.addSystemCommand(&.{build_ext_cmd});
     const build_ext_step = b.step("ext", "Build external dependencies");
     build_ext_step.dependOn(&build_ext.step);
 
-    const clean_ext = b.addSystemCommand(&.{"build-scripts/clean-external.sh"});
+    const clean_ext_cmd = try std.fs.path.join(b.allocator, &.{
+        "build-scripts",
+        b.fmt("clean-{t}.sh", .{ext_cmd_opt}),
+    });
+    const clean_ext = b.addSystemCommand(&.{clean_ext_cmd});
     const clean_ext_step = b.step("clean-ext", "Clean external dependencies");
     clean_ext_step.dependOn(&clean_ext.step);
 
@@ -19,16 +36,19 @@ pub fn build(b: *std.Build) !void {
         .target = target,
         .optimize = optimize,
         .link_libc = true,
+        .link_libcpp = true,
         .pic = true,
     });
 
     zengine.addLibraryPath(b.path("external/build/lib"));
     zengine.addIncludePath(b.path("external/build/include"));
     zengine.addIncludePath(b.path("external/cimgui"));
+    zengine.addIncludePath(b.path("external/cimplot"));
 
     zengine.linkSystemLibrary("SDL3", .{});
     zengine.linkSystemLibrary("SDL3_shadercross", .{});
     zengine.linkSystemLibrary("cimgui", .{});
+    zengine.linkSystemLibrary("cimplot", .{});
 
     const lib = b.addLibrary(.{
         .name = "zengine",

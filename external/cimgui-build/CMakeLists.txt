@@ -53,7 +53,7 @@ function(GenerateCimguiBindings target platbk rendbk _inclist)
 		endif()
 	endif()
 
-	add_library(${target} SHARED 
+	add_library(${target} STATIC 
 		${cimgui_SOURCE_DIR}/cimgui.cpp
 		${cimgui_SOURCE_DIR}/cimgui_impl.cpp
 		${cimgui_SOURCE_DIR}/imgui/imgui.cpp

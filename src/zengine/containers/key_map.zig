@@ -70,14 +70,14 @@ pub fn KeyMap(comptime V: type, comptime options: struct {
 
 pub fn PtrKeyMap(comptime V: type) type {
     return struct {
-        map: std.StringArrayHashMapUnmanaged(*Value),
+        map: std.StringArrayHashMapUnmanaged(*Value) = .empty,
 
         pub const Self = @This();
         pub const Value = V;
 
         // Initializes the map
         pub fn init(gpa: std.mem.Allocator, preheat: usize) !Self {
-            var result = Self{ .map = .empty };
+            var result: Self = .{};
             try result.map.ensureTotalCapacity(gpa, preheat);
             return result;
         }

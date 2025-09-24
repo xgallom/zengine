@@ -77,28 +77,6 @@ pub const FloatTime = union(Unit) {
     day: f64,
     week: f64,
 
-    pub fn toCardinal(time: FloatTime) FloatTime {
-        switch (@as(Unit, time)) {
-            inline else => |from| {
-                const sn = @intFromEnum(Unit.s);
-                inline for (0..sn) |n| {
-                    const to: Unit = comptime @enumFromInt(sn - n);
-                    const value = Unit.convert(
-                        from,
-                        to,
-                        @field(time, @tagName(from)),
-                    );
-                    if (value >= 10.0) return @unionInit(
-                        FloatTime,
-                        @tagName(to),
-                        value,
-                    );
-                }
-                return time;
-            },
-        }
-    }
-
     pub fn toTime(from: FloatTime, comptime to: Unit) FloatTime {
         return @unionInit(FloatTime, @tagName(to), from.toValue(to));
     }
@@ -137,28 +115,6 @@ pub const Time = union(Unit) {
     hour: u64,
     day: u64,
     week: u64,
-
-    pub fn toCardinal(time: FloatTime) FloatTime {
-        switch (@as(Unit, time)) {
-            inline else => |from| {
-                const sn = @intFromEnum(Unit.s);
-                inline for (0..sn) |n| {
-                    const to: Unit = comptime @enumFromInt(sn - n);
-                    const value = Unit.convert(
-                        from,
-                        to,
-                        @field(time, @tagName(from)),
-                    );
-                    if (value >= 10) return @unionInit(
-                        FloatTime,
-                        @tagName(to),
-                        value,
-                    );
-                }
-                return time;
-            },
-        }
-    }
 
     pub fn toTime(from: Time, comptime to: Unit) Time {
         return @unionInit(Time, @tagName(to), from.toValue(to));
@@ -236,7 +192,42 @@ pub const Clock = struct {
     }
 };
 
-/// Struct for firing intervals
+/// Struct for firing intervals with comptime interval
+pub fn StaticTimer(comptime interval: u64) type {
+    return struct {
+        updated_at: u64 = 0,
+
+        const Self = @This();
+
+        pub const init: Self = .{};
+
+        pub fn isArmed(self: *const Self, now: u64) bool {
+            return now -| self.updated_at >= interval;
+        }
+
+        pub fn set(self: *Self, now: u64) void {
+            self.updated_at = now;
+        }
+
+        pub fn reset(self: *Self) void {
+            self.updated_at = 0;
+        }
+
+        pub fn updated(self: *Self, now: u64) bool {
+            if (self.isArmed(now)) {
+                self.set(now);
+                return true;
+            }
+            return false;
+        }
+
+        pub inline fn update(self: *Self, now: u64) void {
+            _ = self.updated(now);
+        }
+    };
+}
+
+/// Struct for firing intervals with adjustable interval
 pub const Timer = struct {
     updated_at: u64 = 0,
     interval: u64,

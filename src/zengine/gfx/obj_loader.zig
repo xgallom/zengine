@@ -9,7 +9,7 @@ const log = std.log.scoped(.gfx_obj_loader);
 
 pub fn loadFile(allocator: std.mem.Allocator, path: []const u8) !mesh.TriangleMesh {
     var result = mesh.TriangleMesh.init(allocator);
-    errdefer result.deinit();
+    errdefer result.freeCpuData();
 
     var file = try std.fs.openFileAbsolute(path, .{});
     defer file.close();
@@ -26,9 +26,9 @@ pub fn loadFile(allocator: std.mem.Allocator, path: []const u8) !mesh.TriangleMe
             },
             'f' => {
                 const face = try parseFace(line);
-                if (face[0] >= result.vertices.items.len) return error.InvalidIndex;
-                if (face[1] >= result.vertices.items.len) return error.InvalidIndex;
-                if (face[2] >= result.vertices.items.len) return error.InvalidIndex;
+                if (face[0] >= result.verts.items.len) return error.InvalidIndex;
+                if (face[1] >= result.verts.items.len) return error.InvalidIndex;
+                if (face[2] >= result.verts.items.len) return error.InvalidIndex;
                 try result.appendFace(face);
             },
             else => return error.SyntaxError,

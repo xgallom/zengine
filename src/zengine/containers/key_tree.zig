@@ -18,6 +18,7 @@ pub fn KeyTree(comptime V: type, comptime options: struct {
     pool_options: std.heap.MemoryPoolOptions = .{},
     insertion_order: InsertionOrder = .ordered,
     separator: u8 = '.',
+    has_depth: bool = false,
 }) type {
     return struct {
         pool: Pool,
@@ -39,6 +40,7 @@ pub fn KeyTree(comptime V: type, comptime options: struct {
         pub const Node = struct {
             value: ?Value,
             edges: Edges,
+            depth: if (options.has_depth) u32 else void = if (options.has_depth) 0 else {},
 
             pub fn deinit(node: *Node, self: *Self) usize {
                 log.warn("deinit", .{});
@@ -79,6 +81,12 @@ pub fn KeyTree(comptime V: type, comptime options: struct {
         }
 
         pub fn getPtr(self: *const Self, key: []const u8) ?*Value {
+            const node = self.getNode(key);
+            if (node == null or node.?.value == null) return null;
+            return &node.?.value.?;
+        }
+
+        pub fn getNode(self: *const Self, key: []const u8) ?*Node {
             var walk = self.root;
             var iter = std.mem.splitScalar(u8, key, options.separator);
 
@@ -100,12 +108,15 @@ pub fn KeyTree(comptime V: type, comptime options: struct {
                 return null;
             }
 
-            if (walk.value == null) return null;
-            return &walk.value.?;
+            return walk;
         }
 
         /// Inserts new value into the tree
         pub fn insert(self: *Self, key: []const u8, value: Value) !void {
+            return self.insertWithOrder(key, value, options.insertion_order);
+        }
+
+        pub fn insertWithOrder(self: *Self, key: []const u8, value: Value, comptime order: InsertionOrder) !void {
             var walk = self.root;
             var iter = std.mem.splitScalar(u8, key, options.separator);
 
@@ -126,15 +137,17 @@ pub fn KeyTree(comptime V: type, comptime options: struct {
                 }
 
                 log.debug("add node", .{});
-                walk = try self.addNode(walk, try self.createLabel(label));
+                const child = try self.addNode(walk, try self.createLabel(label), order);
+                if (comptime options.has_depth) child.depth = walk.depth + 1;
+                walk = child;
             }
 
             walk.value = value;
         }
 
-        fn addNode(self: *Self, parent: *Node, label: []const u8) !*Node {
+        fn addNode(self: *Self, parent: *Node, label: []const u8, comptime order: InsertionOrder) !*Node {
             const edge = try self.createEdge(label, null);
-            switch (comptime options.insertion_order) {
+            switch (comptime order) {
                 .ordered => orderedInsert(&parent.edges.first, edge),
                 .insert_first => parent.edges.prepend(&edge.edge_node),
                 .insert_last => lastInsert(&parent.edges.first, edge),
@@ -145,14 +158,14 @@ pub fn KeyTree(comptime V: type, comptime options: struct {
         fn orderedInsert(head: *?*Edges.Node, edge: *Edge) void {
             const edge_node = &edge.edge_node;
 
-            if (head.* == null or order(@fieldParentPtr("edge_node", head.*.?), edge).compare(.gte)) {
+            if (head.* == null or orderEdges(@fieldParentPtr("edge_node", head.*.?), edge).compare(.gte)) {
                 edge_node.next = head.*;
                 head.* = edge_node;
                 return;
             }
 
             var current = head.*.?;
-            while (current.next != null and order(@fieldParentPtr("edge_node", current.next.?), edge).compare(.lt)) : (current = current.next.?) {}
+            while (current.next != null and orderEdges(@fieldParentPtr("edge_node", current.next.?), edge).compare(.lt)) : (current = current.next.?) {}
 
             edge_node.next = current.next;
             current.next = edge_node;
@@ -167,7 +180,7 @@ pub fn KeyTree(comptime V: type, comptime options: struct {
             }
         }
 
-        fn order(lhs: *Edge, rhs: *Edge) std.math.Order {
+        fn orderEdges(lhs: *Edge, rhs: *Edge) std.math.Order {
             return std.mem.order(u8, lhs.label, rhs.label);
         }
 
@@ -184,9 +197,9 @@ pub fn KeyTree(comptime V: type, comptime options: struct {
             return edge;
         }
 
-        fn createLabel(self: *Self, label: []const u8) ![]const u8 {
+        fn createLabel(self: *Self, label: []const u8) ![:0]const u8 {
             const allocator: std.mem.Allocator = self.pool.arena.allocator();
-            const result = try allocator.alloc(u8, label.len);
+            const result = try allocator.allocSentinel(u8, label.len, 0);
             @memcpy(result, label);
             return result;
         }

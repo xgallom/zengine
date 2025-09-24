@@ -1,11 +1,11 @@
 #!/bin/bash
 
-printf "Building cimgui\n"
+printf "Building cimplot\n"
 printf -- "----------------------------------------------------------------------------------------------------\n\n"
 
 SDIR="$PWD"
-PDIR="$PWD/external/cimgui"
-BDIR="$PWD/external/cimgui-build/build"
+PDIR="$PWD/external/cimplot"
+BDIR="$PWD/external/cimplot-build/build"
 IDIR="$PWD/external/build"
 
 mkdir -p "$BDIR"
@@ -19,7 +19,7 @@ cd "$BDIR"
 CMAKE_INSTALL_PREFIX="$IDIR" cmake .. \
 	-DCMAKE_BUILD_TYPE=Debug \
 	-DCMAKE_FIND_PACKAGE_REDIRECTS_DIR="$IDIR/lib/cmake" \
-	-Dcimgui_SOURCE_DIR="$PDIR" \
+	-DIMGUI_USER_CONFIG="$PWD/external/cimgui/cimconfig.h" \
 
 make -j 8
 make install

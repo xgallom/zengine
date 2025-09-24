@@ -13,10 +13,10 @@ const scheduler = zengine.scheduler;
 const time = zengine.time;
 const Engine = zengine.Engine;
 const UI = zengine.ui.UI;
-const RadixTree = zengine.RadixTree;
 
 const log = std.log.scoped(.main);
-const sections = perf.sections(@This(), &.{ .init, .frame });
+const main_section = perf.section(@This()).sub(.main);
+const sections = main_section.sections(&.{ .init, .frame });
 
 pub const std_options: std.Options = .{
     .log_level = .info,
@@ -30,6 +30,7 @@ pub const std_options: std.Options = .{
     // .{ .scope = .key_tree, .level = .debug },
     // .{ .scope = .radix_tree, .level = .debug },
     // .{ .scope = .scheduler, .level = .debug },
+    // .{ .scope = .tree, .level = .debug },
     // },
 };
 
@@ -46,15 +47,17 @@ pub fn main() !void {
     try perf.init();
     defer perf.deinit();
 
+    try main_section.register();
     try sections.register();
     try sections.sub(.frame)
         .sections(&.{ .init, .input, .update, .render })
         .register();
 
-    sections.sub(.init).begin();
-
     try global.init();
     defer global.deinit();
+
+    main_section.begin();
+    sections.sub(.init).begin();
 
     try engine.initWindow();
 
@@ -68,28 +71,18 @@ pub fn main() !void {
     var task_list = try scheduler.TaskScheduler.init(allocators.gpa());
     defer task_list.deinit();
 
-    var log_timer = time.Timer.init(5000);
+    var log_timer = time.StaticTimer(1000).init;
 
     var controls = zengine.controls.CameraControls{};
     var speed_change_timer = time.Timer.init(500);
     var speed_scale: f32 = 10;
 
     try perf.commitGraph();
-    defer perf.releaseGraph();
+    defer {
+        perf.releaseGraph();
+    }
 
     sections.sub(.init).end();
-
-    const a = math.quat.init(std.math.degreesToRadians(90), &.{ 1, 0, 0 });
-    const b = math.quat.init(std.math.degreesToRadians(90), &.{ 0, 1, 0 });
-
-    var result: math.quat.Self = undefined;
-    var x: math.Quat = undefined;
-    math.quat.mulInto(&x, &b, &a);
-    math.quat.apply(&result, &x, &.{ 0, 1, 0, 1 });
-    // math.quat.apply(&result, &b, &x);
-    log.info("a: {any}", .{a});
-    log.info("b: {any}", .{b});
-    log.info("r: {any}", .{result});
 
     const AudioFormat = enum(c_int) {
         unknown = c.SDL_AUDIO_UNKNOWN,
@@ -183,14 +176,29 @@ pub fn main() !void {
         });
     }
 
-    var property_editor = zengine.ui.PropertyEditorWindow.init(allocators.frame());
+    for (1..101) |n| {
+        const key = try std.fmt.allocPrint(allocators.scratch(), "camera_{:02}", .{n});
+        _ = try renderer.cameras.insert(key, .{});
+    }
+
+    var debug_ui = zengine.ui.DebugUI.init();
+
+    var property_editor = zengine.ui.PropertyEditorWindow.init(allocators.global());
     defer property_editor.deinit();
     const gfx_node = try property_editor.appendNode(@typeName(gfx), "gfx");
     try renderer.propertyEditorNode(&property_editor, gfx_node);
 
-    var editor_open = true;
+    var allocs_window = zengine.ui.AllocsWindow.init();
+    var perf_window = zengine.ui.PerfWindow.init(allocators.global());
+
+    allocators.scratchRelease();
 
     return mainloop: while (true) {
+        defer perf.reset();
+
+        main_section.push();
+        defer main_section.pop();
+
         const section = sections.sub(.frame);
         section.begin();
         defer section.end();
@@ -204,6 +212,7 @@ pub fn main() !void {
 
         const now = global.engineNow();
         perf.update(now);
+        perf.updateStats(now, false);
 
         section.sub(.init).end();
         section.sub(.input).begin();
@@ -221,7 +230,6 @@ pub fn main() !void {
                         if (sdl_event.key.repeat) break;
                         switch (sdl_event.key.key) {
                             c.SDLK_F1 => ui.show_ui = !ui.show_ui,
-                            c.SDLK_F2 => editor_open = !editor_open,
                             c.SDLK_ESCAPE => break :mainloop,
                             else => {},
                         }
@@ -256,7 +264,6 @@ pub fn main() !void {
                         c.SDLK_EQUALS => controls.set(.custom(2)),
 
                         c.SDLK_F1 => ui.show_ui = !ui.show_ui,
-                        c.SDLK_F2 => editor_open = !editor_open,
                         c.SDLK_ESCAPE => break :mainloop,
                         else => {},
                     }
@@ -384,26 +391,31 @@ pub fn main() !void {
         section.sub(.update).end();
         section.sub(.render).begin();
 
-        _ = try renderer.draw(engine, ui);
+        ui.beginDraw();
 
         // if (ui.show_ui) c.igShowDemoWindow(&ui.show_ui);
-        ui.draw(property_editor.element(), &editor_open);
+        ui.draw(debug_ui.element(), &debug_ui.is_open);
+        ui.draw(property_editor.element(), &property_editor.is_open);
+        ui.draw(perf_window.element(), &perf_window.is_open);
+        ui.draw(allocs_window.element(), &allocs_window.is_open);
 
-        _ = try renderer.endDraw(engine, ui);
+        ui.endDraw();
+
+        _ = try renderer.render(engine, ui);
 
         section.sub(.render).end();
 
-        if (log_timer.updated(now)) {
-            perf.updateAvg();
-            perf.perf_sections.sub(.log).begin();
-
-            log.info("frame[{}]@{D}", .{ global.frameIndex(), global.timeSinceStart().toValue(.ns) });
-            allocators.logCapacities();
-            perf.logPerf();
-
-            perf.perf_sections.sub(.log).end();
-            log.info("{f}", .{renderer});
-            log.info("speed scale: {d:.3}", .{speed_scale});
+        if (global.isFirstFrame()) {
+            @branchHint(.cold);
+            main_section.end();
+            perf.updateStats(0, true);
         }
+        if (log_timer.updated(now)) printLog();
     };
+}
+
+fn printLog() void {
+    log.info("frame[{}]@{D}", .{ global.frameIndex(), global.timeSinceStart().toValue(.ns) });
+    allocators.logCapacities();
+    perf.logPerf();
 }

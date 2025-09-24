@@ -12,6 +12,9 @@ const gfx = @import("../gfx.zig");
 const global = @import("../global.zig");
 const math = @import("../math.zig");
 const perf = @import("../perf.zig");
+const AllocsWindpw = @import("AllocsWindow.zig");
+const PerfWindow = @import("PerfWindow.zig");
+const PropertyEditorWindow = @import("PropertyEditorWindow.zig");
 
 const log = std.log.scoped(.ui_UI);
 pub const sections = perf.sections(@This(), &.{ .init, .draw });
@@ -20,21 +23,38 @@ const Self = @This();
 
 draw_data: ?*c.ImDrawData = null,
 show_ui: bool = false,
+render_ui: bool = false,
+init_docking: bool = true,
 
 pub const Element = struct {
-    ptr: *anyopaque,
-    draw: *const fn (ptr: *anyopaque, ui: *const Self, is_open: *bool) void,
+    ptr: ?*anyopaque,
+    drawFn: *const fn (ptr: ?*anyopaque, ui: *const Self, is_open: *bool) void,
+
+    pub fn draw(e: Element, ui: *const Self, is_open: *bool) void {
+        e.drawFn(e.ptr, ui, is_open);
+    }
 };
 
 pub fn init(engine: *Engine, renderer: *gfx.Renderer) gfx.Renderer.InitError!*Self {
-    const main_scale = c.SDL_GetDisplayContentScale(c.SDL_GetPrimaryDisplay());
+    try sections.register();
+
+    const section = sections.sub(.init);
+    section.begin();
+    defer section.end();
+
     _ = c.igCreateContext(null);
+    _ = c.ImPlot_CreateContext();
+
+    const main_scale = c.SDL_GetDisplayContentScale(c.SDL_GetPrimaryDisplay());
     const io = c.igGetIO_Nil().?;
+    const style = c.igGetStyle().?;
+
     io.*.ConfigFlags |= c.ImGuiConfigFlags_NavEnableKeyboard;
     io.*.ConfigFlags |= c.ImGuiConfigFlags_DockingEnable;
+
     c.igStyleColorsDark(null);
-    const style = c.igGetStyle().?;
     c.ImGuiStyle_ScaleAllSizes(style, main_scale);
+
     style.*.FontScaleDpi = main_scale;
     io.*.ConfigDpiScaleFonts = true;
     io.*.ConfigDpiScaleViewports = true;
@@ -55,34 +75,65 @@ pub fn init(engine: *Engine, renderer: *gfx.Renderer) gfx.Renderer.InitError!*Se
 pub fn deinit(self: *Self) void {
     c.ImGui_ImplSDLGPU3_Shutdown();
     c.ImGui_ImplSDL3_Shutdown();
-    allocators.global().destroy(self);
+    c.ImPlot_DestroyContext(null);
+    c.igDestroyContext(null);
+    self.* = .{};
 }
 
-pub fn beginDraw(self: *const Self) void {
-    if (!self.show_ui) return;
+pub fn beginDraw(self: *Self) void {
+    self.render_ui = self.show_ui;
+    if (!self.render_ui) return;
+
+    sections.sub(.draw).begin();
 
     c.ImGui_ImplSDLGPU3_NewFrame();
     c.ImGui_ImplSDL3_NewFrame();
     c.igNewFrame();
 
     const viewport = c.igGetMainViewport();
-    _ = c.igDockSpaceOverViewport(
+    const dock_node = c.igDockSpaceOverViewport(
         0,
         viewport,
         c.ImGuiDockNodeFlags_PassthruCentralNode,
         null,
     );
+
+    if (self.init_docking) {
+        @branchHint(.cold);
+        self.init_docking = false;
+        var nodes: [4]c.ImGuiID = undefined;
+
+        c.igDockBuilderRemoveNodeChildNodes(dock_node);
+        _ = c.igDockBuilderSplitNode(dock_node, c.ImGuiDir_Left, 1.0 / 4.0, &nodes[0], &nodes[3]);
+        _ = c.igDockBuilderSplitNode(nodes[3], c.ImGuiDir_Right, 1.0 / 3.0, &nodes[2], &nodes[1]);
+
+        // const view_size = viewport.*.WorkSize;
+        // const side_size = c.ImVec2{ .x = 630, .y = view_size.y };
+        // const central_size = c.ImVec2{ .x = view_size.x - 2 * side_size.x, .y = view_size.y };
+        //
+        // c.igDockBuilderSetNodeSize(nodes[0], side_size);
+        // c.igDockBuilderSetNodeSize(nodes[1], central_size);
+        // c.igDockBuilderSetNodeSize(nodes[2], side_size);
+
+        c.igDockBuilderDockWindow(PropertyEditorWindow.window_name, nodes[0]);
+        c.igDockBuilderDockWindow(PerfWindow.window_name, nodes[2]);
+        c.igDockBuilderDockWindow(AllocsWindpw.window_name, nodes[2]);
+        c.igDockBuilderFinish(dock_node);
+    }
 }
 
 pub fn draw(self: *const Self, element: Element, is_open: *bool) void {
-    if (!self.show_ui or !is_open.*) return;
-    element.draw(element.ptr, self, is_open);
+    if (!self.render_ui or !is_open.*) return;
+    element.draw(self, is_open);
 }
 
 pub fn endDraw(self: *Self) void {
-    if (!self.show_ui) return;
+    if (!self.render_ui) return;
+
     c.igRender();
     self.draw_data = c.igGetDrawData();
+
+    sections.sub(.draw).end();
 }
 
 pub fn submitPass(self: *Self, command_buffer: ?*c.SDL_GPUCommandBuffer, swapchain_texture: ?*c.SDL_GPUTexture) gfx.Renderer.DrawError!void {

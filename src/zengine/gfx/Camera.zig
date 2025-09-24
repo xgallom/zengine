@@ -14,17 +14,17 @@ const log = std.log.scoped(.gfx_camera);
 
 const Self = @This();
 
-kind: Kind,
-position: math.Vector3,
-direction: math.Vector3,
+kind: Kind = .perspective,
+position: math.Vector3 = math.vector3.zero,
+direction: math.Vector3 = .{ 1, 0, 0 },
 up: math.Vector3 = global.cameraUp(),
 fov: f32 = 45,
-orto_scale: f32 = 1,
+orto_scale: f32 = 100,
 
-pub const position_min: math.Vector3 = @splat(-1000);
-pub const position_max: math.Vector3 = @splat(1000);
-pub const direction_min: math.Vector3 = @splat(-1000);
-pub const direction_max: math.Vector3 = @splat(1000);
+pub const position_min = -1000;
+pub const position_max = 1000;
+pub const direction_min = -1000;
+pub const direction_max = 1000;
 pub const fov_min = 35;
 pub const fov_max = 135;
 pub const fov_speed = 1;

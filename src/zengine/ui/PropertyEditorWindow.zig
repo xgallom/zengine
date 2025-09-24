@@ -9,22 +9,25 @@ const allocators = @import("../allocators.zig");
 const c = @import("../ext.zig").c;
 const global = @import("../global.zig");
 const UI = @import("UI.zig");
+const TreeFilter = @import("TreeFilter.zig");
 
 const log = std.log.scoped(.ui_property_editor_window);
 // pub const sections = perf.sections(@This(), &.{ .init, .draw });
 
-allcator: std.mem.Allocator,
-filter: c.ImGuiTextFilter = .{},
+allocator: std.mem.Allocator,
 items: std.DoublyLinkedList = .{},
+filter: TreeFilter = .{},
 active_item: ?*const Item = null,
 max_depth: u32 = 0,
+is_open: bool = true,
 
 pub const Self = @This();
+pub const window_name = "Property Editor";
 
 pub const Item = struct {
     self: *const Self,
     node: std.DoublyLinkedList.Node = .{},
-    element: UI.Element = undefined,
+    element: ?UI.Element = null,
     children: std.DoublyLinkedList = .{},
     depth: u32,
     id: [64]u8 = undefined,
@@ -34,18 +37,19 @@ pub const Item = struct {
         var walk = item.children.first;
         while (walk != null) : (walk = walk.?.next) {
             const child: *Item = @fieldParentPtr("node", walk.?);
+            const width = child.sepWidth();
 
             c.igTableNextRow(0, 0);
             c.igPushID_Str(&child.id);
 
-            const width = child.sepWidth();
-
             _ = c.igTableNextColumn();
+            c.igSeparatorEx(c.ImGuiSeparatorFlags_Horizontal, width);
             c.igAlignTextToFramePadding();
             c.igText(&child.name);
             c.igSeparatorEx(c.ImGuiSeparatorFlags_Horizontal, width);
 
             _ = c.igTableNextColumn();
+            c.igSeparatorEx(c.ImGuiSeparatorFlags_Horizontal, width);
             c.igAlignTextToFramePadding();
             c.igText("");
             c.igSeparatorEx(c.ImGuiSeparatorFlags_Horizontal, width);
@@ -59,7 +63,7 @@ pub const Item = struct {
     fn nodeElement(item: *Item) UI.Element {
         return .{
             .ptr = @ptrCast(item),
-            .draw = @ptrCast(&Item.draw),
+            .drawFn = @ptrCast(&Item.draw),
         };
     }
 
@@ -70,7 +74,7 @@ pub const Item = struct {
 
 pub fn init(allocator: std.mem.Allocator) Self {
     return .{
-        .allcator = allocator,
+        .allocator = allocator,
     };
 }
 
@@ -81,7 +85,7 @@ pub fn deinit(self: *Self) void {
 fn destroy(self: *const Self, node: *std.DoublyLinkedList.Node) void {
     const item: *Item = @fieldParentPtr("node", node);
     while (item.children.popFirst()) |child| self.destroy(child);
-    self.allcator.destroy(item);
+    self.allocator.destroy(item);
 }
 
 pub fn append(self: *Self, property_editor: anytype, id: []const u8, name: []const u8) !*Item {
@@ -100,7 +104,7 @@ pub fn appendNode(self: *Self, id: []const u8, name: []const u8) !*Item {
         .self = self,
         .depth = 0,
     });
-    result.element = result.nodeElement();
+    // result.element = result.nodeElement();
     _ = try std.fmt.bufPrintZ(&result.id, "{s}", .{id});
     _ = try std.fmt.bufPrintZ(&result.name, "{s}", .{name});
     return result;
@@ -122,15 +126,15 @@ pub fn appendChildNode(self: *Self, item: *Item, id: []const u8, name: []const u
         .self = self,
         .depth = item.depth + 1,
     });
-    result.element = result.nodeElement();
+    // result.element = result.nodeElement();
     _ = try std.fmt.bufPrintZ(&result.id, "{s}", .{id});
     _ = try std.fmt.bufPrintZ(&result.name, "{s}", .{name});
     return result;
 }
 
 fn appendImpl(self: *Self, items: *std.DoublyLinkedList, src_item: Item) !*Item {
-    const item = try self.allcator.create(Item);
-    errdefer self.allcator.destroy(item);
+    const item = try self.allocator.create(Item);
+    errdefer self.allocator.destroy(item);
     item.* = src_item;
     self.max_depth = @max(self.max_depth, item.depth + 1);
     items.append(&item.node);
@@ -138,30 +142,20 @@ fn appendImpl(self: *Self, items: *std.DoublyLinkedList, src_item: Item) !*Item 
 }
 
 pub fn draw(self: *Self, ui: *const UI, is_open: *bool) void {
-    c.igSetNextWindowSize(.{ .x = 630, .y = 480 }, c.ImGuiCond_FirstUseEver);
-    if (!c.igBegin("Property Editor", is_open, 0)) {
+    c.igSetNextWindowSize(.{ .x = 490, .y = 480 }, c.ImGuiCond_FirstUseEver);
+    if (!c.igBegin(window_name, is_open, 0)) {
         c.igEnd();
         return;
     }
 
     if (c.igBeginChild_Str("##tree", .{ .x = 240 }, c.ImGuiChildFlags_ResizeX | c.ImGuiChildFlags_Borders | c.ImGuiChildFlags_NavFlattened, 0)) {
-        c.igSetNextItemWidth(-std.math.floatMin(f32));
-        c.igSetNextItemShortcut(c.ImGuiMod_Ctrl | c.ImGuiKey_F, c.ImGuiInputFlags_Tooltip);
-        c.igPushItemFlag(c.ImGuiItemFlags_NoNavDefaultFocus, true);
-        if (c.igInputTextWithHint("##Filter", "incl, -excl", @ptrCast(&self.filter.InputBuf), self.filter.InputBuf.len, c.ImGuiInputTextFlags_EscapeClearsAll, null, null)) {
-            c.ImGuiTextFilter_Build(&self.filter);
-        }
-        c.igPopItemFlag();
+        self.filter.draw(ui, is_open);
 
         if (c.igBeginTable("##bg", 1, c.ImGuiTableFlags_RowBg, .{}, 0)) {
             var walk = self.items.first;
             while (walk != null) : (walk = walk.?.next) {
                 const item: *const Item = @fieldParentPtr("node", walk.?);
-                if (c.ImGuiTextFilter_PassFilter(
-                    &self.filter,
-                    &item.name,
-                    null,
-                )) self.drawTreeNode(item);
+                self.drawTreeNode(item, .init);
             }
             c.igEndTable();
         }
@@ -172,15 +166,16 @@ pub fn draw(self: *Self, ui: *const UI, is_open: *bool) void {
 
     c.igBeginGroup();
     if (self.active_item) |item| {
+        const address = @intFromPtr(if (item.element) |el| el.ptr else null);
         c.igText("%s", &item.name);
-        c.igTextDisabled("0x%08X (%s)", @intFromPtr(item.element.ptr), &item.id);
+        c.igTextDisabled("0x%08X (%s)", address, &item.id);
         c.igSeparatorEx(c.ImGuiSeparatorFlags_Horizontal, item.sepWidth());
         if (c.igBeginTable("##properties", 2, c.ImGuiTableFlags_Resizable | c.ImGuiTableFlags_ScrollY, .{}, 0)) {
             c.igPushID_Str(&item.id);
-            c.igTableSetupColumn("", c.ImGuiTableColumnFlags_WidthFixed, 120, 0);
+            c.igTableSetupColumn("", c.ImGuiTableColumnFlags_WidthFixed, 90, 0);
             c.igTableSetupColumn("", c.ImGuiTableColumnFlags_WidthStretch, 2, 0);
 
-            ui.draw(item.element, is_open);
+            if (item.element) |el| ui.draw(el, is_open);
 
             c.igPopID();
             c.igEndTable();
@@ -191,10 +186,18 @@ pub fn draw(self: *Self, ui: *const UI, is_open: *bool) void {
     c.igEnd();
 }
 
-fn drawTreeNode(self: *Self, item: *const Item) void {
+fn drawTreeNode(
+    self: *Self,
+    item: *const Item,
+    parent_filt_res: TreeFilter.Result,
+) void {
+    const filt_res = Filter.apply(&self.filter, item, parent_filt_res);
+    if (filt_res == .not_found) return;
+
     c.igTableNextRow(0, 0);
     _ = c.igTableNextColumn();
     c.igPushID_Str(&item.id);
+
     var tree_flags: c.ImGuiTreeNodeFlags = c.ImGuiTreeNodeFlags_OpenOnArrow |
         c.ImGuiTreeNodeFlags_OpenOnDoubleClick |
         c.ImGuiTreeNodeFlags_NavLeftJumpsToParent |
@@ -203,22 +206,39 @@ fn drawTreeNode(self: *Self, item: *const Item) void {
     if (item == self.active_item) tree_flags |= c.ImGuiTreeNodeFlags_Selected;
     if (item.children.first == null) tree_flags |= c.ImGuiTreeNodeFlags_Leaf |
         c.ImGuiTreeNodeFlags_Bullet;
-    const node_open = c.igTreeNodeEx_StrStr("", tree_flags, "%s", &item.name);
+
+    self.filter.toggleOpen(filt_res);
+    const node_open = c.igTreeNodeEx_StrStr("##node", tree_flags, "%s", &item.name);
     if (c.igIsItemFocused()) self.active_item = item;
     if (node_open) {
         var walk = item.children.first;
         while (walk != null) : (walk = walk.?.next) {
             const child: *const Item = @fieldParentPtr("node", walk.?);
-            self.drawTreeNode(child);
+            self.drawTreeNode(child, filt_res);
         }
         c.igTreePop();
     }
     c.igPopID();
 }
 
+const Filter = TreeFilter.Filter(*const Item, keyTree, walkTree);
+
+fn keyTree(item: *const Item) ?[*:0]const u8 {
+    return @ptrCast(&item.name);
+}
+
+fn walkTree(filter: *TreeFilter, item: *const Item) TreeFilter.Result {
+    var walk = item.children.first;
+    while (walk != null) : (walk = walk.?.next) {
+        const result = Filter.applyWalk(filter, @fieldParentPtr("node", walk.?));
+        if (result != .not_found) return .sub_passed;
+    }
+    return .not_found;
+}
+
 pub fn element(self: *Self) UI.Element {
     return .{
         .ptr = @ptrCast(self),
-        .draw = @ptrCast(&draw),
+        .drawFn = @ptrCast(&draw),
     };
 }

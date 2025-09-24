@@ -23,6 +23,7 @@ pub const ArenaKey = enum {
     global,
     frame,
     scratch,
+    perf,
 };
 
 const Self = struct {
@@ -89,10 +90,15 @@ pub fn deinit() void {
     const result = global_state.deinit();
     is_init = false;
     if (global_state.max_alloc != 0) log.info(
-        "max allocated: {Bi}",
+        "max allocated: {Bi:.3}",
         .{global_state.max_alloc},
     );
     assert(result == .ok);
+}
+
+pub inline fn maxAlloc() usize {
+    assert(is_init);
+    return global_state.max_alloc;
 }
 
 fn updateMaxAlloc(_: usize, _: std.mem.Alignment) void {
@@ -120,6 +126,11 @@ pub inline fn sdl() type {
 pub inline fn gpa() std.mem.Allocator {
     assert(is_init);
     return global_state.gpa;
+}
+
+pub inline fn memoryLimit() usize {
+    assert(is_init);
+    return global_state.gpa_state.requested_memory_limit;
 }
 
 pub inline fn queryCapacity() usize {
@@ -151,6 +162,10 @@ pub inline fn frame() std.mem.Allocator {
 
 pub inline fn frameReset() void {
     _ = arenaReset(.frame, .retain_capacity);
+}
+
+pub inline fn frameFree() void {
+    _ = arenaReset(.frame, .free_all);
 }
 
 pub inline fn scratch() std.mem.Allocator {

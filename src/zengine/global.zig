@@ -65,6 +65,11 @@ pub fn deinit() void {
     is_init = false;
 }
 
+pub fn isFirstFrame() bool {
+    assert(is_init);
+    return global_state.frame_idx <= 1;
+}
+
 pub fn startFrame() void {
     assert(is_init);
     global_state.startFrame(time.getNow());

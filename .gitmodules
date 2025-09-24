@@ -10,3 +10,6 @@
 	path = external/cimgui
 	url = https://github.com/cimgui/cimgui.git
 	ignore = dirty
+[submodule "external/cimplot"]
+	path = external/cimplot
+	url = https://github.com/cimgui/cimplot.git

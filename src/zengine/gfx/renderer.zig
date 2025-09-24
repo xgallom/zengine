@@ -21,7 +21,7 @@ const shader = @import("shader.zig");
 const TriangleMesh = @import("mesh.zig").TriangleMesh;
 
 const log = std.log.scoped(.gfx_renderer);
-pub const sections = perf.sections(@This(), &.{ .init, .draw });
+pub const sections = perf.sections(@This(), &.{ .init, .render });
 
 const Self = @This();
 
@@ -55,8 +55,8 @@ pub fn init(engine: *const Engine) InitError!*Self {
     defer allocators.scratchFree();
 
     try sections.register();
-    try sections.sub(.draw)
-        .sections(&.{ .init, .cow1, .cow2, .cow3, .origin })
+    try sections.sub(.render)
+        .sections(&.{ .acquire, .init, .cow1, .cow2, .cow3, .origin, .ui })
         .register();
 
     sections.sub(.init).begin();
@@ -157,18 +157,18 @@ pub fn init(engine: *const Engine) InitError!*Self {
             log.err("failed loading mesh from obj file: {t}", .{err});
             return InitError.BufferFailed;
         };
-        errdefer mesh.deinit();
+        errdefer mesh.deinit(gpu_device);
 
         break :blk try triangle_meshes.insert("cow", mesh);
     };
-    errdefer mesh.deinit();
+    errdefer mesh.deinit(gpu_device);
+    defer mesh.freeCpuData();
 
     try mesh.createGpuBuffers(gpu_device);
-    errdefer mesh.releaseGpuBuffers(gpu_device);
 
     const origin_mesh = blk: {
         var origin_mesh = LineMesh.init(allocator);
-        errdefer origin_mesh.deinit();
+        errdefer origin_mesh.deinit(gpu_device);
 
         origin_mesh.appendVertices(&.{
             .{ 0, 0, 0 },
@@ -190,10 +190,10 @@ pub fn init(engine: *const Engine) InitError!*Self {
 
         break :blk try line_meshes.insert("origin", origin_mesh);
     };
-    errdefer origin_mesh.deinit();
+    errdefer origin_mesh.deinit(gpu_device);
+    defer origin_mesh.freeCpuData();
 
     try origin_mesh.createGpuBuffers(gpu_device);
-    errdefer origin_mesh.releaseGpuBuffers(gpu_device);
 
     var stencil_format: c.SDL_GPUTextureFormat = undefined;
     if (c.SDL_GPUTextureSupportsFormat(
@@ -395,17 +395,17 @@ pub fn init(engine: *const Engine) InitError!*Self {
     errdefer c.SDL_ReleaseGPUSampler(gpu_device, sampler);
     try samplers.insert(allocator, "default", sampler.?);
 
-    const mesh_upload_transfer_buffer = try mesh.createUploadTransferBuffer(gpu_device);
-    defer mesh_upload_transfer_buffer.release(gpu_device);
-
-    try mesh_upload_transfer_buffer.map(gpu_device);
-
-    const origin_mesh_upload_transfer_buffer = try origin_mesh.createUploadTransferBuffer(gpu_device);
-    defer origin_mesh_upload_transfer_buffer.release(gpu_device);
-
-    try origin_mesh_upload_transfer_buffer.map(gpu_device);
-
     {
+        var mesh_upload_transfer_buffer = try mesh.createUploadTransferBuffer(gpu_device);
+        defer mesh_upload_transfer_buffer.release(gpu_device);
+
+        try mesh_upload_transfer_buffer.map(gpu_device);
+
+        var origin_mesh_upload_transfer_buffer = try origin_mesh.createUploadTransferBuffer(gpu_device);
+        defer origin_mesh_upload_transfer_buffer.release(gpu_device);
+
+        try origin_mesh_upload_transfer_buffer.map(gpu_device);
+
         const command_buffer = c.SDL_AcquireGPUCommandBuffer(gpu_device);
         if (command_buffer == null) {
             log.err("failed to acquire gpu_command_buffer: {s}", .{c.SDL_GetError()});
@@ -496,17 +496,11 @@ pub fn deinit(self: *Self, engine: *const Engine) void {
 
     defer c.SDL_DestroyGPUDevice(self.gpu_device);
     defer {
-        for (self.triangle_meshes.map.map.values()) |mesh| {
-            mesh.releaseGpuBuffers(self.gpu_device);
-            mesh.deinit();
-        }
+        for (self.triangle_meshes.map.map.values()) |mesh| mesh.deinit(self.gpu_device);
         self.triangle_meshes.deinit();
     }
     defer {
-        for (self.line_meshes.map.map.values()) |mesh| {
-            mesh.releaseGpuBuffers(self.gpu_device);
-            mesh.deinit();
-        }
+        for (self.line_meshes.map.map.values()) |mesh| mesh.deinit(self.gpu_device);
         self.line_meshes.deinit();
     }
     defer c.SDL_ReleaseWindowFromGPUDevice(self.gpu_device, engine.window);
@@ -528,34 +522,19 @@ pub fn deinit(self: *Self, engine: *const Engine) void {
     defer self.cameras.deinit();
 }
 
-pub fn draw(self: *const Self, engine: *const Engine, ui_ptr: ?*ui_mod.UI) DrawError!bool {
-    const section = sections.sub(.draw);
+pub fn render(self: *const Self, engine: *const Engine, ui_ptr: ?*ui_mod.UI) DrawError!bool {
+    const section = sections.sub(.render);
     section.begin();
-    defer section.end();
-
     section.sub(.cow1).beginPaused();
     section.sub(.cow2).beginPaused();
     section.sub(.cow3).beginPaused();
 
-    section.sub(.init).begin();
-
-    log.debug("draw", .{});
-
-    if (ui_ptr) |ui| {
-        ui.beginDraw();
-        return true;
-    } else {
-        return self.endDraw(engine, ui_ptr);
-    }
-}
-
-pub fn endDraw(self: *const Self, engine: *const Engine, ui_ptr: ?*ui_mod.UI) DrawError!bool {
-    const section = sections.sub(.draw);
+    defer section.end();
     defer section.sub(.cow1).end();
     defer section.sub(.cow2).end();
     defer section.sub(.cow3).end();
 
-    if (ui_ptr) |ui| ui.endDraw();
+    section.sub(.acquire).begin();
 
     const gpu_device = self.gpu_device;
     const window = engine.window;
@@ -579,14 +558,19 @@ pub fn endDraw(self: *const Self, engine: *const Engine, ui_ptr: ?*ui_mod.UI) Dr
 
     log.debug("swapchain_texture", .{});
     var swapchain_texture: ?*c.SDL_GPUTexture = undefined;
-    if (!c.SDL_AcquireGPUSwapchainTexture(command_buffer, window, &swapchain_texture, null, null)) {
+    if (!c.SDL_WaitAndAcquireGPUSwapchainTexture(command_buffer, window, &swapchain_texture, null, null)) {
         log.err("failed to acquire swapchain_texture: {s}", .{c.SDL_GetError()});
         return DrawError.DrawFailed;
     }
+
+    section.sub(.acquire).end();
+
     if (swapchain_texture == null) {
         log.debug("skip draw", .{});
         return false;
     }
+
+    section.sub(.init).begin();
 
     const tr_world = try fa.create(math.Matrix4x4);
     const tr_projection = try fa.create(math.Matrix4x4);
@@ -602,7 +586,7 @@ pub fn endDraw(self: *const Self, engine: *const Engine, ui_ptr: ?*ui_mod.UI) Dr
     const pi = std.math.pi;
 
     math.matrix4x4.worldTransform(tr_world);
-    // math.matrix4x4.rotateEuler(world, &.{ -time_s * pi / 10, -time_s * pi / 9, 0 }, .xyz);
+    math.matrix4x4.rotateEuler(tr_world, &.{ -time_s * pi / 10, -time_s * pi / 9, 0 }, .xyz);
     camera.projection(
         tr_projection,
         @floatFromInt(engine.window_size.x),
@@ -749,7 +733,7 @@ pub fn endDraw(self: *const Self, engine: *const Engine, ui_ptr: ?*ui_mod.UI) Dr
 
                     c.SDL_PushGPUVertexUniformData(command_buffer, 0, uniform_buffer.ptr, @intCast(@sizeOf(f32) * uniform_buffer.len));
                     c.SDL_PushGPUFragmentUniformData(command_buffer, 0, &frag_uniform_buffer, @sizeOf(@TypeOf(frag_uniform_buffer)));
-                    c.SDL_DrawGPUIndexedPrimitives(render_pass, @intCast(3 * cow_mesh.faces.items.len), 1, 0, 0, 0);
+                    c.SDL_DrawGPUIndexedPrimitives(render_pass, @intCast(3 * cow_mesh.faces_len), 1, 0, 0, 0);
 
                     section.sub(.cow1).pause();
                     section.sub(.cow2).unpause();
@@ -771,7 +755,7 @@ pub fn endDraw(self: *const Self, engine: *const Engine, ui_ptr: ?*ui_mod.UI) Dr
 
                     c.SDL_PushGPUVertexUniformData(command_buffer, 0, uniform_buffer.ptr, @intCast(@sizeOf(f32) * uniform_buffer.len));
                     c.SDL_PushGPUFragmentUniformData(command_buffer, 0, &frag_uniform_buffer, @sizeOf(@TypeOf(frag_uniform_buffer)));
-                    c.SDL_DrawGPUIndexedPrimitives(render_pass, @intCast(3 * cow_mesh.faces.items.len), 1, 0, 0, 0);
+                    c.SDL_DrawGPUIndexedPrimitives(render_pass, @intCast(3 * cow_mesh.faces_len), 1, 0, 0, 0);
 
                     section.sub(.cow2).pause();
                     section.sub(.cow3).unpause();
@@ -793,7 +777,7 @@ pub fn endDraw(self: *const Self, engine: *const Engine, ui_ptr: ?*ui_mod.UI) Dr
 
                     c.SDL_PushGPUVertexUniformData(command_buffer, 0, uniform_buffer.ptr, @intCast(@sizeOf(f32) * uniform_buffer.len));
                     c.SDL_PushGPUFragmentUniformData(command_buffer, 0, &frag_uniform_buffer, @sizeOf(@TypeOf(frag_uniform_buffer)));
-                    c.SDL_DrawGPUIndexedPrimitives(render_pass, @intCast(3 * cow_mesh.faces.items.len), 1, 0, 0, 0);
+                    c.SDL_DrawGPUIndexedPrimitives(render_pass, @intCast(3 * cow_mesh.faces_len), 1, 0, 0, 0);
 
                     section.sub(.cow3).pause();
                 }
@@ -834,7 +818,14 @@ pub fn endDraw(self: *const Self, engine: *const Engine, ui_ptr: ?*ui_mod.UI) Dr
         c.SDL_EndGPURenderPass(render_pass);
     }
 
-    if (ui_ptr) |ui| try ui.submitPass(command_buffer, swapchain_texture);
+    if (ui_ptr) |ui| {
+        section.sub(.ui).begin();
+        if (ui.render_ui) try ui.submitPass(
+            command_buffer,
+            swapchain_texture,
+        );
+        section.sub(.ui).end();
+    }
 
     // {
     //     log.debug("render_pass 2", .{});

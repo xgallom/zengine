@@ -11,6 +11,7 @@ pub fn SwapWrapper(comptime T: type, comptime options: struct {
     len: usize = 2,
     copy_on_advance: bool = false,
 }) type {
+    comptime assert(options.len > 1);
     return struct {
         items: [options.len]T = undefined,
         idx: usize = 0,
@@ -49,6 +50,14 @@ pub fn SwapWrapper(comptime T: type, comptime options: struct {
             return &self.items[self.idx];
         }
 
+        pub fn getPrevPtr(self: *Self) *T {
+            const prev_idx = switch (comptime uses_mask) {
+                true => (self.idx -% 1) & (options.len - 1),
+                false => (self.idx -% 1) % options.len,
+            };
+            return &self.items[prev_idx];
+        }
+
         pub fn advance(self: *Self) *T {
             const next_idx = switch (comptime uses_mask) {
                 true => (self.idx + 1) & (options.len - 1),
@@ -56,6 +65,7 @@ pub fn SwapWrapper(comptime T: type, comptime options: struct {
             };
             if (comptime options.copy_on_advance) self.items[next_idx] = self.items[self.idx];
             self.idx = next_idx;
+            return self.getPtr();
         }
     };
 }
