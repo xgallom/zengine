@@ -12,6 +12,8 @@ const UI = @import("UI.zig");
 const log = std.log.scoped(.ui_property_editor);
 // pub const sections = perf.sections(@This(), &.{ .init, .draw });
 
+pub const PropertyList = []const @TypeOf(.enum_literal);
+
 pub const InputTypeEnum = union(enum) {
     checkbox: void,
     text: void,
@@ -216,7 +218,7 @@ pub fn InputScalar(comptime C: type, comptime count: usize, comptime options: Op
             },
             -std.math.inf(C),
             std.math.inf(C),
-            0.1,
+            1,
         },
         else => @compileError("Unsupported scalar property"),
     };
@@ -287,7 +289,16 @@ pub fn PropertyEditor(comptime C: type) type {
         }
 
         pub fn drawImpl(component: *C, ui: *const UI, is_open: *bool) void {
-            inline for (fields) |field| {
+            const exclude_properties: PropertyList = comptime if (@hasDecl(C, "exclude_properties"))
+                @field(C, "exclude_properties")
+            else
+                &.{};
+
+            fields: inline for (fields) |field| {
+                comptime for (exclude_properties) |prop| {
+                    if (std.mem.eql(u8, field.name, @tagName(prop))) continue :fields;
+                };
+
                 const field_min = field.name ++ "_min";
                 const field_max = field.name ++ "_max";
                 const field_speed = field.name ++ "_speed";

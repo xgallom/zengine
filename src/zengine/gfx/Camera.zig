@@ -12,14 +12,14 @@ const ui = @import("../ui.zig");
 
 const log = std.log.scoped(.gfx_camera);
 
-const Self = @This();
-
 kind: Kind = .perspective,
 position: math.Vector3 = math.vector3.zero,
 direction: math.Vector3 = .{ 1, 0, 0 },
 up: math.Vector3 = global.cameraUp(),
 fov: f32 = 45,
 orto_scale: f32 = 100,
+
+const Self = @This();
 
 pub const position_min = -1000;
 pub const position_max = 1000;

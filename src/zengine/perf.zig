@@ -208,9 +208,9 @@ const Self = struct {
 };
 
 const Section = struct {
-    tag: []const u8,
-    label: []const u8,
-    name: []const u8,
+    tag: [:0]const u8,
+    label: [:0]const u8,
+    name: [:0]const u8,
     clock: time.Clock = .{},
     pause_clock: time.Clock = .{},
     idx: usize = 0,
@@ -231,9 +231,9 @@ const Section = struct {
     sample_mins: [frame_stats_count]u32 = @splat(0),
 
     fn init(
-        tag: []const u8,
-        label: []const u8,
-        name: []const u8,
+        tag: [:0]const u8,
+        label: [:0]const u8,
+        name: [:0]const u8,
         comptime section_type: SectionType,
     ) Section {
         return .{
@@ -514,15 +514,15 @@ pub inline fn sectionsListTree() *const SectionsListTree {
 }
 
 pub fn sections(comptime this: type, comptime labels: []const @TypeOf(.enum_literal)) type {
-    comptime var label_names: []const []const u8 = &[_][]const u8{};
-    inline for (labels) |label| label_names = label_names ++ [_][]const u8{@tagName(label)};
+    comptime var label_names: []const [:0]const u8 = &[_][:0]const u8{};
+    inline for (labels) |label| label_names = label_names ++ [_][:0]const u8{@tagName(label)};
     return TaggedSections(@typeName(this), label_names, sectionLabel(null, @typeName(this), .root), .root);
 }
 
 fn TaggedSections(
-    comptime this: []const u8,
-    comptime labels: []const []const u8,
-    comptime this_label: []const u8,
+    comptime this: [:0]const u8,
+    comptime labels: []const [:0]const u8,
+    comptime this_label: [:0]const u8,
     comptime section_type: SectionType,
 ) type {
     const sub_type = subSectionType(section_type);
@@ -572,7 +572,7 @@ fn TaggedSections(
             return subTag(@tagName(label));
         }
 
-        fn subTag(comptime sub_tag: []const u8) type {
+        fn subTag(comptime sub_tag: [:0]const u8) type {
             return TaggedSection(this, sub_tag, this_label, sub_type);
         }
 
@@ -589,9 +589,9 @@ pub fn section(comptime this: type) type {
 }
 
 fn TaggedSection(
-    comptime _parent_tag: ?[]const u8,
-    comptime _tag: []const u8,
-    comptime parent_label: ?[]const u8,
+    comptime _parent_tag: ?[:0]const u8,
+    comptime _tag: [:0]const u8,
+    comptime parent_label: ?[:0]const u8,
     comptime section_type: SectionType,
 ) type {
     const sub_type = subSectionType(section_type);
@@ -618,8 +618,8 @@ fn TaggedSection(
         }
 
         pub fn sections(comptime sub_labels: []const @TypeOf(.enum_literal)) type {
-            comptime var label_names: []const []const u8 = &[_][]const u8{};
-            inline for (sub_labels) |sub_label| label_names = label_names ++ [_][]const u8{@tagName(sub_label)};
+            comptime var label_names: []const [:0]const u8 = &[_][:0]const u8{};
+            inline for (sub_labels) |sub_label| label_names = label_names ++ [_][:0]const u8{@tagName(sub_label)};
             return TaggedSections(tag, label_names, label, sub_type);
         }
 
@@ -691,7 +691,7 @@ fn subSectionType(comptime section_type: SectionType) SectionType {
     };
 }
 
-fn sectionLabel(comptime parent_label: ?[]const u8, comptime tag: []const u8, comptime section_type: SectionType) []const u8 {
+fn sectionLabel(comptime parent_label: ?[:0]const u8, comptime tag: [:0]const u8, comptime section_type: SectionType) [:0]const u8 {
     if (comptime parent_label) |pl| {
         return switch (comptime section_type) {
             .root => pl ++ "." ++ tag,
@@ -703,7 +703,7 @@ fn sectionLabel(comptime parent_label: ?[]const u8, comptime tag: []const u8, co
     }
 }
 
-fn sectionName(comptime tag: []const u8, comptime section_type: SectionType) []const u8 {
+fn sectionName(comptime tag: [:0]const u8, comptime section_type: SectionType) [:0]const u8 {
     return switch (comptime section_type) {
         .root => tag,
         .call => tag ++ "()",

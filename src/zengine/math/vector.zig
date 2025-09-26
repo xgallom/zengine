@@ -24,6 +24,22 @@ pub fn vectorNT(comptime N: comptime_int, comptime T: type) type {
         pub const Map = struct {
             self: *Self,
 
+            pub inline fn r(self: Map) *Scalar {
+                comptime assert(len > @intFromEnum(types.Color.r));
+                return &self.self[@intFromEnum(types.Color.r)];
+            }
+            pub inline fn g(self: Map) *Scalar {
+                comptime assert(len > @intFromEnum(types.Color.g));
+                return &self.self[@intFromEnum(types.Color.g)];
+            }
+            pub inline fn b(self: Map) *Scalar {
+                comptime assert(len > @intFromEnum(types.Color.b));
+                return &self.self[@intFromEnum(types.Color.b)];
+            }
+            pub inline fn a(self: Map) *Scalar {
+                comptime assert(len > @intFromEnum(types.Color.a));
+                return &self.self[@intFromEnum(types.Color.a)];
+            }
             pub inline fn x(self: Map) *Scalar {
                 comptime assert(len > @intFromEnum(types.Axis4.x));
                 return &self.self[@intFromEnum(types.Axis4.x)];
@@ -45,6 +61,22 @@ pub fn vectorNT(comptime N: comptime_int, comptime T: type) type {
         pub const CMap = struct {
             self: *const Self,
 
+            pub inline fn r(self: CMap) Scalar {
+                comptime assert(len > @intFromEnum(types.Color.r));
+                return self.self[@intFromEnum(types.Color.r)];
+            }
+            pub inline fn g(self: CMap) Scalar {
+                comptime assert(len > @intFromEnum(types.Color.g));
+                return self.self[@intFromEnum(types.Color.g)];
+            }
+            pub inline fn b(self: CMap) Scalar {
+                comptime assert(len > @intFromEnum(types.Color.b));
+                return self.self[@intFromEnum(types.Color.b)];
+            }
+            pub inline fn a(self: CMap) Scalar {
+                comptime assert(len > @intFromEnum(types.Color.a));
+                return self.self[@intFromEnum(types.Color.a)];
+            }
             pub inline fn x(self: CMap) Scalar {
                 comptime assert(len > @intFromEnum(types.Axis4.x));
                 return self.self[@intFromEnum(types.Axis4.x)];

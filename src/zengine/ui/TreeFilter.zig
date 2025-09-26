@@ -23,6 +23,8 @@ pub const Result = enum {
 
 filter: c.ImGuiTextFilter = .{},
 toggle_state: bool = false,
+buf: [256]u8 = @splat(0),
+text: [:0]const u8 = "",
 
 pub const Self = @This();
 
@@ -34,29 +36,42 @@ pub fn draw(self: *Self, _: *const UI, _: *bool) void {
     if (c.igInputTextWithHint(
         "##Filter",
         "incl, -excl",
-        @ptrCast(&self.filter.InputBuf),
-        self.filter.InputBuf.len,
+        @ptrCast(&self.buf),
+        self.buf.len,
         c.ImGuiInputTextFlags_EscapeClearsAll | c.ImGuiInputTextFlags_CallbackEdit,
         @ptrCast(&callback),
         @ptrCast(self),
-    )) c.ImGuiTextFilter_Build(&self.filter);
+    )) self.prepare();
     c.igPopItemFlag();
+}
+
+fn prepare(self: *Self) void {
+    for (&self.buf, 0..) |ch, n| {
+        if (ch == 0) {
+            self.text = self.buf[0..n :0];
+            return;
+        }
+    }
 }
 
 fn callback(data: [*c]c.ImGuiInputTextCallbackData) callconv(.c) c_int {
     const self: *Self = @ptrCast(@alignCast(data.*.UserData));
-    self.toggle_state = data.*.BufTextLen >= 2;
+    self.toggle_state = true;
     return 0;
 }
 
 pub fn element(self: *Self) UI.Element {
     return .{
         .ptr = @ptrCast(self),
-        .draw = @ptrCast(&draw),
+        .drawFn = @ptrCast(&draw),
     };
 }
 
 pub fn toggleOpen(self: *Self, res: Result) void {
+    switch (res) {
+        .sub_passed, .passed => c.igSetNextItemOpen(true, c.ImGuiCond_Appearing),
+        else => c.igSetNextItemOpen(false, c.ImGuiCond_Appearing),
+    }
     if (!self.toggle_state) return;
     switch (res) {
         .sub_passed, .passed => c.igSetNextItemOpen(true, c.ImGuiCond_Always),
@@ -64,15 +79,28 @@ pub fn toggleOpen(self: *Self, res: Result) void {
     }
 }
 
-pub fn WalkFn(comptime T: type) type {
-    return fn (filter: *Self, item: T) Result;
+fn defaultTestFn(self: *Self, key: [*:0]const u8) bool {
+    const haystack = std.mem.sliceTo(key, 0);
+    return std.mem.indexOf(u8, haystack, self.text) != null;
 }
 
 pub fn KeyFn(comptime T: type) type {
     return fn (item: T) ?[*:0]const u8;
 }
 
-pub fn Filter(comptime T: type, comptime keyFn: KeyFn(T), comptime walkFn: WalkFn(T)) type {
+pub fn WalkFn(comptime T: type) type {
+    return fn (filter: *Self, item: T) Result;
+}
+
+pub const TestFn = fn (filter: *Self, key: [*:0]const u8) bool;
+
+pub fn Filter(
+    comptime T: type,
+    comptime keyFn: KeyFn(T),
+    comptime walkFn: WalkFn(T),
+    comptime testFn: ?TestFn,
+) type {
+    const testKey = comptime if (testFn) |testKey| testKey else defaultTestFn;
     return struct {
         pub fn apply(filter: *Self, item: T, parent_res: Result) Result {
             return switch (parent_res) {
@@ -89,11 +117,7 @@ pub fn Filter(comptime T: type, comptime keyFn: KeyFn(T), comptime walkFn: WalkF
 
         pub fn applyWalk(filter: *Self, item: T) Result {
             if (keyFn(item)) |key| {
-                if (c.ImGuiTextFilter_PassFilter(
-                    &filter.filter,
-                    key,
-                    null,
-                )) return .passed;
+                if (testKey(filter, key)) return .passed;
             }
 
             return walkFn(filter, item);

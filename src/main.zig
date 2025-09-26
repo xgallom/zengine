@@ -36,6 +36,25 @@ pub const std_options: std.Options = .{
 
 pub const zengine_options: zengine.Options = .{};
 
+const RenderItems = struct {
+    iter: ecs.PrimitiveComponentManager(gfx.Renderer.Item).Iterator,
+
+    const Self = @This();
+
+    pub fn init(positions: *ecs.PrimitiveComponentManager(gfx.Renderer.Item)) Self {
+        return .{ .iter = positions.iterator() };
+    }
+
+    pub fn deinit(self: *Self) void {
+        self.iter.deinit();
+    }
+
+    pub fn next(self: *Self) ?gfx.Renderer.Item {
+        if (self.iter.next()) |pos| return pos.item.*;
+        return null;
+    }
+};
+
 pub fn main() !void {
     // memory limit 1GB, SDL allocations are not tracked
     try allocators.init(1_000_000_000);
@@ -71,11 +90,9 @@ pub fn main() !void {
     var task_list = try scheduler.TaskScheduler.init(allocators.gpa());
     defer task_list.deinit();
 
-    var log_timer = time.StaticTimer(1000).init;
-
     var controls = zengine.controls.CameraControls{};
     var speed_change_timer = time.Timer.init(500);
-    var speed_scale: f32 = 10;
+    var speed_scale: f32 = 1;
 
     try perf.commitGraph();
     defer {
@@ -181,12 +198,24 @@ pub fn main() !void {
         _ = try renderer.cameras.insert(key, .{});
     }
 
+    var render_items = try ecs.PrimitiveComponentManager(gfx.Renderer.Item).init(allocators.gpa(), 128);
+    defer render_items.deinit();
+
+    _ = try render_items.push(.{
+        .mesh = "cow",
+        .position = .{ 10, 0, 0 },
+        .rotation = math.vector3.zero,
+        .scale = math.vector3.one,
+    });
+
     var debug_ui = zengine.ui.DebugUI.init();
 
     var property_editor = zengine.ui.PropertyEditorWindow.init(allocators.global());
     defer property_editor.deinit();
     const gfx_node = try property_editor.appendNode(@typeName(gfx), "gfx");
     try renderer.propertyEditorNode(&property_editor, gfx_node);
+    const main_node = try property_editor.appendNode(@typeName(@This()), "main");
+    try render_items.propertyEditorNode(&property_editor, main_node);
 
     var allocs_window = zengine.ui.AllocsWindow.init();
     var perf_window = zengine.ui.PerfWindow.init(allocators.global());
@@ -401,7 +430,11 @@ pub fn main() !void {
 
         ui.endDraw();
 
-        _ = try renderer.render(engine, ui);
+        {
+            var items = RenderItems.init(&render_items);
+            defer items.deinit();
+            _ = try renderer.render(engine, ui, &items);
+        }
 
         section.sub(.render).end();
 
@@ -410,12 +443,5 @@ pub fn main() !void {
             main_section.end();
             perf.updateStats(0, true);
         }
-        if (log_timer.updated(now)) printLog();
     };
-}
-
-fn printLog() void {
-    log.info("frame[{}]@{D}", .{ global.frameIndex(), global.timeSinceStart().toValue(.ns) });
-    allocators.logCapacities();
-    perf.logPerf();
 }

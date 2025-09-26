@@ -1,172 +1,269 @@
+//!
+//! The zengine mesh implementation
+//!
+
 const std = @import("std");
 const assert = std.debug.assert;
 
 const c = @import("../ext.zig").c;
 const math = @import("../math.zig");
+const Tree = @import("../containers.zig").Tree;
 
 const log = std.log.scoped(.gfx_mesh);
 
-pub fn Mesh(comptime V: type, comptime I: type) type {
-    return struct {
-        allocator: std.mem.Allocator,
-        verts_len: usize = 0,
-        faces_len: usize = 0,
-        verts: ArrayList = .{},
-        faces: IndexArrayList = .{},
-        vertex_buffer: ?*c.SDL_GPUBuffer = null,
-        index_buffer: ?*c.SDL_GPUBuffer = null,
+allocator: std.mem.Allocator,
+nodes: NodeList = .empty,
+vert_data: VertexList = .empty,
+index_data: IndexList = .empty,
+vert_buf: ?*c.SDL_GPUBuffer = null,
+index_buf: ?*c.SDL_GPUBuffer = null,
+vert_byte_len: usize = 0,
+index_byte_len: usize = 0,
+vert_len: usize = 0,
+index_len: usize = 0,
+state: State = .cpu,
 
-        const Self = @This();
-        pub const Vertex = V;
-        pub const FaceIndex = I;
-        const ArrayList = std.ArrayListUnmanaged(Vertex);
-        const IndexArrayList = std.ArrayListUnmanaged(FaceIndex);
+const Self = @This();
+const NodeList = std.ArrayList(Node);
+const VertexList = std.ArrayList(math.Scalar);
+const IndexList = std.ArrayList(math.Index);
 
-        pub fn init(allocator: std.mem.Allocator) Self {
-            return .{
-                .allocator = allocator,
-            };
-        }
+const State = enum {
+    cpu,
+    gpu,
+    gpu_upload,
+    gpu_mapped,
+    gpu_uploaded,
+};
 
-        pub fn freeCpuData(self: *Self) void {
-            self.verts.clearAndFree(self.allocator);
-            self.faces.clearAndFree(self.allocator);
-        }
+pub const Node = struct {
+    offset: usize,
+    meta: Meta,
 
-        pub fn deinit(self: *Self, gpu_device: ?*c.SDL_GPUDevice) void {
-            self.freeCpuData();
-            self.releaseGpuBuffers(gpu_device);
-        }
-
-        pub fn appendVertex(self: *Self, vertex: Vertex) !void {
-            try self.verts.append(self.allocator, vertex);
-        }
-
-        pub fn appendVertices(self: *Self, verts: []const Vertex) !void {
-            try self.verts.appendSlice(self.allocator, verts);
-        }
-
-        pub fn appendFace(self: *Self, face: FaceIndex) !void {
-            try self.faces.append(self.allocator, face);
-        }
-
-        pub fn appendFaces(self: *Self, faces: []const FaceIndex) !void {
-            try self.faces.appendSlice(self.allocator, faces);
-        }
-
-        pub fn createGpuBuffers(self: *Self, gpu_device: ?*c.SDL_GPUDevice) !void {
-            assert(self.vertex_buffer == null);
-            assert(self.index_buffer == null);
-
-            self.verts_len = self.verts.items.len;
-            self.faces_len = self.faces.items.len;
-
-            self.vertex_buffer = c.SDL_CreateGPUBuffer(gpu_device, &c.SDL_GPUBufferCreateInfo{
-                .usage = c.SDL_GPU_BUFFERUSAGE_VERTEX,
-                .size = @intCast(@sizeOf(Vertex) * self.verts_len),
-            });
-            if (self.vertex_buffer == null) {
-                log.err("failed creating vertex buffer: {s}", .{c.SDL_GetError()});
-                return error.BufferFailed;
-            }
-            errdefer c.SDL_ReleaseGPUBuffer(gpu_device, self.vertex_buffer);
-
-            self.index_buffer = c.SDL_CreateGPUBuffer(gpu_device, &c.SDL_GPUBufferCreateInfo{
-                .usage = c.SDL_GPU_BUFFERUSAGE_INDEX,
-                .size = @intCast(@sizeOf(FaceIndex) * self.faces_len),
-            });
-            if (self.index_buffer == null) {
-                log.err("failed creating index buffer: {s}", .{c.SDL_GetError()});
-                return error.BufferFailed;
-            }
-            errdefer c.SDL_ReleaseGPUBuffer(gpu_device, self.index_buffer);
-        }
-
-        pub fn releaseGpuBuffers(self: *Self, gpu_device: ?*c.SDL_GPUDevice) void {
-            if (self.vertex_buffer != null) c.SDL_ReleaseGPUBuffer(gpu_device, self.vertex_buffer);
-            if (self.index_buffer != null) c.SDL_ReleaseGPUBuffer(gpu_device, self.index_buffer);
-            self.vertex_buffer = null;
-            self.index_buffer = null;
-            self.verts_len = 0;
-            self.faces_len = 0;
-        }
-
-        pub fn createUploadTransferBuffer(self: *const Self, gpu_device: ?*c.SDL_GPUDevice) !UploadTransferBuffer {
-            assert(self.vertex_buffer != null);
-            assert(self.index_buffer != null);
-
-            const transfer_buffer = c.SDL_CreateGPUTransferBuffer(gpu_device, &c.SDL_GPUTransferBufferCreateInfo{
-                .usage = c.SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD,
-                .size = @intCast((@sizeOf(Vertex) * self.verts_len) + (@sizeOf(FaceIndex) * self.faces_len)),
-            });
-            if (transfer_buffer == null) {
-                log.err("failed creating transfer buffer: {s}", .{c.SDL_GetError()});
-                return error.BufferFailed;
-            }
-
-            return .{ .mesh = self, .transfer_buffer = transfer_buffer.? };
-        }
-
-        pub const UploadTransferBuffer = struct {
-            mesh: *const Self,
-            transfer_buffer: *c.SDL_GPUTransferBuffer,
-            is_mapped: bool = false,
-
-            pub fn release(self: UploadTransferBuffer, gpu_device: ?*c.SDL_GPUDevice) void {
-                c.SDL_ReleaseGPUTransferBuffer(gpu_device, self.transfer_buffer);
-            }
-
-            pub fn map(self: *UploadTransferBuffer, gpu_device: ?*c.SDL_GPUDevice) !void {
-                assert(self.mesh.verts.items.len != 0);
-                assert(self.mesh.faces.items.len != 0);
-
-                const mesh = self.mesh;
-                const transfer_buffer_ptr = c.SDL_MapGPUTransferBuffer(gpu_device, self.transfer_buffer, false);
-                if (transfer_buffer_ptr == null) {
-                    log.err("failed mapping transfer buffer: {s}", .{c.SDL_GetError()});
-                    return error.BufferFailed;
-                }
-
-                const vertex_data = @as([*]Vertex, @ptrCast(@alignCast(transfer_buffer_ptr)));
-                @memcpy(vertex_data, mesh.verts.items);
-
-                const index_data = @as([*]FaceIndex, @ptrCast(@alignCast(&vertex_data[mesh.verts.items.len])));
-                @memcpy(index_data, mesh.faces.items);
-
-                c.SDL_UnmapGPUTransferBuffer(gpu_device, self.transfer_buffer);
-                self.is_mapped = true;
-            }
-
-            pub fn upload(self: *const UploadTransferBuffer, copy_pass: ?*c.SDL_GPUCopyPass) void {
-                assert(self.mesh.vertex_buffer != null);
-                assert(self.mesh.index_buffer != null);
-                assert(self.is_mapped);
-
-                c.SDL_UploadToGPUBuffer(copy_pass, &c.SDL_GPUTransferBufferLocation{
-                    .transfer_buffer = self.transfer_buffer,
-                    .offset = 0,
-                }, &c.SDL_GPUBufferRegion{
-                    .buffer = self.mesh.vertex_buffer,
-                    .offset = 0,
-                    .size = @intCast(@sizeOf(Vertex) * self.mesh.verts.items.len),
-                }, false);
-
-                c.SDL_UploadToGPUBuffer(copy_pass, &c.SDL_GPUTransferBufferLocation{
-                    .transfer_buffer = self.transfer_buffer,
-                    .offset = @intCast(@sizeOf(Vertex) * self.mesh.verts.items.len),
-                }, &c.SDL_GPUBufferRegion{
-                    .buffer = self.mesh.index_buffer,
-                    .offset = 0,
-                    .size = @intCast(@sizeOf(FaceIndex) * self.mesh.faces.items.len),
-                }, false);
-            }
-        };
+    pub const Target = enum {
+        vert,
+        index,
     };
+
+    pub const Type = enum {
+        object,
+        group,
+        smoothing,
+        material,
+    };
+
+    pub const Meta = union(Type) {
+        object: ?[]const u8,
+        group: []const u8,
+        smoothing: u32,
+        material: []const u8,
+    };
+};
+
+pub fn init(allocator: std.mem.Allocator) !Self {
+    var result = Self{ .allocator = allocator };
+    try result.appendMeta(.{ .object = null }, .vert);
+    return result;
 }
 
-pub const TriangleMesh = Mesh(math.Vertex, math.FaceIndex);
-pub const LineMesh = Mesh(math.Vertex, math.LineFaceIndex);
-pub const AnyMesh = union(enum) {
-    triangle: TriangleMesh,
-    line: LineMesh,
+pub fn deinit(self: *Self, gpu_device: ?*c.SDL_GPUDevice) void {
+    self.releaseGpuBuffers(gpu_device);
+    self.freeCpuData();
+    self.nodes.deinit(self.allocator);
+}
+
+pub fn appendVertices(self: *Self, comptime V: type, verts: []const V) !void {
+    assert(self.state == .cpu);
+    const ptr: [*]const math.Scalar = @ptrCast(verts.ptr);
+    const len = verts.len * comptime math.elemLen(V);
+    try self.vert_data.appendSlice(self.allocator, ptr[0..len]);
+}
+
+pub fn appendVerticesAll(self: *Self, comptime V: type, verts_all: []const []const V) !void {
+    assert(self.state == .cpu);
+    for (verts_all) |verts| {
+        const ptr: [*]const math.Scalar = @ptrCast(verts.ptr);
+        const len = verts.len * comptime math.elemLen(V);
+        try self.vert_data.appendSlice(self.allocator, ptr[0..len]);
+    }
+}
+
+pub fn appendFaces(self: *Self, comptime F: type, faces: []const F) !void {
+    assert(self.state == .cpu);
+    const ptr: [*]const math.Index = @ptrCast(faces.ptr);
+    const len = faces.len * comptime math.elemLen(F);
+    try self.index_data.appendSlice(self.allocator, ptr[0..len]);
+}
+
+pub fn appendFacesAll(self: *Self, comptime F: type, faces_all: []const []const F) !void {
+    assert(self.state == .cpu);
+    for (faces_all) |faces| {
+        const ptr: [*]const math.Index = @ptrCast(faces.ptr);
+        const len = faces.len * comptime math.elemLen(F);
+        try self.index_data.appendSlice(self.allocator, ptr[0..len]);
+    }
+}
+
+pub fn appendMeta(self: *Self, meta: Node.Meta, comptime target: Node.Target) !void {
+    const offset = switch (comptime target) {
+        .vert => self.vert_data.items.len,
+        .index => self.index_data.items.len,
+    };
+    try self.nodes.append(self.allocator, .{
+        .offset = offset,
+        .meta = meta,
+    });
+}
+
+pub fn freeCpuData(self: *Self) void {
+    assert(self.state == .cpu or self.state == .gpu);
+    self.vert_data.clearAndFree(self.allocator);
+    self.index_data.clearAndFree(self.allocator);
+}
+
+pub fn createGpuBuffers(self: *Self, gpu_device: ?*c.SDL_GPUDevice) !void {
+    assert(self.state == .cpu);
+    assert(self.vert_buf == null);
+    assert(self.index_buf == null);
+    assert(self.vert_byte_len == 0);
+    assert(self.index_byte_len == 0);
+    assert(self.vert_len == 0);
+    assert(self.index_len == 0);
+    self.state = .gpu;
+
+    errdefer self.releaseGpuBuffers(gpu_device);
+
+    // self.vert_len = @divFloor(self.vert_data.items.len, math.elemLen(math.Vertex));
+    self.vert_len = @divFloor(self.vert_data.items.len, 3 * math.elemLen(math.Vertex));
+    self.vert_byte_len = std.mem.sliceAsBytes(self.vert_data.items).len;
+    self.vert_buf = c.SDL_CreateGPUBuffer(gpu_device, &c.SDL_GPUBufferCreateInfo{
+        .usage = c.SDL_GPU_BUFFERUSAGE_VERTEX,
+        .size = @intCast(self.vert_byte_len),
+    });
+    if (self.vert_buf == null) {
+        log.err("failed creating vertex buffer: {s}", .{c.SDL_GetError()});
+        return error.BufferFailed;
+    }
+
+    if (self.index_data.items.len == 0) return;
+    self.index_len = self.index_data.items.len;
+    self.index_byte_len = std.mem.sliceAsBytes(self.index_data.items).len;
+    self.index_buf = c.SDL_CreateGPUBuffer(gpu_device, &c.SDL_GPUBufferCreateInfo{
+        .usage = c.SDL_GPU_BUFFERUSAGE_INDEX,
+        .size = @intCast(self.index_byte_len),
+    });
+    if (self.index_buf == null) {
+        log.err("failed creating index buffer: {s}", .{c.SDL_GetError()});
+        return error.BufferFailed;
+    }
+}
+
+pub fn releaseGpuBuffers(self: *Self, gpu_device: ?*c.SDL_GPUDevice) void {
+    assert(self.state == .cpu or self.state == .gpu);
+
+    if (self.vert_buf != null) c.SDL_ReleaseGPUBuffer(gpu_device, self.vert_buf);
+    if (self.index_buf != null) c.SDL_ReleaseGPUBuffer(gpu_device, self.index_buf);
+
+    self.vert_buf = null;
+    self.index_buf = null;
+    self.vert_byte_len = 0;
+    self.index_byte_len = 0;
+    self.vert_len = 0;
+    self.index_len = 0;
+    self.state = .cpu;
+}
+
+pub fn createUploadTransferBuffer(self: *Self, gpu_device: ?*c.SDL_GPUDevice) !UploadTransferBuffer {
+    assert(self.state == .gpu);
+    assert(self.vert_byte_len != 0);
+
+    const transfer_buffer = c.SDL_CreateGPUTransferBuffer(gpu_device, &c.SDL_GPUTransferBufferCreateInfo{
+        .usage = c.SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD,
+        .size = @intCast(self.vert_byte_len + self.index_byte_len),
+    });
+    if (transfer_buffer == null) {
+        log.err("failed creating transfer buffer: {s}", .{c.SDL_GetError()});
+        return error.BufferFailed;
+    }
+
+    self.state = .gpu_upload;
+    return .{ .self = self, .transfer_buffer = transfer_buffer.? };
+}
+
+pub const UploadTransferBuffer = struct {
+    self: *Self,
+    transfer_buffer: *c.SDL_GPUTransferBuffer,
+
+    pub fn release(tb: *UploadTransferBuffer, gpu_device: ?*c.SDL_GPUDevice) void {
+        assert(tb.self.state == .gpu_upload or tb.self.state == .gpu_uploaded);
+        c.SDL_ReleaseGPUTransferBuffer(gpu_device, tb.transfer_buffer);
+        tb.self.state = .gpu;
+        tb.* = undefined;
+    }
+
+    pub fn map(tb: *const UploadTransferBuffer, gpu_device: ?*c.SDL_GPUDevice) !void {
+        assert(tb.self.state == .gpu_upload);
+
+        const transfer_buffer_ptr = c.SDL_MapGPUTransferBuffer(gpu_device, tb.transfer_buffer, false);
+        if (transfer_buffer_ptr == null) {
+            log.err("failed mapping transfer buffer: {s}", .{c.SDL_GetError()});
+            return error.BufferFailed;
+        }
+
+        var dest: [*]u8 = @ptrCast(@alignCast(transfer_buffer_ptr));
+        {
+            const src = std.mem.sliceAsBytes(tb.self.vert_data.items);
+            const byte_len = tb.self.vert_byte_len;
+            assert(byte_len != 0);
+            assert(src.len == byte_len);
+            @memcpy(dest[0..byte_len], src);
+            dest += byte_len;
+        }
+        if (tb.self.index_buf != null) {
+            const src = std.mem.sliceAsBytes(tb.self.index_data.items);
+            const byte_len = tb.self.index_byte_len;
+            assert(byte_len != 0);
+            assert(src.len == byte_len);
+            @memcpy(dest[0..byte_len], src);
+            dest += byte_len;
+        }
+
+        c.SDL_UnmapGPUTransferBuffer(gpu_device, tb.transfer_buffer);
+        tb.self.state = .gpu_mapped;
+    }
+
+    pub fn upload(tb: *const UploadTransferBuffer, copy_pass: ?*c.SDL_GPUCopyPass) void {
+        assert(tb.self.state == .gpu_mapped);
+        assert(tb.self.vert_buf != null);
+
+        var tb_offset: usize = 0;
+        {
+            const byte_len = tb.self.vert_byte_len;
+            assert(byte_len != 0);
+            c.SDL_UploadToGPUBuffer(copy_pass, &c.SDL_GPUTransferBufferLocation{
+                .transfer_buffer = tb.transfer_buffer,
+                .offset = @intCast(tb_offset),
+            }, &c.SDL_GPUBufferRegion{
+                .buffer = tb.self.vert_buf,
+                .offset = 0,
+                .size = @intCast(byte_len),
+            }, false);
+            tb_offset += byte_len;
+        }
+        if (tb.self.index_buf != null) {
+            const byte_len = tb.self.vert_byte_len;
+            assert(byte_len != 0);
+            c.SDL_UploadToGPUBuffer(copy_pass, &c.SDL_GPUTransferBufferLocation{
+                .transfer_buffer = tb.transfer_buffer,
+                .offset = @intCast(tb_offset),
+            }, &c.SDL_GPUBufferRegion{
+                .buffer = tb.self.index_buf,
+                .offset = 0,
+                .size = @intCast(byte_len),
+            }, false);
+            tb_offset += byte_len;
+        }
+
+        tb.self.state = .gpu_uploaded;
+    }
 };

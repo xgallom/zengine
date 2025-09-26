@@ -24,18 +24,24 @@ pub const Coords3 = types.Coords3;
 pub const Coords3f64 = types.Coords3f64;
 pub const Coords4 = types.Coords4;
 pub const Coords4f64 = types.Coords4f64;
+pub const RGBf32 = types.RGBf32;
+pub const RGBAf32 = types.RGBAf32;
 pub const Vertex = types.Vertex;
 pub const Position = types.Position;
 pub const Displacement = types.Displacement;
 pub const Euler = types.Euler;
 pub const Quat = types.Quat;
 pub const Index = types.Index;
+pub const QuadFaceIndex = types.QuadFaceIndex;
 pub const FaceIndex = types.FaceIndex;
 pub const LineFaceIndex = types.LineFaceIndex;
+pub const Color = types.Color;
 pub const Axis3 = types.Axis3;
 pub const Axis4 = types.Axis4;
 pub const EulerOrder = types.EulerOrder;
 pub const vectorNT = @import("math/vector.zig").vectorNT;
+
+pub const invalid_index = std.math.maxInt(Index);
 
 pub fn matrix3x3T(comptime T: type) type {
     return matrixMxNT(3, 3, T);
@@ -70,6 +76,14 @@ pub const vector4f64 = vectorNT(4, types.Scalar64);
 
 pub fn percent(x: anytype) @TypeOf(x) {
     return x * 100;
+}
+
+pub fn elemLen(comptime T: type) comptime_int {
+    return switch (@typeInfo(T)) {
+        .int, .float => 1,
+        inline .array, .vector => |type_info| type_info.len * elemLen(type_info.child),
+        else => @compileError("Unsupported type"),
+    };
 }
 
 test {

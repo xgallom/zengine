@@ -13,3 +13,6 @@
 [submodule "external/cimplot"]
 	path = external/cimplot
 	url = https://github.com/cimgui/cimplot.git
+[submodule "external/SDL_image"]
+	path = external/SDL_image
+	url = https://github.com/libsdl-org/SDL_image.git

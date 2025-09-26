@@ -95,6 +95,11 @@ pub fn PrimitiveComponentArrayList(comptime C: type) type {
             return self.components.items[entity];
         }
 
+        pub fn getPtr(self: *const Self, entity: Entity) *C {
+            assert(entity < self.len());
+            return &self.components.items[entity];
+        }
+
         pub fn len(self: *const Self) usize {
             return self.components.items.len;
         }

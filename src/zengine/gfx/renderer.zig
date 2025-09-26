@@ -6,19 +6,21 @@ const std = @import("std");
 const assert = std.debug.assert;
 
 const allocators = @import("../allocators.zig");
+const KeyMap = @import("../containers.zig").KeyMap;
+const PtrKeyMap = @import("../containers.zig").PtrKeyMap;
+const ecs = @import("../ecs.zig");
 const Engine = @import("../Engine.zig");
 const c = @import("../ext.zig").c;
 const global = @import("../global.zig");
-const KeyMap = @import("../containers.zig").KeyMap;
-const PtrKeyMap = @import("../containers.zig").PtrKeyMap;
 const math = @import("../math.zig");
 const perf = @import("../perf.zig");
 const ui_mod = @import("../ui.zig");
 const Camera = @import("Camera.zig");
-const LineMesh = @import("mesh.zig").LineMesh;
+const img = @import("img.zig");
+const Mesh = @import("Mesh.zig");
+const mtl_loader = @import("mtl_loader.zig");
 const obj_loader = @import("obj_loader.zig");
 const shader = @import("shader.zig");
-const TriangleMesh = @import("mesh.zig").TriangleMesh;
 
 const log = std.log.scoped(.gfx_renderer);
 pub const sections = perf.sections(@This(), &.{ .init, .render });
@@ -27,8 +29,7 @@ const Self = @This();
 
 gpu_device: *c.SDL_GPUDevice,
 pipelines: PtrKeyMap(c.SDL_GPUGraphicsPipeline),
-triangle_meshes: KeyMap(TriangleMesh, .{}),
-line_meshes: KeyMap(LineMesh, .{}),
+meshes: KeyMap(Mesh, .{}),
 textures: PtrKeyMap(c.SDL_GPUTexture),
 samplers: PtrKeyMap(c.SDL_GPUSampler),
 cameras: KeyMap(Camera, .{}),
@@ -56,7 +57,7 @@ pub fn init(engine: *const Engine) InitError!*Self {
 
     try sections.register();
     try sections.sub(.render)
-        .sections(&.{ .acquire, .init, .cow1, .cow2, .cow3, .origin, .ui })
+        .sections(&.{ .acquire, .init, .items, .origin, .ui })
         .register();
 
     sections.sub(.init).begin();
@@ -64,19 +65,6 @@ pub fn init(engine: *const Engine) InitError!*Self {
 
     const allocator = allocators.gpa();
     const window = engine.window;
-
-    var pipelines = try PtrKeyMap(c.SDL_GPUGraphicsPipeline).init(allocator, 128);
-    errdefer pipelines.deinit(allocator);
-    var triangle_meshes = try KeyMap(TriangleMesh, .{}).init(allocator, 128);
-    errdefer triangle_meshes.deinit();
-    var line_meshes = try KeyMap(LineMesh, .{}).init(allocator, 128);
-    errdefer line_meshes.deinit();
-    var textures = try PtrKeyMap(c.SDL_GPUTexture).init(allocator, 128);
-    errdefer textures.deinit(allocator);
-    var samplers = try PtrKeyMap(c.SDL_GPUSampler).init(allocator, 128);
-    errdefer samplers.deinit(allocator);
-    var cameras = try KeyMap(Camera, .{}).init(allocator, 128);
-    errdefer cameras.deinit();
 
     const gpu_device = c.SDL_CreateGPUDevice(
         c.SDL_GPU_SHADERFORMAT_SPIRV | c.SDL_GPU_SHADERFORMAT_MSL | c.SDL_GPU_SHADERFORMAT_DXIL,
@@ -88,6 +76,17 @@ pub fn init(engine: *const Engine) InitError!*Self {
         return InitError.GpuFailed;
     }
     errdefer c.SDL_DestroyGPUDevice(gpu_device);
+
+    var pipelines = try PtrKeyMap(c.SDL_GPUGraphicsPipeline).init(allocator, 128);
+    errdefer pipelines.deinit(allocator);
+    var meshes = try KeyMap(Mesh, .{}).init(allocator, 128);
+    errdefer meshes.deinit();
+    var textures = try PtrKeyMap(c.SDL_GPUTexture).init(allocator, 128);
+    errdefer textures.deinit(allocator);
+    var samplers = try PtrKeyMap(c.SDL_GPUSampler).init(allocator, 128);
+    errdefer samplers.deinit(allocator);
+    var cameras = try KeyMap(Camera, .{}).init(allocator, 128);
+    errdefer cameras.deinit();
 
     const vertex_shader = shader.open(.{
         .allocator = allocator,
@@ -144,22 +143,42 @@ pub fn init(engine: *const Engine) InitError!*Self {
     };
     defer shader.release(gpu_device, full_fragment_shader);
 
-    const path = std.fs.path.join(
-        allocators.scratch(),
-        &.{ global.assetsPath(), "cow_nonormals.obj" },
-    ) catch |err| {
-        log.err("failed creating obj file path: {t}", .{err});
-        return InitError.BufferFailed;
-    };
-
     const mesh = blk: {
-        var mesh = obj_loader.loadFile(allocator, path) catch |err| {
-            log.err("failed loading mesh from obj file: {t}", .{err});
+        const mesh_path = global.assetPath("cat.obj") catch |err| {
+            log.err("failed creating obj file path: {t}", .{err});
             return InitError.BufferFailed;
         };
-        errdefer mesh.deinit(gpu_device);
+        var result = obj_loader.loadFile(allocator, mesh_path) catch |err| {
+            log.err("failed loading obj file: {t}", .{err});
+            return InitError.BufferFailed;
+        };
+        errdefer result.mesh.deinit(gpu_device);
 
-        break :blk try triangle_meshes.insert("cow", mesh);
+        if (result.mtl_path) |mtl_path| {
+            const asset_path = global.assetPath(mtl_path) catch |err| {
+                log.err("failed creating mtl file path: {t}", .{err});
+                return InitError.BufferFailed;
+            };
+            var mtl = mtl_loader.loadFile(allocator, asset_path) catch |err| {
+                log.err("failed loading mtl file: {t}", .{err});
+                return InitError.BufferFailed;
+            };
+            for (mtl.materials.items) |item| {
+                log.info("material {s}:", .{item.name});
+                log.info("{?s}, {?s}, {?s}", .{ item.texture, item.diffuse_map, item.bump_map });
+                log.info("{any}, {any}, {any}, {any}, {any}", .{
+                    item.ambient,
+                    item.diffuse,
+                    item.specular,
+                    item.emissive,
+                    item.filter,
+                });
+                log.info("{}, {}, {}, {}", .{ item.specular_exp, item.ior, item.alpha, item.mode });
+            }
+            mtl.deinit();
+        }
+
+        break :blk try meshes.insert("cow", result.mesh);
     };
     errdefer mesh.deinit(gpu_device);
     defer mesh.freeCpuData();
@@ -167,10 +186,10 @@ pub fn init(engine: *const Engine) InitError!*Self {
     try mesh.createGpuBuffers(gpu_device);
 
     const origin_mesh = blk: {
-        var origin_mesh = LineMesh.init(allocator);
+        var origin_mesh = try Mesh.init(allocator);
         errdefer origin_mesh.deinit(gpu_device);
 
-        origin_mesh.appendVertices(&.{
+        origin_mesh.appendVertices(math.Vertex, &.{
             .{ 0, 0, 0 },
             .{ 1, 0, 0 },
             .{ 0, 1, 0 },
@@ -179,7 +198,7 @@ pub fn init(engine: *const Engine) InitError!*Self {
             log.err("failed appending origin mesh vertices: {t}", .{err});
             return InitError.BufferFailed;
         };
-        origin_mesh.appendFaces(&.{
+        origin_mesh.appendFaces(math.LineFaceIndex, &.{
             .{ 0, 1 },
             .{ 0, 2 },
             .{ 0, 3 },
@@ -188,7 +207,7 @@ pub fn init(engine: *const Engine) InitError!*Self {
             return InitError.BufferFailed;
         };
 
-        break :blk try line_meshes.insert("origin", origin_mesh);
+        break :blk try meshes.insert("origin", origin_mesh);
     };
     errdefer origin_mesh.deinit(gpu_device);
     defer origin_mesh.freeCpuData();
@@ -246,9 +265,10 @@ pub fn init(engine: *const Engine) InitError!*Self {
             .vertex_buffer_descriptions = &[_]c.SDL_GPUVertexBufferDescription{
                 .{
                     .slot = 0,
+                    .pitch = 3 * @sizeOf(math.Vertex),
+                    // .pitch = @sizeOf(math.Vertex),
                     .input_rate = c.SDL_GPU_VERTEXINPUTRATE_VERTEX,
                     .instance_step_rate = 0,
-                    .pitch = @sizeOf(math.Vertex),
                 },
             },
             .num_vertex_buffers = 1,
@@ -259,8 +279,20 @@ pub fn init(engine: *const Engine) InitError!*Self {
                     .format = c.SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3,
                     .offset = 0,
                 },
+                .{
+                    .location = 1,
+                    .buffer_slot = 0,
+                    .format = c.SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3,
+                    .offset = @sizeOf(math.Vertex),
+                },
+                .{
+                    .location = 2,
+                    .buffer_slot = 0,
+                    .format = c.SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3,
+                    .offset = 2 * @sizeOf(math.Vertex),
+                },
             },
-            .num_vertex_attributes = 1,
+            .num_vertex_attributes = 3,
         },
         .primitive_type = c.SDL_GPU_PRIMITIVETYPE_TRIANGLELIST,
         .rasterizer_state = .{
@@ -365,7 +397,7 @@ pub fn init(engine: *const Engine) InitError!*Self {
     try textures.insert(allocator, "stencil", stencil_texture.?);
 
     const cube_texture = c.SDL_CreateGPUTexture(gpu_device, &c.SDL_GPUTextureCreateInfo{
-        .type = c.SDL_GPU_TEXTURETYPE_CUBE,
+        .type = c.SDL_GPU_TEXTURETYPE_2D,
         .format = c.SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM,
         .usage = c.SDL_GPU_TEXTUREUSAGE_COLOR_TARGET | c.SDL_GPU_TEXTUREUSAGE_SAMPLER,
         .width = 64,
@@ -481,8 +513,7 @@ pub fn init(engine: *const Engine) InitError!*Self {
     result.* = .{
         .gpu_device = gpu_device.?,
         .pipelines = pipelines,
-        .triangle_meshes = triangle_meshes,
-        .line_meshes = line_meshes,
+        .meshes = meshes,
         .textures = textures,
         .samplers = samplers,
         .cameras = cameras,
@@ -496,12 +527,8 @@ pub fn deinit(self: *Self, engine: *const Engine) void {
 
     defer c.SDL_DestroyGPUDevice(self.gpu_device);
     defer {
-        for (self.triangle_meshes.map.map.values()) |mesh| mesh.deinit(self.gpu_device);
-        self.triangle_meshes.deinit();
-    }
-    defer {
-        for (self.line_meshes.map.map.values()) |mesh| mesh.deinit(self.gpu_device);
-        self.line_meshes.deinit();
+        for (self.meshes.map.map.values()) |mesh| mesh.deinit(self.gpu_device);
+        self.meshes.deinit();
     }
     defer c.SDL_ReleaseWindowFromGPUDevice(self.gpu_device, engine.window);
     defer {
@@ -522,26 +549,36 @@ pub fn deinit(self: *Self, engine: *const Engine) void {
     defer self.cameras.deinit();
 }
 
-pub fn render(self: *const Self, engine: *const Engine, ui_ptr: ?*ui_mod.UI) DrawError!bool {
+pub const Item = struct {
+    mesh: []const u8,
+    position: math.Vector3,
+    rotation: math.Euler,
+    scale: math.Vector3,
+
+    pub const exclude_properties: ui_mod.property_editor.PropertyList = &.{.mesh};
+
+    pub fn propertyEditor(self: *Item) ui_mod.PropertyEditor(Item) {
+        return .init(self);
+    }
+};
+
+pub fn render(
+    self: *const Self,
+    engine: *const Engine,
+    ui_ptr: ?*ui_mod.UI,
+    items_iter: anytype,
+) DrawError!bool {
     const section = sections.sub(.render);
     section.begin();
-    section.sub(.cow1).beginPaused();
-    section.sub(.cow2).beginPaused();
-    section.sub(.cow3).beginPaused();
-
     defer section.end();
-    defer section.sub(.cow1).end();
-    defer section.sub(.cow2).end();
-    defer section.sub(.cow3).end();
 
     section.sub(.acquire).begin();
 
     const gpu_device = self.gpu_device;
     const window = engine.window;
     const graphics_pipeline = self.pipelines.getPtr("default");
-    const origin_graphics_pipeline = self.pipelines.getPtr("origin");
-    const cow_mesh = self.triangle_meshes.getPtr("cow");
-    const origin_mesh = self.line_meshes.getPtr("origin");
+    // const origin_graphics_pipeline = self.pipelines.getPtr("origin");
+    // const origin_mesh = self.meshes.getPtr("origin");
     const stencil_texture = self.textures.getPtr("stencil");
     const camera = self.cameras.getPtr("default");
     // const full_graphics_pipeline = self.full_graphics_pipeline;
@@ -583,10 +620,10 @@ pub fn render(self: *const Self, engine: *const Engine, ui_ptr: ?*ui_mod.UI) Dra
     const aspect_ratio = @as(f32, @floatFromInt(engine.window_size.x)) / @as(f32, @floatFromInt(engine.window_size.y));
     const mouse_x = engine.mouse_pos.x / @as(f32, @floatFromInt(engine.window_size.x));
     const mouse_y = engine.mouse_pos.y / @as(f32, @floatFromInt(engine.window_size.y));
-    const pi = std.math.pi;
+    // const pi = std.math.pi;
 
     math.matrix4x4.worldTransform(tr_world);
-    math.matrix4x4.rotateEuler(tr_world, &.{ -time_s * pi / 10, -time_s * pi / 9, 0 }, .xyz);
+    // math.matrix4x4.rotateEuler(tr_world, &.{ -time_s * pi / 10, -time_s * pi / 9, 0 }, .xyz);
     camera.projection(
         tr_projection,
         @floatFromInt(engine.window_size.x),
@@ -612,9 +649,8 @@ pub fn render(self: *const Self, engine: *const Engine, ui_ptr: ?*ui_mod.UI) Dra
     var uniform_buffer = try fa.alloc(f32, 32);
     @memcpy(uniform_buffer[0..16], math.matrix4x4.sliceLenConst(tr_view_projection));
 
-    // const frag_uniform_buffer: [1]f32 = .{time_s};
     var frag_uniform_buffer: [4]f32 = .{ time_s, aspect_ratio, mouse_x, mouse_y };
-    var origin_frag_uniform_buffer: [4]f32 = .{ 1, 0, 1, 1 };
+    // var origin_frag_uniform_buffer: [4]f32 = .{ 1, 0, 1, 1 };
 
     // {
     //     const render_pass = c.SDL_BeginGPURenderPass(
@@ -677,142 +713,92 @@ pub fn render(self: *const Self, engine: *const Engine, ui_ptr: ?*ui_mod.UI) Dra
             return DrawError.DrawFailed;
         }
 
-        log.debug("bind", .{});
-        c.SDL_BindGPUVertexBuffers(render_pass, 0, &c.SDL_GPUBufferBinding{
-            .buffer = cow_mesh.vertex_buffer,
-            .offset = 0,
-        }, 1);
-        c.SDL_BindGPUIndexBuffer(render_pass, &c.SDL_GPUBufferBinding{
-            .buffer = cow_mesh.index_buffer,
-            .offset = 0,
-        }, c.SDL_GPU_INDEXELEMENTSIZE_32BIT);
         // c.SDL_BindGPUFragmentSamplers(render_pass, 0, &c.SDL_GPUTextureSamplerBinding{
         //     .sampler = self.sampler,
         //     .texture = self.texture,
         // }, 1);
 
-        c.SDL_BindGPUGraphicsPipeline(render_pass, graphics_pipeline);
-
         section.sub(.init).end();
+        section.sub(.items).begin();
 
-        for (0..12) |zi| {
-            for (0..12) |yi| {
-                for (0..4) |xi| {
-                    var x: f32 = @floatFromInt(xi);
-                    var y: f32 = @floatFromInt(yi);
-                    var z: f32 = @floatFromInt(zi);
-                    x -= 1.5;
-                    y -= 5.5;
-                    z -= 5.5;
-                    const rx = x + 1;
-                    const ry = y + 1;
-                    const rz = z + 1;
-                    const tx = 0.15 * x;
-                    // const ty = 0.1 * y;
-                    // const tz = 0.1 * z;
-                    x *= 90;
-                    y *= 30;
-                    z *= 30;
+        c.SDL_BindGPUGraphicsPipeline(render_pass, graphics_pipeline);
+        c.SDL_PushGPUFragmentUniformData(
+            command_buffer,
+            0,
+            &frag_uniform_buffer,
+            @sizeOf(@TypeOf(frag_uniform_buffer)),
+        );
 
-                    section.sub(.cow1).unpause();
+        while (items_iter.next()) |_item| {
+            const item: Item = _item;
+            const mesh = self.meshes.getPtr(item.mesh);
 
-                    {
-                        const result = tr_model;
-                        result.* = math.matrix4x4.identity;
+            {
+                const result = tr_model;
+                result.* = math.matrix4x4.identity;
 
-                        const euler_order: math.EulerOrder = .xyz;
-                        math.matrix4x4.scaleXYZ(result, &.{ 1, 1, 1 });
-                        // math.matrix4x4.rotate_euler(&result, &.{ x_mod_s * pi / 4.0, y_mod_s * pi / 4.0, z_mod_s * pi / 4.0 }, euler_order);
-                        math.matrix4x4.rotateEuler(result, &.{ pi / 4.0 + time_s * pi * rx / 4.0, -pi / 4.0, pi / 4.0 }, euler_order);
-                        math.matrix4x4.translateXYZ(result, &.{ 0, 5, 0 });
-                        math.matrix4x4.translateXYZ(result, &.{ x, y, z });
-                    }
-                    @memcpy(uniform_buffer[16..32], math.matrix4x4.sliceLenConst(tr_model));
+                const euler_order: math.EulerOrder = .xyz;
+                math.matrix4x4.scaleXYZ(result, &item.scale);
+                math.matrix4x4.rotateEuler(result, &item.rotation, euler_order);
+                math.matrix4x4.translateXYZ(result, &item.position);
+            }
+            @memcpy(uniform_buffer[16..32], math.matrix4x4.sliceLenConst(tr_model));
 
-                    frag_uniform_buffer[0] = time_s + tx;
+            c.SDL_PushGPUVertexUniformData(
+                command_buffer,
+                0,
+                uniform_buffer.ptr,
+                @intCast(@sizeOf(f32) * uniform_buffer.len),
+            );
 
-                    c.SDL_PushGPUVertexUniformData(command_buffer, 0, uniform_buffer.ptr, @intCast(@sizeOf(f32) * uniform_buffer.len));
-                    c.SDL_PushGPUFragmentUniformData(command_buffer, 0, &frag_uniform_buffer, @sizeOf(@TypeOf(frag_uniform_buffer)));
-                    c.SDL_DrawGPUIndexedPrimitives(render_pass, @intCast(3 * cow_mesh.faces_len), 1, 0, 0, 0);
+            c.SDL_BindGPUVertexBuffers(render_pass, 0, &c.SDL_GPUBufferBinding{
+                .buffer = mesh.vert_buf,
+                .offset = 0,
+            }, 1);
 
-                    section.sub(.cow1).pause();
-                    section.sub(.cow2).unpause();
-
-                    {
-                        const result = tr_model;
-                        result.* = math.matrix4x4.identity;
-
-                        const euler_order: math.EulerOrder = .xyz;
-                        math.matrix4x4.scaleXYZ(result, &.{ 1, 1, 1 });
-                        // math.matrix4x4.rotate_euler(&result, &.{ x_mod_s * pi / 4.0, y_mod_s * pi / 4.0, z_mod_s * pi / 4.0 }, euler_order);
-                        math.matrix4x4.rotateEuler(result, &.{ pi / 4.0, -pi / 4.0 + time_s * pi * ry / 4.0, pi / 4.0 }, euler_order);
-                        math.matrix4x4.translateXYZ(result, &.{ 30, 5, 0 });
-                        math.matrix4x4.translateXYZ(result, &.{ x, y, z });
-                    }
-                    @memcpy(uniform_buffer[16..32], math.matrix4x4.sliceLenConst(tr_model));
-
-                    frag_uniform_buffer[0] = time_s + tx;
-
-                    c.SDL_PushGPUVertexUniformData(command_buffer, 0, uniform_buffer.ptr, @intCast(@sizeOf(f32) * uniform_buffer.len));
-                    c.SDL_PushGPUFragmentUniformData(command_buffer, 0, &frag_uniform_buffer, @sizeOf(@TypeOf(frag_uniform_buffer)));
-                    c.SDL_DrawGPUIndexedPrimitives(render_pass, @intCast(3 * cow_mesh.faces_len), 1, 0, 0, 0);
-
-                    section.sub(.cow2).pause();
-                    section.sub(.cow3).unpause();
-
-                    {
-                        const result = tr_model;
-                        result.* = math.matrix4x4.identity;
-
-                        const euler_order: math.EulerOrder = .xyz;
-                        math.matrix4x4.scaleXYZ(result, &.{ 1, 1, 1 });
-                        // math.matrix4x4.rotate_euler(&result, &.{ x_mod_s * pi / 4.0, y_mod_s * pi / 4.0, z_mod_s * pi / 4.0 }, euler_order);
-                        math.matrix4x4.rotateEuler(result, &.{ pi / 4.0, -pi / 4.0, pi / 4.0 + time_s * pi * rz / 4.0 }, euler_order);
-                        math.matrix4x4.translateXYZ(result, &.{ -30, 5, 0 });
-                        math.matrix4x4.translateXYZ(result, &.{ x, y, z });
-                    }
-                    @memcpy(uniform_buffer[16..32], math.matrix4x4.sliceLenConst(tr_model));
-
-                    frag_uniform_buffer[0] = time_s + tx;
-
-                    c.SDL_PushGPUVertexUniformData(command_buffer, 0, uniform_buffer.ptr, @intCast(@sizeOf(f32) * uniform_buffer.len));
-                    c.SDL_PushGPUFragmentUniformData(command_buffer, 0, &frag_uniform_buffer, @sizeOf(@TypeOf(frag_uniform_buffer)));
-                    c.SDL_DrawGPUIndexedPrimitives(render_pass, @intCast(3 * cow_mesh.faces_len), 1, 0, 0, 0);
-
-                    section.sub(.cow3).pause();
-                }
+            if (mesh.index_buf != null) {
+                c.SDL_BindGPUIndexBuffer(render_pass, &c.SDL_GPUBufferBinding{
+                    .buffer = mesh.index_buf,
+                    .offset = 0,
+                }, c.SDL_GPU_INDEXELEMENTSIZE_32BIT);
+                c.SDL_DrawGPUIndexedPrimitives(render_pass, @intCast(mesh.index_len), 1, 0, 0, 0);
+                log.info("index {}", .{mesh.vert_len});
+            } else {
+                c.SDL_DrawGPUPrimitives(render_pass, @intCast(mesh.vert_len), 1, 0, 0);
+                log.info("vertex {}", .{mesh.vert_len});
             }
         }
 
-        section.sub(.origin).begin();
-
-        tr_model.* = math.matrix4x4.identity;
-        @memcpy(uniform_buffer[16..32], math.matrix4x4.sliceLenConst(tr_model));
-
-        c.SDL_BindGPUVertexBuffers(render_pass, 0, &c.SDL_GPUBufferBinding{
-            .buffer = origin_mesh.vertex_buffer,
-            .offset = 0,
-        }, 1);
-        c.SDL_BindGPUIndexBuffer(render_pass, &c.SDL_GPUBufferBinding{
-            .buffer = origin_mesh.index_buffer,
-            .offset = 0,
-        }, c.SDL_GPU_INDEXELEMENTSIZE_32BIT);
-        c.SDL_PushGPUVertexUniformData(command_buffer, 0, uniform_buffer.ptr, @intCast(@sizeOf(f32) * uniform_buffer.len));
-        c.SDL_BindGPUGraphicsPipeline(render_pass, origin_graphics_pipeline);
-
-        origin_frag_uniform_buffer = .{ 1, 0, 0, 1 };
-        c.SDL_PushGPUFragmentUniformData(command_buffer, 0, &origin_frag_uniform_buffer, @sizeOf(@TypeOf(origin_frag_uniform_buffer)));
-        c.SDL_DrawGPUIndexedPrimitives(render_pass, 2, 1, 0, 0, 0);
-
-        origin_frag_uniform_buffer = .{ 0, 1, 0, 1 };
-        c.SDL_PushGPUFragmentUniformData(command_buffer, 0, &origin_frag_uniform_buffer, @sizeOf(@TypeOf(origin_frag_uniform_buffer)));
-        c.SDL_DrawGPUIndexedPrimitives(render_pass, 2, 1, 2, 0, 0);
-
-        origin_frag_uniform_buffer = .{ 0, 0, 1, 1 };
-        c.SDL_PushGPUFragmentUniformData(command_buffer, 0, &origin_frag_uniform_buffer, @sizeOf(@TypeOf(origin_frag_uniform_buffer)));
-        c.SDL_DrawGPUIndexedPrimitives(render_pass, 2, 1, 4, 0, 0);
-
-        section.sub(.origin).end();
+        section.sub(.items).begin();
+        // section.sub(.origin).begin();
+        //
+        // tr_model.* = math.matrix4x4.identity;
+        // @memcpy(uniform_buffer[16..32], math.matrix4x4.sliceLenConst(tr_model));
+        //
+        // c.SDL_BindGPUVertexBuffers(render_pass, 0, &c.SDL_GPUBufferBinding{
+        //     .buffer = origin_mesh.vert_buf,
+        //     .offset = 0,
+        // }, 1);
+        // c.SDL_BindGPUIndexBuffer(render_pass, &c.SDL_GPUBufferBinding{
+        //     .buffer = origin_mesh.index_buf,
+        //     .offset = 0,
+        // }, c.SDL_GPU_INDEXELEMENTSIZE_32BIT);
+        // c.SDL_PushGPUVertexUniformData(command_buffer, 0, uniform_buffer.ptr, @intCast(@sizeOf(f32) * uniform_buffer.len));
+        // c.SDL_BindGPUGraphicsPipeline(render_pass, origin_graphics_pipeline);
+        //
+        // origin_frag_uniform_buffer = .{ 1, 0, 0, 1 };
+        // c.SDL_PushGPUFragmentUniformData(command_buffer, 0, &origin_frag_uniform_buffer, @sizeOf(@TypeOf(origin_frag_uniform_buffer)));
+        // c.SDL_DrawGPUIndexedPrimitives(render_pass, 2, 1, 0, 0, 0);
+        //
+        // origin_frag_uniform_buffer = .{ 0, 1, 0, 1 };
+        // c.SDL_PushGPUFragmentUniformData(command_buffer, 0, &origin_frag_uniform_buffer, @sizeOf(@TypeOf(origin_frag_uniform_buffer)));
+        // c.SDL_DrawGPUIndexedPrimitives(render_pass, 2, 1, 2, 0, 0);
+        //
+        // origin_frag_uniform_buffer = .{ 0, 0, 1, 1 };
+        // c.SDL_PushGPUFragmentUniformData(command_buffer, 0, &origin_frag_uniform_buffer, @sizeOf(@TypeOf(origin_frag_uniform_buffer)));
+        // c.SDL_DrawGPUIndexedPrimitives(render_pass, 2, 1, 4, 0, 0);
+        //
+        // section.sub(.origin).end();
 
         log.debug("end main render pass", .{});
         c.SDL_EndGPURenderPass(render_pass);
@@ -888,17 +874,18 @@ pub fn format(self: *const Self, w: *std.io.Writer) !void {
     );
 }
 
-pub fn propertyEditorNode(self: *Self, property_editor: *ui_mod.PropertyEditorWindow, parent: *ui_mod.PropertyEditorWindow.Item) !void {
-    const node = try property_editor.appendChildNode(parent, @typeName(Self), "Renderer");
+pub fn propertyEditorNode(self: *Self, editor: *ui_mod.PropertyEditorWindow, parent: *ui_mod.PropertyEditorWindow.Item) !void {
+    const root_id = @typeName(Self);
+    const root_node = try editor.appendChildNode(parent, root_id, "Renderer");
 
     {
-        const cameras_node = try property_editor.appendChildNode(node, @typeName(Camera), "Cameras");
+        const node = try editor.appendChildNode(root_node, root_id ++ ".cameras", "Cameras");
         var iter = self.cameras.map.map.iterator();
         var buf: [64]u8 = undefined;
         while (iter.next()) |entry| {
             const id = try std.fmt.bufPrint(&buf, "{s}#{s}", .{ @typeName(Camera), entry.key_ptr.* });
-            _ = try property_editor.appendChild(
-                cameras_node,
+            _ = try editor.appendChild(
+                node,
                 entry.value_ptr.*.propertyEditor(),
                 id,
                 entry.key_ptr.*,

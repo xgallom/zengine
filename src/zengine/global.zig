@@ -90,6 +90,19 @@ pub inline fn assetsPath() []const u8 {
     return global_state.assets_path;
 }
 
+pub inline fn assetPath(path: []const u8) ![]const u8 {
+    assert(is_init);
+    return std.fs.path.join(
+        allocators.scratch(),
+        &.{ assetsPath(), path },
+    );
+}
+
+pub inline fn assetsDir(flags: std.fs.Dir.OpenOptions) !std.fs.Dir {
+    assert(is_init);
+    return std.fs.openDirAbsolute(assetsPath(), flags);
+}
+
 pub inline fn frameIndex() u64 {
     assert(is_init);
     return global_state.frame_idx;

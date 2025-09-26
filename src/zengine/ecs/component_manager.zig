@@ -9,8 +9,9 @@ const FlagsBitSet = types.FlagsBitSet;
 const ComponentFlagsBitSet = types.ComponentFlagsBitSet;
 const ComponentFlag = types.ComponentFlag;
 const Entity = types.Entity;
+const ui_mod = @import("../ui.zig");
 
-const log = std.log.scoped(.ecs);
+const log = std.log.scoped(.ecs_component_manager);
 
 fn AnyComponentManager(comptime C: type, comptime AL: type) type {
     return struct {
@@ -65,7 +66,7 @@ fn AnyComponentManager(comptime C: type, comptime AL: type) type {
             self.component_flags.unset(entity);
         }
 
-        pub fn iter(self: *Self) Iterator {
+        pub fn iterator(self: *Self) Iterator {
             self.lock.lock();
             return .{
                 .self = self,
@@ -81,20 +82,38 @@ fn AnyComponentManager(comptime C: type, comptime AL: type) type {
                 i.self.lock.unlock();
             }
 
-            pub fn next(i: *Iterator) ?struct { entity: Entity, item: C } {
+            pub fn next(i: *Iterator) ?struct { entity: Entity, item: *C } {
                 while (true) : (i.idx += 1) {
                     if (i.idx >= i.self.components.len()) return null;
                     if (i.self.component_flags.isSet(i.idx)) break;
                 }
                 const idx = i.idx;
                 i.idx += 1;
-                const result = i.self.components.get(idx);
+                const result = i.self.components.getPtr(idx);
                 return .{
                     .entity = idx,
                     .item = result,
                 };
             }
         };
+
+        pub fn propertyEditorNode(self: *Self, editor: *ui_mod.PropertyEditorWindow, parent: *ui_mod.PropertyEditorWindow.Item) !void {
+            const root_id = @typeName(C);
+            const node = try editor.appendChildNode(parent, root_id, @typeName(C));
+            var iter = self.iterator();
+            var buf: [128]u8 = undefined;
+            defer iter.deinit();
+            while (iter.next()) |entry| {
+                const id = try std.fmt.bufPrintZ(&buf, "{s}#{}", .{ @typeName(C), entry.entity });
+                const name = try std.fmt.bufPrintZ(buf[id.len + 1 ..], "{}", .{entry.entity});
+                _ = try editor.appendChild(
+                    node,
+                    entry.item.propertyEditor(),
+                    id,
+                    name,
+                );
+            }
+        }
     };
 }
 

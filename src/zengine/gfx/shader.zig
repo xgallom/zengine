@@ -9,6 +9,7 @@ const builtin = @import("builtin");
 const allocators = @import("../allocators.zig");
 const c = @import("../ext.zig").c;
 const global = @import("../global.zig");
+const fs = @import("../fs.zig");
 
 const log = std.log.scoped(.gfx_shader);
 
@@ -104,21 +105,31 @@ fn pickFormat(config: *const OpenConfig) !FormatConfig {
 }
 
 fn openShadersDir() !std.fs.Dir {
-    const shaders_path = try std.fs.path.join(allocators.scratch(), &.{ global.exePath(), "..", "shaders" });
-    return try std.fs.openDirAbsolute(shaders_path, .{});
+    const shaders_path = try std.fs.path.join(
+        allocators.scratch(),
+        &.{ global.exePath(), "..", "shaders" },
+    );
+    return std.fs.openDirAbsolute(shaders_path, .{});
 }
 
-fn readShaderCode(config: *const OpenConfig, format: *const FormatConfig, shaders_dir: *std.fs.Dir) ![]const u8 {
+fn readShaderCode(
+    config: *const OpenConfig,
+    format: *const FormatConfig,
+    shaders_dir: *std.fs.Dir,
+) ![]const u8 {
     const path = try std.fmt.allocPrint(allocators.scratch(), "{s}{s}", .{ config.shader_path, format.shader_ext });
-    return readFile(config.allocator, path, shaders_dir) catch |err| {
+    return fs.readFile(config.allocator, path, shaders_dir) catch |err| {
         log.err("error reading shader code file \"{s}\": {t}", .{ path, err });
         return err;
     };
 }
 
-fn readShaderMeta(config: *const OpenConfig, shaders_dir: *std.fs.Dir) !GraphicsMetadataJSON {
+fn readShaderMeta(
+    config: *const OpenConfig,
+    shaders_dir: *std.fs.Dir,
+) !GraphicsMetadataJSON {
     const path = try std.fmt.allocPrint(allocators.scratch(), "{s}{s}", .{ config.shader_path, ".json" });
-    const data = readFile(config.allocator, path, shaders_dir) catch |err| {
+    const data = fs.readFile(config.allocator, path, shaders_dir) catch |err| {
         log.err("error reading shader meta file \"{s}\": {t}", .{ path, err });
         return err;
     };
@@ -128,11 +139,4 @@ fn readShaderMeta(config: *const OpenConfig, shaders_dir: *std.fs.Dir) !Graphics
         log.err("error parsing shader meta file \"{s}\": {t}", .{ path, err });
         return err;
     };
-}
-
-fn readFile(allocator: std.mem.Allocator, path: []const u8, shaders_dir: *std.fs.Dir) ![]const u8 {
-    const file = try shaders_dir.openFile(path, .{});
-    defer file.close();
-    var reader = file.reader(&.{});
-    return reader.interface.readAlloc(allocator, try reader.getSize());
 }

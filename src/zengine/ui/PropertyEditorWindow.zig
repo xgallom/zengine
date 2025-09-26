@@ -16,10 +16,10 @@ const log = std.log.scoped(.ui_property_editor_window);
 
 allocator: std.mem.Allocator,
 items: std.DoublyLinkedList = .{},
-filter: TreeFilter = .{},
 active_item: ?*const Item = null,
 max_depth: u32 = 0,
 is_open: bool = true,
+filter: TreeFilter = .{},
 
 pub const Self = @This();
 pub const window_name = "Property Editor";
@@ -30,8 +30,8 @@ pub const Item = struct {
     element: ?UI.Element = null,
     children: std.DoublyLinkedList = .{},
     depth: u32,
-    id: [64]u8 = undefined,
-    name: [64]u8 = undefined,
+    id: [128]u8 = undefined,
+    name: [128]u8 = undefined,
 
     fn draw(item: *Item, ui: *const UI, is_open: *bool) void {
         var walk = item.children.first;
@@ -169,7 +169,7 @@ pub fn draw(self: *Self, ui: *const UI, is_open: *bool) void {
         const address = @intFromPtr(if (item.element) |el| el.ptr else null);
         c.igText("%s", &item.name);
         c.igTextDisabled("0x%08X (%s)", address, &item.id);
-        c.igSeparatorEx(c.ImGuiSeparatorFlags_Horizontal, item.sepWidth());
+        c.igSeparatorEx(c.ImGuiSeparatorFlags_Horizontal, 1);
         if (c.igBeginTable("##properties", 2, c.ImGuiTableFlags_Resizable | c.ImGuiTableFlags_ScrollY, .{}, 0)) {
             c.igPushID_Str(&item.id);
             c.igTableSetupColumn("", c.ImGuiTableColumnFlags_WidthFixed, 90, 0);
@@ -221,7 +221,7 @@ fn drawTreeNode(
     c.igPopID();
 }
 
-const Filter = TreeFilter.Filter(*const Item, keyTree, walkTree);
+const Filter = TreeFilter.Filter(*const Item, keyTree, walkTree, null);
 
 fn keyTree(item: *const Item) ?[*:0]const u8 {
     return @ptrCast(&item.name);

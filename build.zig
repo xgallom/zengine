@@ -3,6 +3,7 @@ const std = @import("std");
 const ExtCommand = enum {
     external,
     sdl,
+    sdl_image,
     shadercross,
     cimgui,
     cimplot,
@@ -46,6 +47,7 @@ pub fn build(b: *std.Build) !void {
     zengine.addIncludePath(b.path("external/cimplot"));
 
     zengine.linkSystemLibrary("SDL3", .{});
+    zengine.linkSystemLibrary("SDL3_image", .{});
     zengine.linkSystemLibrary("SDL3_shadercross", .{});
     zengine.linkSystemLibrary("cimgui", .{});
     zengine.linkSystemLibrary("cimplot", .{});

@@ -17,7 +17,6 @@ const UI = @import("UI.zig");
 const log = std.log.scoped(.ui_perf_window);
 
 allocator: std.mem.Allocator,
-filter: TreeFilter = .{},
 active_item: ?perf.Value = null,
 max_depth: u32 = 0,
 is_open: bool = true,
@@ -25,6 +24,7 @@ tab_bar: packed struct {
     module_tree: bool = true,
     call_graph: bool = false,
 } = .{},
+filter: TreeFilter = .{},
 
 pub const Self = @This();
 pub const window_name = "Performance";
@@ -361,11 +361,12 @@ const ModuleTreeFilter = TreeFilter.Filter(
     *const perf.SectionsTree.Edge,
     keyModuleTree,
     walkModuleTree,
+    null,
 );
 
 fn keyModuleTree(item: *const perf.SectionsTree.Edge) ?[*:0]const u8 {
-    if (item.target.value) |value| return @ptrCast(value.value.name.ptr);
-    return @ptrCast(item.label.ptr);
+    if (item.target.value) |value| return @ptrCast(value.value.name);
+    return @ptrCast(item.label);
 }
 
 fn walkModuleTree(filter: *TreeFilter, item: *const perf.SectionsTree.Edge) TreeFilter.Result {
@@ -381,10 +382,11 @@ const CallGraphFilter = TreeFilter.Filter(
     *const perf.SectionsListTree.Edge,
     keyCallGraph,
     walkCallGraph,
+    null,
 );
 
 fn keyCallGraph(item: *const perf.SectionsListTree.Edge) ?[*:0]const u8 {
-    return @ptrCast(item.value.key);
+    return @ptrCast(item.value.value.name);
 }
 
 fn walkCallGraph(filter: *TreeFilter, item: *const perf.SectionsListTree.Edge) TreeFilter.Result {

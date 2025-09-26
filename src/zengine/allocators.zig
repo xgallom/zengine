@@ -24,6 +24,7 @@ pub const ArenaKey = enum {
     frame,
     scratch,
     perf,
+    string,
 };
 
 const Self = struct {
@@ -178,4 +179,8 @@ pub inline fn scratchRelease() void {
 
 pub inline fn scratchFree() void {
     _ = arenaReset(.scratch, .{ .retain_with_limit = 1 << 10 });
+}
+
+pub inline fn string() std.mem.Allocator {
+    return arena(.string);
 }

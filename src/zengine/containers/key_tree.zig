@@ -33,7 +33,7 @@ pub fn KeyTree(comptime V: type, comptime options: struct {
 
         pub const Edge = struct {
             edge_node: Edges.Node,
-            label: []const u8,
+            label: [:0]const u8,
             target: Node,
         };
 
@@ -145,7 +145,7 @@ pub fn KeyTree(comptime V: type, comptime options: struct {
             walk.value = value;
         }
 
-        fn addNode(self: *Self, parent: *Node, label: []const u8, comptime order: InsertionOrder) !*Node {
+        fn addNode(self: *Self, parent: *Node, label: [:0]const u8, comptime order: InsertionOrder) !*Node {
             const edge = try self.createEdge(label, null);
             switch (comptime order) {
                 .ordered => orderedInsert(&parent.edges.first, edge),
@@ -184,7 +184,7 @@ pub fn KeyTree(comptime V: type, comptime options: struct {
             return std.mem.order(u8, lhs.label, rhs.label);
         }
 
-        fn createEdge(self: *Self, label: []const u8, value: ?Value) !*Edge {
+        fn createEdge(self: *Self, label: [:0]const u8, value: ?Value) !*Edge {
             const edge = try self.pool.create();
             edge.* = .{
                 .edge_node = .{},
@@ -199,9 +199,7 @@ pub fn KeyTree(comptime V: type, comptime options: struct {
 
         fn createLabel(self: *Self, label: []const u8) ![:0]const u8 {
             const allocator: std.mem.Allocator = self.pool.arena.allocator();
-            const result = try allocator.allocSentinel(u8, label.len, 0);
-            @memcpy(result, label);
-            return result;
+            return allocator.dupeZ(u8, label);
         }
 
         fn destroyNode(self: *Self, node: *Node) void {

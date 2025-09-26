@@ -26,7 +26,7 @@ pub fn RadixTree(comptime V: type, comptime options: std.heap.MemoryPoolOptions)
 
         pub const Edge = struct {
             edge_node: Edges.Node,
-            label: []const u8,
+            label: [:0]const u8,
             target: *Node,
         };
 
@@ -277,7 +277,7 @@ pub fn RadixTree(comptime V: type, comptime options: std.heap.MemoryPoolOptions)
             }
         }
 
-        fn splitEdge(self: *Self, edge: *Edge, base_label: []const u8, node_label: []const u8, new_label: []const u8, new_value: Value) !void {
+        fn splitEdge(self: *Self, edge: *Edge, base_label: [:0]const u8, node_label: [:0]const u8, new_label: [:0]const u8, new_value: Value) !void {
             const parent = try self.createNode(null);
             const old_node = edge.target;
             edge.label = base_label;
@@ -286,11 +286,11 @@ pub fn RadixTree(comptime V: type, comptime options: std.heap.MemoryPoolOptions)
             try self.addNode(parent, new_label, new_value);
         }
 
-        fn addNode(self: *Self, parent: *Node, label: []const u8, value: Value) !void {
+        fn addNode(self: *Self, parent: *Node, label: [:0]const u8, value: Value) !void {
             try self.reparentNode(parent, label, try self.createNode(value));
         }
 
-        fn reparentNode(self: *Self, parent: *Node, label: []const u8, node: *Node) !void {
+        fn reparentNode(self: *Self, parent: *Node, label: [:0]const u8, node: *Node) !void {
             orderedInsert(&parent.edges.first, try self.createEdge(label, node));
         }
 
@@ -320,7 +320,7 @@ pub fn RadixTree(comptime V: type, comptime options: std.heap.MemoryPoolOptions)
             return &pool_item.node;
         }
 
-        fn createEdge(self: *Self, label: []const u8, target: *Node) !*Edge {
+        fn createEdge(self: *Self, label: [:0]const u8, target: *Node) !*Edge {
             const pool_item: *PoolItem = try self.pool.create();
             pool_item.* = .{ .edge = .{
                 .edge_node = .{},
@@ -330,11 +330,9 @@ pub fn RadixTree(comptime V: type, comptime options: std.heap.MemoryPoolOptions)
             return &pool_item.edge;
         }
 
-        fn createLabel(self: *Self, label: []const u8) ![]const u8 {
+        fn createLabel(self: *Self, label: []const u8) ![:0]const u8 {
             const allocator: std.mem.Allocator = self.pool.arena.allocator();
-            const result = try allocator.alloc(u8, label.len);
-            @memcpy(result, label);
-            return result;
+            return allocator.dupeZ(label);
         }
 
         fn destroyNode(self: *Self, node: *Node) void {

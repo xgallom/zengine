@@ -84,24 +84,46 @@ pub fn Tree(comptime V: type, comptime options: struct {
 
         pub const Pusher = struct {
             self: *Self,
-            curr: ?*Node,
+            unmanaged: Unmanaged = .{},
 
             pub fn push(p: *Pusher, value: Value) !*Node {
-                if (p.curr) |curr| {
-                    log.debug("push {f}", .{value});
-                    p.curr = try curr.insert(p.self, value);
-                } else {
-                    log.debug("push {f}", .{value});
-                    p.curr = try p.self.insert(value);
-                }
-                return p.curr.?;
+                return p.unmanaged.push(p.self, value);
             }
 
             pub fn pop(p: *Pusher) ?*Node {
-                log.debug("pop", .{});
-                if (p.curr) |curr| p.curr = curr.parent;
-                return p.curr;
+                return p.unmanaged.pop();
             }
+
+            pub fn commit(p: *const Pusher, u: *Unmanaged) void {
+                u.* = p.unmanaged;
+            }
+
+            pub const Unmanaged = struct {
+                curr: ?*Node = null,
+
+                pub const empty: Unmanaged = .{};
+
+                pub fn push(p: *Unmanaged, self: *Self, value: Value) !*Node {
+                    if (p.curr) |curr| {
+                        log.debug("push {f}", .{value});
+                        p.curr = try curr.insert(self, value);
+                    } else {
+                        log.debug("push {f}", .{value});
+                        p.curr = try self.insert(value);
+                    }
+                    return p.curr.?;
+                }
+
+                pub fn pop(p: *Unmanaged) ?*Node {
+                    log.debug("pop", .{});
+                    if (p.curr) |curr| p.curr = curr.parent;
+                    return p.curr;
+                }
+
+                pub fn promote(p: *const Unmanaged, self: *Self) Pusher {
+                    return .{ .self = self, .unmanaged = p.* };
+                }
+            };
         };
 
         pub fn iterator(self: *Self) EdgeIterator {
@@ -109,7 +131,7 @@ pub fn Tree(comptime V: type, comptime options: struct {
         }
 
         pub fn pusher(self: *Self) Pusher {
-            return .{ .self = self, .curr = null };
+            return .{ .self = self };
         }
 
         // Initializes the tree

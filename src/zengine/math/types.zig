@@ -4,6 +4,8 @@
 //! These are all available also in the top-level math module
 //!
 
+const std = @import("std");
+
 pub const Scalar = f32;
 pub const Scalar64 = f64;
 
@@ -64,14 +66,26 @@ pub const Coords3f64 = CoordsNT(3, Scalar64);
 pub const Coords4 = CoordsNT(4, Scalar);
 pub const Coords4f64 = CoordsNT(4, Scalar64);
 
+pub const RGBf32 = Vector3;
+pub const RGBAf32 = Vector4;
 pub const Vertex = Vector3;
+pub const TexCoord = Vector2;
 pub const Position = Vector4;
 pub const Displacement = Vector4;
 pub const Euler = Vector3;
 pub const Quat = Vector4;
 pub const Index = u32;
+pub const QuadFaceIndex = Vector4T(Index);
 pub const FaceIndex = Vector3T(Index);
 pub const LineFaceIndex = Vector2T(Index);
+
+pub const Color = enum(u2) {
+    r,
+    g,
+    b,
+    a,
+    pub const len = 4;
+};
 
 pub const Axis3 = enum(u2) {
     x,

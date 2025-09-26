@@ -13,12 +13,12 @@ pub fn KeyMap(comptime V: type, comptime options: struct {
 }) type {
     return struct {
         pool: Pool,
-        map: PtrKeyMap(Value),
+        map: PtrKeyMap(V),
 
         pub const Self = @This();
         pub const Value = V;
 
-        const Pool = std.heap.MemoryPoolExtra(Value, options.pool_options);
+        const Pool = std.heap.MemoryPoolExtra(V, options.pool_options);
 
         // Initializes the map
         pub fn init(allocator: std.mem.Allocator, preheat: usize) !Self {
@@ -34,25 +34,25 @@ pub fn KeyMap(comptime V: type, comptime options: struct {
             self.pool.deinit();
         }
 
-        pub fn get(self: *const Self, key: []const u8) Value {
+        pub fn get(self: *const Self, key: []const u8) V {
             return self.map.getPtr(key).*;
         }
 
-        pub fn getOrNull(self: *const Self, key: []const u8) ?Value {
+        pub fn getOrNull(self: *const Self, key: []const u8) ?V {
             if (self.map.getPtrOrNull(key)) |ptr| return ptr.*;
             return null;
         }
 
-        pub fn getPtr(self: *const Self, key: []const u8) *Value {
+        pub fn getPtr(self: *const Self, key: []const u8) *V {
             return self.map.getPtr(key);
         }
 
-        pub fn getPtrOrNull(self: *const Self, key: []const u8) ?*Value {
+        pub fn getPtrOrNull(self: *const Self, key: []const u8) ?*V {
             return self.map.getPtrOrNull(key);
         }
 
         /// Inserts new value into the map
-        pub fn insert(self: *Self, key: []const u8, value: Value) !*Value {
+        pub fn insert(self: *Self, key: []const u8, value: V) !*V {
             const item = try self.pool.create();
             item.* = value;
             try self.map.insert(self.pool.arena.child_allocator, key, item);
@@ -70,7 +70,7 @@ pub fn KeyMap(comptime V: type, comptime options: struct {
 
 pub fn PtrKeyMap(comptime V: type) type {
     return struct {
-        map: std.StringArrayHashMapUnmanaged(*Value) = .empty,
+        map: std.StringArrayHashMapUnmanaged(*V) = .empty,
 
         pub const Self = @This();
         pub const Value = V;
@@ -87,18 +87,18 @@ pub fn PtrKeyMap(comptime V: type) type {
             self.map.deinit(gpa);
         }
 
-        pub fn getPtr(self: *const Self, key: []const u8) *Value {
+        pub fn getPtr(self: *const Self, key: []const u8) *V {
             const ptr = self.map.get(key);
             assert(ptr != null);
             return ptr.?;
         }
 
-        pub fn getPtrOrNull(self: *const Self, key: []const u8) ?*Value {
+        pub fn getPtrOrNull(self: *const Self, key: []const u8) ?*V {
             return self.map.get(key);
         }
 
         /// Inserts new pointer value into the map
-        pub fn insert(self: *Self, gpa: std.mem.Allocator, key: []const u8, ptr: *Value) !void {
+        pub fn insert(self: *Self, gpa: std.mem.Allocator, key: []const u8, ptr: *V) !void {
             try self.map.putNoClobber(gpa, key, ptr);
         }
 
@@ -113,7 +113,7 @@ pub fn PtrKeyMap(comptime V: type) type {
 
 pub fn SparseKeyMap(comptime V: type) type {
     return struct {
-        map: std.StringHashMapUnmanaged(Value),
+        map: std.StringHashMapUnmanaged(V),
 
         pub const Self = @This();
         pub const Value = V;
@@ -130,23 +130,23 @@ pub fn SparseKeyMap(comptime V: type) type {
             self.map.deinit(gpa);
         }
 
-        pub fn get(self: *const Self, key: []const u8) Value {
+        pub fn get(self: *const Self, key: []const u8) V {
             const ptr = self.map.getPtr(key);
             assert(ptr != null);
             return ptr.*;
         }
 
-        pub fn getOrNull(self: *const Self, key: []const u8) ?Value {
+        pub fn getOrNull(self: *const Self, key: []const u8) ?V {
             if (self.map.getPtr(key)) |ptr| return ptr.*;
             return null;
         }
 
-        pub fn getPtr(self: *const Self, key: []const u8) ?*Value {
+        pub fn getPtr(self: *const Self, key: []const u8) ?*V {
             return self.map.getPtr(key);
         }
 
         /// Inserts new pointer value into the map
-        pub fn insert(self: *Self, gpa: std.mem.Allocator, key: []const u8, value: Value) !void {
+        pub fn insert(self: *Self, gpa: std.mem.Allocator, key: []const u8, value: V) !void {
             try self.map.putNoClobber(gpa, key, value);
         }
 
