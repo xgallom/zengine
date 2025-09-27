@@ -118,9 +118,9 @@ fn drawPlots(self: *Self) void {
 
         c.ImPlot_PushStyleVar_Float(c.ImPlotStyleVar_FillAlpha, 0.25);
 
-        self.drawPlotFilled("sample_avg", times, sample_avgs);
-        self.drawPlotLine("sample_max", times, sample_maxes);
-        self.drawPlotLine("sample_min", times, sample_mins);
+        self.drawPlotFilled("##sample_avg", times, sample_avgs);
+        self.drawPlotLine("##sample_max", times, sample_maxes);
+        self.drawPlotLine("##sample_min", times, sample_mins);
 
         c.ImPlot_EndPlot();
     }

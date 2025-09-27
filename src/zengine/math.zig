@@ -74,6 +74,11 @@ pub const vector3f64 = vectorNT(3, types.Scalar64);
 pub const vector4 = vectorNT(4, types.Scalar);
 pub const vector4f64 = vectorNT(4, types.Scalar64);
 
+pub const rgbf32 = vector3;
+pub const rgbaf32 = vector4;
+pub const vertex = vector3;
+pub const euler = vector3;
+
 pub fn percent(x: anytype) @TypeOf(x) {
     return x * 100;
 }

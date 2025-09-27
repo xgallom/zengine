@@ -14,7 +14,7 @@ const log = std.log.scoped(.gfx_camera);
 
 surface: ?*c.SDL_Surface,
 texture: ?*c.SDL_GPUTexture = null,
-state: State = .gpu,
+state: State = .cpu,
 
 const Self = @This();
 
@@ -50,7 +50,7 @@ pub fn freeCpuData(self: *Self) void {
     self.surface = null;
 }
 
-pub fn createTexture(self: *Self, gpu_device: ?*c.SDL_Surface) !void {
+pub fn createTexture(self: *Self, gpu_device: ?*c.SDL_GPUDevice) !void {
     assert(self.state == .cpu);
     assert(self.surface != null);
     assert(self.texture == null);
@@ -59,8 +59,8 @@ pub fn createTexture(self: *Self, gpu_device: ?*c.SDL_Surface) !void {
         .type = c.SDL_GPU_TEXTURETYPE_2D,
         .format = c.SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM,
         .usage = c.SDL_GPU_TEXTUREUSAGE_SAMPLER,
-        .width = self.surface.w,
-        .height = self.surface.h,
+        .width = @intCast(self.surface.?.w),
+        .height = @intCast(self.surface.?.h),
         .layer_count_or_depth = 1,
         .num_levels = 1,
     });
@@ -72,7 +72,7 @@ pub fn createTexture(self: *Self, gpu_device: ?*c.SDL_Surface) !void {
     self.state = .gpu;
 }
 
-pub fn releaseTexture(self: *Self, gpu_device: ?*c.SDL_GPUDevice) !void {
+pub fn releaseTexture(self: *Self, gpu_device: ?*c.SDL_GPUDevice) void {
     assert(self.state == .cpu or self.state == .gpu);
     if (self.texture != null) c.SDL_ReleaseGPUTexture(gpu_device, self.texture);
     self.texture = null;
@@ -85,7 +85,7 @@ pub fn createUploadTransferBuffer(self: *Self, gpu_device: ?*c.SDL_GPUDevice) !U
 
     const transfer_buffer = c.SDL_CreateGPUTransferBuffer(gpu_device, &c.SDL_GPUTransferBufferCreateInfo{
         .usage = c.SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD,
-        .size = @intCast(self.surface.h * self.surface.pitch),
+        .size = @intCast(self.surface.?.h * self.surface.?.pitch),
     });
     if (transfer_buffer == null) {
         log.err("failed creating transfer buffer: {s}", .{c.SDL_GetError()});
@@ -101,6 +101,10 @@ pub const UploadTransferBuffer = struct {
     transfer_buffer: *c.SDL_GPUTransferBuffer,
 
     pub fn release(tb: *UploadTransferBuffer, gpu_device: ?*c.SDL_GPUDevice) void {
+        if (tb.self.state == .gpu_mapped) {
+            log.warn("transfer buffer mapped but not uploaded", .{});
+            tb.self.state = .gpu_upload;
+        }
         assert(tb.self.state == .gpu_upload or tb.self.state == .gpu_uploaded);
         c.SDL_ReleaseGPUTransferBuffer(gpu_device, tb.transfer_buffer);
         tb.self.state = .gpu;
@@ -109,6 +113,7 @@ pub const UploadTransferBuffer = struct {
 
     pub fn map(tb: *const UploadTransferBuffer, gpu_device: ?*c.SDL_GPUDevice) !void {
         assert(tb.self.state == .gpu_upload);
+        assert(tb.self.surface != null);
 
         const transfer_buffer_ptr = c.SDL_MapGPUTransferBuffer(gpu_device, tb.transfer_buffer, false);
         if (transfer_buffer_ptr == null) {
@@ -118,8 +123,8 @@ pub const UploadTransferBuffer = struct {
 
         var dest: [*]u8 = @ptrCast(@alignCast(transfer_buffer_ptr));
         {
-            const src: [*]const u8 = @ptrCast(@alignCast(tb.self.surface.pixels.?));
-            const byte_len = tb.self.surface.h * tb.self.surface.pitch;
+            const src: [*]const u8 = @ptrCast(@alignCast(tb.self.surface.?.pixels.?));
+            const byte_len: usize = @intCast(tb.self.surface.?.h * tb.self.surface.?.pitch);
             assert(byte_len != 0);
             @memcpy(dest[0..byte_len], src[0..byte_len]);
         }
@@ -130,20 +135,20 @@ pub const UploadTransferBuffer = struct {
 
     pub fn upload(tb: *const UploadTransferBuffer, copy_pass: ?*c.SDL_GPUCopyPass) void {
         assert(tb.self.state == .gpu_mapped);
+        assert(tb.self.surface != null);
         assert(tb.self.texture != null);
 
         c.SDL_UploadToGPUTexture(copy_pass, &c.SDL_GPUTextureTransferInfo{
             .transfer_buffer = tb.transfer_buffer,
             .offset = 0,
-            .pixels_per_row = tb.self.surface.w,
-            .rows_per_layer = tb.self.surface.h,
+            .pixels_per_row = @intCast(tb.self.surface.?.w),
+            .rows_per_layer = @intCast(tb.self.surface.?.h),
         }, &c.SDL_GPUTextureRegion{
             .texture = tb.self.texture,
-            .w = tb.self.surface.w,
-            .h = tb.self.surface.h,
+            .w = @intCast(tb.self.surface.?.w),
+            .h = @intCast(tb.self.surface.?.h),
         }, false);
 
         tb.self.state = .gpu_uploaded;
     }
 };
-

@@ -126,7 +126,7 @@ pub fn build(b: *std.Build) !void {
     _ = try compile_shaders.step.addDirectoryWatchInput(b.path("shaders/include"));
     _ = try compile_shaders.step.addDirectoryWatchInput(b.path("shaders/src"));
 
-    // TODO: Use instead of hlsl?
+    // TODO: use instead of hlsl?
     //
     // const compile_shader = b.addExecutable(.{
     //     .name = "shader.frag",

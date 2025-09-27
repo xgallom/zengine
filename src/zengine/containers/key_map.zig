@@ -34,6 +34,10 @@ pub fn KeyMap(comptime V: type, comptime options: struct {
             self.pool.deinit();
         }
 
+        pub fn contains(self: *const Self, key: []const u8) bool {
+            return self.map.contains(key);
+        }
+
         pub fn get(self: *const Self, key: []const u8) V {
             return self.map.getPtr(key).*;
         }
@@ -85,6 +89,10 @@ pub fn PtrKeyMap(comptime V: type) type {
         /// Deinitializes the map
         pub fn deinit(self: *Self, gpa: std.mem.Allocator) void {
             self.map.deinit(gpa);
+        }
+
+        pub fn contains(self: *const Self, key: []const u8) bool {
+            return self.map.contains(key);
         }
 
         pub fn getPtr(self: *const Self, key: []const u8) *V {

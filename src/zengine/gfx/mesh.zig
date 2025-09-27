@@ -41,7 +41,7 @@ pub const Node = struct {
     meta: Meta,
 
     pub const Target = enum {
-        vert,
+        vertex,
         index,
     };
 
@@ -53,16 +53,16 @@ pub const Node = struct {
     };
 
     pub const Meta = union(Type) {
-        object: ?[]const u8,
-        group: []const u8,
+        object: ?[:0]const u8,
+        group: [:0]const u8,
         smoothing: u32,
-        material: []const u8,
+        material: [:0]const u8,
     };
 };
 
 pub fn init(allocator: std.mem.Allocator) !Self {
     var result = Self{ .allocator = allocator };
-    try result.appendMeta(.{ .object = null }, .vert);
+    try result.appendMeta(.{ .object = null }, .vertex);
     return result;
 }
 
@@ -72,6 +72,15 @@ pub fn deinit(self: *Self, gpu_device: ?*c.SDL_GPUDevice) void {
     self.nodes.deinit(self.allocator);
 }
 
+pub fn ensureVerticesUnusedCapacity(self: *Self, comptime V: type, count: usize) !void {
+    assert(self.state == .cpu);
+    try self.vert_data.ensureUnusedCapacity(self.allocator, count * comptime math.elemLen(V));
+}
+pub fn ensureIndexesUnusedCapacity(self: *Self, comptime I: type, count: usize) !void {
+    assert(self.state == .cpu);
+    try self.index_data.ensureUnusedCapacity(self.allocator, count * comptime math.elemLen(I));
+}
+
 pub fn appendVertices(self: *Self, comptime V: type, verts: []const V) !void {
     assert(self.state == .cpu);
     const ptr: [*]const math.Scalar = @ptrCast(verts.ptr);
@@ -79,34 +88,33 @@ pub fn appendVertices(self: *Self, comptime V: type, verts: []const V) !void {
     try self.vert_data.appendSlice(self.allocator, ptr[0..len]);
 }
 
-pub fn appendVerticesAll(self: *Self, comptime V: type, verts_all: []const []const V) !void {
+pub fn appendVerticesAssumeCapacity(self: *Self, comptime V: type, verts: []const V) void {
     assert(self.state == .cpu);
-    for (verts_all) |verts| {
-        const ptr: [*]const math.Scalar = @ptrCast(verts.ptr);
-        const len = verts.len * comptime math.elemLen(V);
-        try self.vert_data.appendSlice(self.allocator, ptr[0..len]);
-    }
+    const ptr: [*]const math.Scalar = @ptrCast(verts.ptr);
+    const len = verts.len * comptime math.elemLen(V);
+    self.vert_data.appendSliceAssumeCapacity(ptr[0..len]);
 }
 
-pub fn appendFaces(self: *Self, comptime F: type, faces: []const F) !void {
+pub fn appendVerticesAll(self: *Self, comptime V: type, verts_all: []const []const V) !void {
     assert(self.state == .cpu);
-    const ptr: [*]const math.Index = @ptrCast(faces.ptr);
-    const len = faces.len * comptime math.elemLen(F);
+    for (verts_all) |verts| try self.appendVertices(V, verts);
+}
+
+pub fn appendIndexes(self: *Self, comptime I: type, indexes: []const I) !void {
+    assert(self.state == .cpu);
+    const ptr: [*]const math.Index = @ptrCast(indexes.ptr);
+    const len = indexes.len * comptime math.elemLen(I);
     try self.index_data.appendSlice(self.allocator, ptr[0..len]);
 }
 
-pub fn appendFacesAll(self: *Self, comptime F: type, faces_all: []const []const F) !void {
+pub fn appendIndexesAll(self: *Self, comptime I: type, indexes_all: []const []const I) !void {
     assert(self.state == .cpu);
-    for (faces_all) |faces| {
-        const ptr: [*]const math.Index = @ptrCast(faces.ptr);
-        const len = faces.len * comptime math.elemLen(F);
-        try self.index_data.appendSlice(self.allocator, ptr[0..len]);
-    }
+    for (indexes_all) |indexes| try self.appendIndexes(I, indexes);
 }
 
 pub fn appendMeta(self: *Self, meta: Node.Meta, comptime target: Node.Target) !void {
     const offset = switch (comptime target) {
-        .vert => self.vert_data.items.len,
+        .vertex => self.vert_data.items.len,
         .index => self.index_data.items.len,
     };
     try self.nodes.append(self.allocator, .{
@@ -127,14 +135,12 @@ pub fn createGpuBuffers(self: *Self, gpu_device: ?*c.SDL_GPUDevice) !void {
     assert(self.index_buf == null);
     assert(self.vert_byte_len == 0);
     assert(self.index_byte_len == 0);
-    assert(self.vert_len == 0);
-    assert(self.index_len == 0);
     self.state = .gpu;
 
     errdefer self.releaseGpuBuffers(gpu_device);
 
-    // self.vert_len = @divFloor(self.vert_data.items.len, math.elemLen(math.Vertex));
-    self.vert_len = @divFloor(self.vert_data.items.len, 3 * math.elemLen(math.Vertex));
+    // TODO: solve vert_len and index_len
+    // now they are set manually by obj_loader
     self.vert_byte_len = std.mem.sliceAsBytes(self.vert_data.items).len;
     self.vert_buf = c.SDL_CreateGPUBuffer(gpu_device, &c.SDL_GPUBufferCreateInfo{
         .usage = c.SDL_GPU_BUFFERUSAGE_VERTEX,
@@ -146,7 +152,6 @@ pub fn createGpuBuffers(self: *Self, gpu_device: ?*c.SDL_GPUDevice) !void {
     }
 
     if (self.index_data.items.len == 0) return;
-    self.index_len = self.index_data.items.len;
     self.index_byte_len = std.mem.sliceAsBytes(self.index_data.items).len;
     self.index_buf = c.SDL_CreateGPUBuffer(gpu_device, &c.SDL_GPUBufferCreateInfo{
         .usage = c.SDL_GPU_BUFFERUSAGE_INDEX,
@@ -195,6 +200,10 @@ pub const UploadTransferBuffer = struct {
     transfer_buffer: *c.SDL_GPUTransferBuffer,
 
     pub fn release(tb: *UploadTransferBuffer, gpu_device: ?*c.SDL_GPUDevice) void {
+        if (tb.self.state == .gpu_mapped) {
+            log.warn("transfer buffer mapped but not uploaded", .{});
+            tb.self.state = .gpu_upload;
+        }
         assert(tb.self.state == .gpu_upload or tb.self.state == .gpu_uploaded);
         c.SDL_ReleaseGPUTransferBuffer(gpu_device, tb.transfer_buffer);
         tb.self.state = .gpu;

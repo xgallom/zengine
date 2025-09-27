@@ -74,10 +74,11 @@ pub const Position = Vector4;
 pub const Displacement = Vector4;
 pub const Euler = Vector3;
 pub const Quat = Vector4;
+
 pub const Index = u32;
-pub const QuadFaceIndex = Vector4T(Index);
-pub const FaceIndex = Vector3T(Index);
 pub const LineFaceIndex = Vector2T(Index);
+pub const FaceIndex = Vector3T(Index);
+pub const QuadFaceIndex = Vector4T(Index);
 
 pub const Color = enum(u2) {
     r,

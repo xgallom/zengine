@@ -35,13 +35,17 @@ pub const InputType = struct {
 };
 
 pub const Options = struct {
+    pub const InputNull = struct {
+        name: [:0]const u8,
+    };
+
     pub const InputCheckbox = struct {
         name: [:0]const u8,
     };
 
     pub const InputText = struct {
         name: [:0]const u8,
-        len: ?usize = null,
+        read_only: bool = false,
     };
 
     pub const InputCombo = struct {
@@ -58,6 +62,43 @@ pub const Options = struct {
         };
     }
 };
+
+pub fn InputNull(comptime options: Options.InputNull) type {
+    return struct {
+        pub const Self = @This();
+        pub const name = options.name;
+
+        pub fn init() Self {
+            return .{};
+        }
+
+        pub fn draw(ui: *const UI, is_open: *bool) void {
+            drawImpl(null, ui, is_open);
+        }
+
+        pub fn drawImpl(_: ?*anyopaque, _: *const UI, _: *bool) void {
+            c.igTableNextRow(0, 0);
+            c.igPushID_Str(name);
+
+            _ = c.igTableNextColumn();
+            c.igAlignTextToFramePadding();
+            c.igTextUnformatted(name, null);
+
+            _ = c.igTableNextColumn();
+            c.igAlignTextToFramePadding();
+            c.igTextUnformatted("null", null);
+
+            c.igPopID();
+        }
+
+        pub fn element() UI.Element {
+            return .{
+                .ptr = null,
+                .drawFn = @ptrCast(&drawImpl),
+            };
+        }
+    };
+}
 
 pub fn InputCheckbox(comptime options: Options.InputCheckbox) type {
     const C = bool;
@@ -99,13 +140,15 @@ pub fn InputCheckbox(comptime options: Options.InputCheckbox) type {
 }
 
 pub fn InputText(comptime options: Options.InputText) type {
+    comptime var flags: c.ImGuiInputFlags = 0;
+    if (options.read_only) flags |= c.ImGuiInputTextFlags_ReadOnly;
     return struct {
-        component: []u8,
+        component: [:0]u8,
 
         pub const Self = @This();
         pub const name = options.name;
 
-        pub fn init(component: []u8) Self {
+        pub fn init(component: [:0]u8) Self {
             return .{ .component = component };
         }
 
@@ -113,7 +156,7 @@ pub fn InputText(comptime options: Options.InputText) type {
             drawImpl(self.component, ui, is_open);
         }
 
-        pub fn drawImpl(component: []u8, _: *const UI, _: *bool) void {
+        pub fn drawImpl(component: [:0]u8, _: *const UI, _: *bool) void {
             c.igTableNextRow(0, 0);
             c.igPushID_Str(name);
 
@@ -123,7 +166,7 @@ pub fn InputText(comptime options: Options.InputText) type {
 
             _ = c.igTableNextColumn();
             c.igSetNextItemWidth(-std.math.floatMin(f32));
-            _ = c.igInputText("##Editor", component.ptr, component.len, 0, null, null);
+            _ = c.igInputText("##Editor", component.ptr, component.len + 1, flags, null, null);
 
             c.igPopID();
         }
@@ -299,57 +342,84 @@ pub fn PropertyEditor(comptime C: type) type {
                     if (std.mem.eql(u8, field.name, @tagName(prop))) continue :fields;
                 };
 
-                const field_min = field.name ++ "_min";
-                const field_max = field.name ++ "_max";
-                const field_speed = field.name ++ "_speed";
-                const field_type = field.name ++ "_type";
                 const field_ptr = &@field(component, field.name);
-
-                switch (@typeInfo(field.type)) {
-                    .bool => InputCheckbox(.{ .name = field.name }).drawImpl(field_ptr, ui, is_open),
-                    .int, .float => InputScalar(field.type, 1, .{
-                        .name = field.name,
-                        .min = if (@hasDecl(C, field_min)) @field(C, field_min) else null,
-                        .max = if (@hasDecl(C, field_max)) @field(C, field_max) else null,
-                        .speed = if (@hasDecl(C, field_speed)) @field(C, field_speed) else null,
-                        .input_type = if (@hasDecl(C, field_type)) @field(C, field_type) else null,
-                    }).drawImpl(field_ptr, ui, is_open),
-                    .pointer => |field_info| {
-                        if (field_info.is_const) @compileError("Unsupported const pointer");
-                        if (field_info.size != .slice) @compileError("Unsupported pointer size");
-                        if (field_info.child != u8) @compileError("Only strings supported");
-
-                        const len = if (field_info.sentinel() == 0) field_ptr.len + 1 else field_ptr.len;
-                        InputText(.{ .name = field.name }).drawImpl(field_ptr[0..len], ui, is_open);
-                    },
-                    .array => |field_info| {
-                        const input_type = if (@hasDecl(C, field_type))
-                            @field(C, field_type)
-                        else if (field_info.child == u8)
-                            InputType.text
-                        else
-                            InputType.drag;
-
-                        const len = if (input_type == .text and field_info.sentinel() == 0)
-                            field_info.len + 1
-                        else
-                            field_info.len;
-
-                        switch (comptime input_type) {
-                            .text => InputText(.{ .name = field.name }).drawImpl(field_ptr[0..len], ui, is_open),
-                            .scalar => |scalar_type| InputScalar(field_info.child, len, .{
-                                .name = field.name,
-                                .min = if (@hasDecl(C, field_min)) @field(C, field_min) else null,
-                                .max = if (@hasDecl(C, field_max)) @field(C, field_max) else null,
-                                .speed = if (@hasDecl(C, field_speed)) @field(C, field_speed) else null,
-                                .input_type = scalar_type,
-                            }).drawImpl(field_ptr, ui, is_open),
-                            else => @compileError("Unsupported array type"),
-                        }
-                    },
-                    .@"enum" => InputCombo(field.type, .{ .name = field.name }).drawImpl(field_ptr, ui, is_open),
-                    else => @compileError("Unsupported property"),
+                if (comptime isOptional(field.type)) {
+                    if (field_ptr.* == null) {
+                        InputNull(.{
+                            .name = field.name,
+                        }).draw(ui, is_open);
+                    } else {
+                        drawFieldImpl(field, @ptrCast(field_ptr), ui, is_open);
+                    }
+                } else {
+                    drawFieldImpl(field, field_ptr, ui, is_open);
                 }
+            }
+        }
+
+        fn drawFieldImpl(
+            comptime field: std.builtin.Type.StructField,
+            field_ptr: *ResolveFieldType(field.type),
+            ui: *const UI,
+            is_open: *bool,
+        ) void {
+            const field_min = field.name ++ "_min";
+            const field_max = field.name ++ "_max";
+            const field_speed = field.name ++ "_speed";
+            const field_type = field.name ++ "_type";
+
+            switch (@typeInfo(ResolveFieldType(field.type))) {
+                .bool => InputCheckbox(.{
+                    .name = field.name,
+                }).drawImpl(field_ptr, ui, is_open),
+                .int, .float => InputScalar(field.type, 1, .{
+                    .name = field.name,
+                    .min = if (@hasDecl(C, field_min)) @field(C, field_min) else null,
+                    .max = if (@hasDecl(C, field_max)) @field(C, field_max) else null,
+                    .speed = if (@hasDecl(C, field_speed)) @field(C, field_speed) else null,
+                    .input_type = if (@hasDecl(C, field_type)) @field(C, field_type) else null,
+                }).drawImpl(field_ptr, ui, is_open),
+                .pointer => |field_info| {
+                    if (field_info.size != .slice) @compileError("Unsupported pointer size");
+                    if (field_info.child != u8) @compileError("Only strings supported");
+                    if (field_info.sentinel() != 0) @compileError("Only zero-terminated strings supported");
+
+                    InputText(.{
+                        .name = field.name,
+                        .read_only = field_info.is_const,
+                    }).drawImpl(@constCast(field_ptr.*), ui, is_open);
+                },
+                .array => |field_info| {
+                    const input_type = if (@hasDecl(C, field_type))
+                        @field(C, field_type)
+                    else if (field_info.child == u8) InputType.text else InputType.drag;
+
+                    if (input_type == .text and field_info.sentinel() != 0) {
+                        @compileError("Only zero-terminated strings supported");
+                    }
+                    const len = field_info.len;
+
+                    switch (comptime input_type) {
+                        .text => InputText(.{
+                            .name = field.name,
+                        }).drawImpl(field_ptr[0..len :0], ui, is_open),
+                        .scalar => |scalar_type| InputScalar(field_info.child, len, .{
+                            .name = field.name,
+                            .min = if (@hasDecl(C, field_min)) @field(C, field_min) else null,
+                            .max = if (@hasDecl(C, field_max)) @field(C, field_max) else null,
+                            .speed = if (@hasDecl(C, field_speed)) @field(C, field_speed) else null,
+                            .input_type = scalar_type,
+                        }).drawImpl(field_ptr, ui, is_open),
+                        else => @compileError("Unsupported array type"),
+                    }
+                },
+                .@"enum" => InputCombo(field.type, .{
+                    .name = field.name,
+                }).drawImpl(field_ptr, ui, is_open),
+                inline else => |field_info| {
+                    @compileLog(field_info);
+                    @compileError("Unsupported property");
+                },
             }
         }
 
@@ -360,4 +430,12 @@ pub fn PropertyEditor(comptime C: type) type {
             };
         }
     };
+}
+
+fn isOptional(comptime T: type) bool {
+    return @typeInfo(T) == .optional;
+}
+
+fn ResolveFieldType(comptime T: type) type {
+    return if (@typeInfo(T) == .optional) ResolveFieldType(std.meta.Child(T)) else T;
 }

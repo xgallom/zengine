@@ -8,134 +8,285 @@ const str = @import("../str.zig");
 
 const log = std.log.scoped(.gfx_obj_loader);
 
-pub const Result = struct {
+const IndexData = [AttrType.arr_len]math.Index;
+const FaceData = [ObjFaceType.arr_len]IndexData;
+const Verts = std.ArrayList(math.Vertex);
+const Faces = std.ArrayList(FaceData);
+const Nodes = std.ArrayList(Mesh.Node);
+const AttrVerts = std.EnumArray(AttrType, Verts);
+
+pub const MeshInfo = struct {
     mesh: Mesh,
-    mtl_path: ?[]const u8 = null,
+    mtl_path: ?[:0]const u8,
+    face_type: MeshFaceType,
+    attr_len: u8,
 };
 
-pub fn loadFile(gpa: std.mem.Allocator, path: []const u8) !Result {
-    var result = Result{ .mesh = try .init(gpa) };
-    errdefer result.mesh.freeCpuData();
-    errdefer if (result.mtl_path) |mtl_path| gpa.free(mtl_path);
+const Face = struct {
+    data: FaceData = @splat(@splat(math.invalid_index)),
+    face_type: ObjFaceType = .invalid,
+    attr_len: u8 = 0,
+};
 
+const Index = struct {
+    data: IndexData = @splat(math.invalid_index),
+    attr_len: u8 = 0,
+};
+
+const MeshFaceType = enum(u8) {
+    invalid,
+    point,
+    line,
+    triangle,
+    const arr_len = 3;
+};
+
+const ObjFaceType = enum(u8) {
+    invalid,
+    point,
+    line,
+    triangle,
+    quad,
+    const arr_min = 2;
+    const arr_len = 4;
+};
+
+const AttrType = enum(u8) {
+    vertex,
+    tex_coord,
+    normal,
+    const arr_min = 1;
+    const arr_len = 3;
+};
+
+const vert_orders: std.EnumArray(ObjFaceType, []const []const u8) = .init(.{
+    .invalid = &.{},
+    .point = &.{&.{0}},
+    .line = &.{&.{ 0, 1 }},
+    .triangle = &.{&.{ 0, 1, 2 }},
+    .quad = &.{ &.{ 0, 1, 2 }, &.{ 0, 2, 3 } },
+});
+
+const vert_counts: std.EnumArray(ObjFaceType, usize) = .init(.{
+    .invalid = 0,
+    .point = 1,
+    .line = 2,
+    .triangle = 3,
+    .quad = 6,
+});
+
+const mesh_face_types: std.EnumArray(ObjFaceType, MeshFaceType) = .init(.{
+    .invalid = .invalid,
+    .point = .invalid,
+    // TODO: Implement lines
+    .line = .invalid,
+    .triangle = .triangle,
+    .quad = .triangle,
+});
+
+allocator: std.mem.Allocator,
+attr_verts: AttrVerts,
+faces: Faces,
+nodes: Nodes,
+mtl_path: ?[:0]const u8 = null,
+face_type: ObjFaceType = .invalid,
+attr_len: u8 = 0,
+
+const Self = @This();
+
+pub fn loadFile(allocator: std.mem.Allocator, path: []const u8) !MeshInfo {
     var file = try std.fs.openFileAbsolute(path, .{});
     defer file.close();
 
     const buf = try allocators.scratch().alloc(u8, 1 << 8);
     var reader = file.reader(buf);
 
-    var verts = try std.ArrayList(math.Vertex).initCapacity(gpa, 128);
-    defer verts.deinit(gpa);
-    var normals = try std.ArrayList(math.Vertex).initCapacity(gpa, 128);
-    defer normals.deinit(gpa);
-    var tex_coords = try std.ArrayList(math.Vertex).initCapacity(gpa, 128);
-    defer tex_coords.deinit(gpa);
-    var faces = try std.ArrayList([3][4]math.Index).initCapacity(gpa, 128);
-    defer faces.deinit(gpa);
-    var nodes = try std.ArrayList(Mesh.Node).initCapacity(gpa, 16);
-    defer nodes.deinit(gpa);
+    var self: Self = try .init(allocator);
+    defer self.deinit();
 
-    var face_len: usize = 0;
-    var face_elem_len: usize = 0;
-    var elems_present: std.bit_set.IntegerBitSet(3) = .initEmpty();
-
-    while (reader.interface.takeDelimiterExclusive('\n')) |full_line| {
-        const line = str.trim(full_line);
-        if (line.len == 0) continue;
-        if (line[0] == '#') continue;
-        var iter = str.splitScalar(line, ' ');
-        if (iter.next()) |cmd| {
-            if (str.eql(cmd, "v")) {
-                elems_present.set(0);
-                const vertex = try parseVertex(&iter);
-                try verts.append(gpa, vertex);
-            } else if (str.eql(cmd, "vt")) {
-                elems_present.set(1);
-                const vertex = try parseVertex(&iter);
-                try tex_coords.append(gpa, vertex);
-            } else if (str.eql(cmd, "vn")) {
-                elems_present.set(2);
-                const vertex = try parseVertex(&iter);
-                try normals.append(gpa, vertex);
-            } else if (str.eql(cmd, "f")) {
-                const face = try parseFace(&iter);
-                const max_idx: [3]usize = .{ verts.items.len, tex_coords.items.len, normals.items.len };
-                if (face_elem_len == 0) face_elem_len = face.elem_len;
-                if (face_len == 0) face_len = face.len;
-                assert(face.elem_len == face_elem_len);
-                assert(face.len == face_len);
-                for (0..face_elem_len) |elem_n| {
-                    // TODO: Skippable texture coordinates
-                    if (!elems_present.isSet(elem_n)) continue;
-                    for (0..face_len) |n| {
-                        if (face.data[elem_n][n] >= max_idx[elem_n]) return error.InvalidIndex;
-                    }
-                    try faces.append(gpa, face.data);
-                }
-            } else if (str.eql(cmd, "s")) {
-                try nodes.append(gpa, .{
-                    .offset = faces.items.len,
-                    .meta = .{ .smoothing = try parseSmoothing(&iter) },
-                });
-            } else if (str.eql(cmd, "o")) {
-                try nodes.append(gpa, .{
-                    .offset = faces.items.len,
-                    .meta = .{ .object = try str.dupe(str.trimRest(&iter)) },
-                });
-            } else if (str.eql(cmd, "g")) {
-                try nodes.append(gpa, .{
-                    .offset = faces.items.len,
-                    .meta = .{ .group = try str.dupe(str.trimRest(&iter)) },
-                });
-            } else if (str.eql(cmd, "usemtl")) {
-                try nodes.append(gpa, .{
-                    .offset = faces.items.len,
-                    .meta = .{ .material = try str.dupe(str.trimRest(&iter)) },
-                });
-            } else if (str.eql(cmd, "mtllib")) {
-                if (result.mtl_path != null) return error.DuplicateCommand;
-                result.mtl_path = try str.dupe(str.trimRest(&iter));
-            } else {
-                log.err("\"{s}\"", .{line});
-                return error.SyntaxError;
-            }
-        }
+    while (reader.interface.takeDelimiterExclusive('\n')) |line| {
+        try self.parseLine(str.trim(line));
     } else |err| switch (err) {
         error.EndOfStream => {},
-        error.StreamTooLong,
-        error.ReadFailed,
-        => |e| return e,
+        error.StreamTooLong, error.ReadFailed => |e| return e,
     }
 
-    const elems: [3][]const math.Vertex = .{ verts.items, tex_coords.items, normals.items };
-    const order: []const usize = switch (face_len) {
-        2 => &.{ 0, 1 },
-        3 => &.{ 0, 1, 2 },
-        4 => &.{ 0, 1, 2, 0, 2, 3 },
-        else => unreachable,
+    return self.createMesh();
+}
+
+fn init(allocator: std.mem.Allocator) !Self {
+    return .{
+        .allocator = allocator,
+        .attr_verts = .init(.{
+            .vertex = try .initCapacity(allocator, 128),
+            .tex_coord = try .initCapacity(allocator, 128),
+            .normal = try .initCapacity(allocator, 128),
+        }),
+        .faces = try .initCapacity(allocator, 128),
+        .nodes = try .initCapacity(allocator, 16),
     };
+}
+
+fn deinit(self: *Self) void {
+    for (&self.attr_verts.values) |*verts| verts.deinit(self.allocator);
+    self.faces.deinit(self.allocator);
+    self.nodes.deinit(self.allocator);
+}
+
+fn parseLine(self: *Self, line: []const u8) !void {
+    if (line.len == 0) return;
+    if (line[0] == '#') return;
+    var iter = str.splitScalar(line, ' ');
+    if (iter.next()) |cmd| {
+        if (str.eql(cmd, "v")) {
+            const vertex = try parseVertex(&iter);
+            try self.attr_verts.getPtr(.vertex).append(self.allocator, vertex);
+        } else if (str.eql(cmd, "vt")) {
+            const vertex = try parseVertex(&iter);
+            try self.attr_verts.getPtr(.tex_coord).append(self.allocator, vertex);
+        } else if (str.eql(cmd, "vn")) {
+            const vertex = try parseVertex(&iter);
+            try self.attr_verts.getPtr(.normal).append(self.allocator, vertex);
+        } else if (str.eql(cmd, "f")) {
+            const face = try parseFace(&iter);
+            if (self.face_type == .invalid) self.face_type = face.face_type;
+            if (self.attr_len == 0) self.attr_len = face.attr_len;
+            assert(face.face_type == self.face_type);
+            assert(face.attr_len == self.attr_len);
+            const max_idx = [AttrType.arr_len]usize{
+                self.attr_verts.getPtr(.vertex).items.len,
+                self.attr_verts.getPtr(.tex_coord).items.len,
+                self.attr_verts.getPtr(.normal).items.len,
+            };
+            for (0..@intFromEnum(face.face_type)) |n| {
+                for (0..face.attr_len) |attr_n| {
+                    if (face.data[n][attr_n] >= max_idx[attr_n]) return error.InvalidIndex;
+                }
+            }
+            try self.faces.append(self.allocator, face.data);
+        } else if (str.eql(cmd, "s")) {
+            try self.nodes.append(self.allocator, .{
+                .offset = self.faces.items.len,
+                .meta = .{ .smoothing = try parseSmoothing(&iter) },
+            });
+        } else if (str.eql(cmd, "o")) {
+            try self.nodes.append(self.allocator, .{
+                .offset = self.faces.items.len,
+                .meta = .{ .object = try str.dupeZ(str.trimRest(&iter)) },
+            });
+        } else if (str.eql(cmd, "g")) {
+            try self.nodes.append(self.allocator, .{
+                .offset = self.faces.items.len,
+                .meta = .{ .group = try str.dupeZ(str.trimRest(&iter)) },
+            });
+        } else if (str.eql(cmd, "usemtl")) {
+            try self.nodes.append(self.allocator, .{
+                .offset = self.faces.items.len,
+                .meta = .{ .material = try str.dupeZ(str.trimRest(&iter)) },
+            });
+        } else if (str.eql(cmd, "mtllib")) {
+            if (self.mtl_path != null) return error.DuplicateCommand;
+            self.mtl_path = try str.dupeZ(str.trimRest(&iter));
+        } else {
+            log.err("\"{s}\"", .{line});
+            return error.SyntaxError;
+        }
+    }
+}
+
+fn createMesh(self: *Self) !MeshInfo {
+    var result: MeshInfo = .{
+        .mesh = try .init(self.allocator),
+        .mtl_path = self.mtl_path,
+        .face_type = mesh_face_types.get(self.face_type),
+        .attr_len = self.attr_len,
+    };
+    errdefer result.mesh.freeCpuData();
+
+    const vert_order = vert_orders.get(self.face_type);
+    const vert_count = vert_counts.get(self.face_type);
+    const vert_data = [AttrType.arr_len][]const math.Vertex{
+        self.attr_verts.getPtr(.vertex).items,
+        self.attr_verts.getPtr(.tex_coord).items,
+        self.attr_verts.getPtr(.normal).items,
+    };
+
+    const total_count = self.faces.items.len * vert_count;
+    try result.mesh.ensureVerticesUnusedCapacity(math.Vertex, total_count * AttrType.arr_len);
+
     var node_n: usize = 0;
-    for (faces.items, 0..) |face, face_n| {
-        while (node_n < nodes.items.len) {
-            if (nodes.items[node_n].offset == face_n) {
-                const node = nodes.items[node_n];
-                try result.mesh.appendMeta(node.meta, .vert);
+    for (self.faces.items, 0..) |*face, face_n| {
+        while (node_n < self.nodes.items.len) {
+            if (self.nodes.items[node_n].offset == face_n) {
+                const node = self.nodes.items[node_n];
+                try result.mesh.appendMeta(node.meta, .vertex);
                 node_n += 1;
             } else break;
         }
-        for (order) |n| {
-            for (0..face_elem_len) |elem_n| {
-                try result.mesh.appendVertices(math.Vertex, &.{
-                    elems[elem_n][face[elem_n][n]],
+
+        for (vert_order) |order| {
+            var normal = math.vertex.zero;
+            if (self.attr_len <= @intFromEnum(AttrType.normal)) {
+                if (order.len == 3) {
+                    const verts = self.attr_verts.getPtr(.vertex).items;
+                    const attr_n = @intFromEnum(AttrType.vertex);
+                    const v = [3]*const math.Vertex{
+                        getVertex(verts, face, attr_n, order[0]),
+                        getVertex(verts, face, attr_n, order[1]),
+                        getVertex(verts, face, attr_n, order[2]),
+                    };
+                    var lhs = v[1].*;
+                    var rhs = v[2].*;
+                    math.vertex.sub(&lhs, v[0]);
+                    math.vertex.sub(&rhs, v[0]);
+                    math.vertex.cross(&normal, &lhs, &rhs);
+                    math.vertex.normalize(&normal);
+                }
+            }
+
+            for (order) |n| {
+                result.mesh.appendVerticesAssumeCapacity(math.Vertex, switch (self.attr_len) {
+                    1 => &.{
+                        getVertex(vert_data[0], face, 0, n).*,
+                        math.vertex.zero,
+                        normal,
+                    },
+                    2 => &.{
+                        getVertex(vert_data[0], face, 0, n).*,
+                        getVertex(vert_data[1], face, 1, n).*,
+                        normal,
+                    },
+                    3 => &.{
+                        getVertex(vert_data[0], face, 0, n).*,
+                        getVertex(vert_data[1], face, 1, n).*,
+                        getVertex(vert_data[2], face, 2, n).*,
+                    },
+                    else => unreachable,
                 });
+                result.mesh.vert_len += 1;
             }
         }
     }
+
+    assert(total_count == result.mesh.vert_len);
     return result;
 }
 
+inline fn getVertex(
+    verts: []const math.Vertex,
+    face: *const FaceData,
+    attr_n: u8,
+    n: u8,
+) *const math.Vertex {
+    assert(attr_n < AttrType.arr_len);
+    assert(n < ObjFaceType.arr_len);
+    const idx = face[n][attr_n];
+    assert(idx < verts.len);
+    return &verts[idx];
+}
+
 fn parseVertex(iter: *str.ScalarIterator) !math.Vertex {
-    var result = math.Vertex{ 0, 0, 0 };
+    var result = math.vertex.zero;
     var step: usize = 0;
     while (iter.next()) |token| {
         if (token.len == 0) continue;
@@ -151,60 +302,44 @@ fn parseVertex(iter: *str.ScalarIterator) !math.Vertex {
     return result;
 }
 
-const Face = struct {
-    len: usize = 0,
-    elem_len: usize = 0,
-    data: [3][4]math.Index = @splat(@splat(math.invalid_index)),
-};
-
 fn parseFace(iter: *str.ScalarIterator) !Face {
     var result: Face = .{};
-    var step: usize = 0;
+    var face_len: u8 = 0;
 
     while (iter.next()) |token| {
         if (token.len == 0) continue;
-        if (step >= 4) return error.TooManyArguments;
+        if (face_len >= ObjFaceType.arr_len) return error.TooManyArguments;
         const index = try parseIndex(token);
-        if (step == 0) result.elem_len = index.elem_len;
-        assert(result.elem_len == index.elem_len);
-        for (0..result.elem_len) |elem_n| result.data[elem_n][step] = index.data[elem_n];
-        step += 1;
+        if (result.attr_len == 0) result.attr_len = index.attr_len;
+        assert(result.attr_len == index.attr_len);
+        result.data[face_len] = index.data;
+        face_len += 1;
     }
 
-    result.len = step;
-    if (result.len <= 1) return error.NotEnoughArguments;
+    if (face_len < ObjFaceType.arr_min) return error.NotEnoughArguments;
+    result.face_type = @enumFromInt(face_len);
     return result;
 }
 
-const Index = struct {
-    elem_len: usize = 0,
-    data: [3]math.Index = @splat(math.invalid_index),
-};
-
 fn parseIndex(line: []const u8) !Index {
     var result: Index = .{};
-    var step: usize = 0;
 
     var iter = str.splitScalar(line, '/');
-    while (iter.next()) |token| : (step += 1) {
+    while (iter.next()) |token| {
         if (token.len == 0) continue;
-        if (step >= 3) return error.TooManyArguments;
+        if (result.attr_len >= AttrType.arr_len) return error.TooManyArguments;
         const index = std.fmt.parseInt(math.Index, token, 10) catch return error.ParseIntError;
-        result.data[step] = index - 1;
-        result.elem_len = step + 1;
+        result.data[result.attr_len] = index - 1;
+        result.attr_len += 1;
     }
 
-    if (result.elem_len == 0) return error.NotEnoughArguments;
+    if (result.attr_len < AttrType.arr_min) return error.NotEnoughArguments;
     return result;
 }
 
 fn parseSmoothing(iter: *str.ScalarIterator) !u32 {
     if (iter.next()) |token| {
-        if (str.eql(token, "off")) {
-            return 0;
-        } else {
-            return std.fmt.parseInt(u32, token, 10) catch return error.ParseIntError;
-        }
+        return if (str.eql(token, "off")) 0 else std.fmt.parseInt(u32, token, 10) catch error.ParseIntError;
     }
     return error.NotEnoughArguments;
 }

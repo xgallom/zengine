@@ -202,20 +202,29 @@ pub fn main() !void {
     defer render_items.deinit();
 
     _ = try render_items.push(.{
-        .mesh = "cow",
-        .position = .{ 10, 0, 0 },
-        .rotation = math.vector3.zero,
-        .scale = math.vector3.one,
+        .mesh = "Cat",
+        .position = .{ 200, 0, 0 },
+        .rotation = math.euler.zero,
+        .scale = math.vertex.one,
+    });
+
+    _ = try render_items.push(.{
+        .mesh = "Cow",
+        .position = .{ 0, 0, 0 },
+        .rotation = math.euler.zero,
+        .scale = .{ 10, 10, 10 },
     });
 
     var debug_ui = zengine.ui.DebugUI.init();
 
     var property_editor = zengine.ui.PropertyEditorWindow.init(allocators.global());
     defer property_editor.deinit();
+
     const gfx_node = try property_editor.appendNode(@typeName(gfx), "gfx");
-    try renderer.propertyEditorNode(&property_editor, gfx_node);
+    _ = try renderer.propertyEditorNode(&property_editor, gfx_node);
+
     const main_node = try property_editor.appendNode(@typeName(@This()), "main");
-    try render_items.propertyEditorNode(&property_editor, main_node);
+    _ = try render_items.propertyEditorNode(&property_editor, main_node);
 
     var allocs_window = zengine.ui.AllocsWindow.init();
     var perf_window = zengine.ui.PerfWindow.init(allocators.global());

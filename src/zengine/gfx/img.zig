@@ -15,30 +15,29 @@ const log = std.log.scoped(.gfx_jpg);
 
 const Self = @This();
 
+pub const pixel_format: c.SDL_PixelFormat = c.SDL_PIXELFORMAT_ABGR8888;
+
 pub const OpenConfig = struct {
     allocator: std.mem.Allocator,
     gpu_device: ?*c.SDL_GPUDevice,
     file_path: []const u8,
 };
 
-pub fn open(config: OpenConfig) !Self {
-    var assets_dir = try global.assetsDir(.{});
-    defer assets_dir.close();
-
-    const buf = try fs.readFile(config.allocator, config.file_path, assets_dir);
+pub fn open(config: OpenConfig) !*c.SDL_Surface {
+    const buf = try fs.readFileAbsolute(config.allocator, config.file_path);
     defer config.allocator.free(buf);
 
     var surf = try load(config, buf);
     errdefer c.SDL_DestroySurface(surf);
 
-    if (surf.format != c.SDL_PIXELFORMAT_RGBA8888) {
-        const new_surf = c.SDL_ConvertSurface(surf, c.SDL_PIXELFORMAT_RGBA8888);
+    if (surf.format != pixel_format) {
+        const new_surf = c.SDL_ConvertSurface(surf, pixel_format);
         if (new_surf == null) {
             log.err("failed converting surface formats for \"{s}\": {s}", .{ config.file_path, c.SDL_GetError() });
             return error.ConvertFailed;
         }
         c.SDL_DestroySurface(surf);
-        surf = new_surf;
+        surf = new_surf.?;
     }
 
     return surf;

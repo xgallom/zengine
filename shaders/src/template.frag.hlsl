@@ -1,10 +1,10 @@
+#include <zeng.hlsl>
+
 cbuffer FragUniformBuffer : register(b0, space3) {
     float time;
     float wh_ratio;
     float2 mouse_pos;
 };
-
-#include <zeng.hlsl>
 
 struct Input {
     float2 uv : TEXCOORD0;

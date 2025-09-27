@@ -1,3 +1,5 @@
 /external/SDL
+/external/SDL_image
 /external/SDL_shadercross
 /external/cimgui
+/external/cimplot

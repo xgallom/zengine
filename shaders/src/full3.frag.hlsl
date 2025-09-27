@@ -1,10 +1,10 @@
+#include <zeng.hlsl>
+
 cbuffer FragUniformBuffer : register(b0, space3) {
     float time;
     float wh_ratio;
     float2 mouse_pos;
 };
-
-#include <zeng.hlsl>
 
 struct Input {
     float3 uv : TEXCOORD0;
@@ -30,8 +30,8 @@ float4 main(Input input) : SV_Target0 {
     const float2 aspect = aspectRatio(wh_ratio);
 
     const float2 mp = normalizeMousePos(mouse_pos);
-    const float2 uv = normalizeUv(input.uv.xy);
-    const float2 uvr = normalizeUv(repeat(input.uv.xy, 4));
+    const float2 uv = normalizeUV(input.uv.xy);
+    const float2 uvr = normalizeUV(repeat(input.uv.xy, 4));
     const float2 idx = repeatIndex(input.uv.xy, 4);
     const float2 uvn = aspect * uv;
     const float2 uvnr = aspect * uvr;

@@ -97,9 +97,13 @@ fn AnyComponentManager(comptime C: type, comptime AL: type) type {
             }
         };
 
-        pub fn propertyEditorNode(self: *Self, editor: *ui_mod.PropertyEditorWindow, parent: *ui_mod.PropertyEditorWindow.Item) !void {
+        pub fn propertyEditorNode(
+            self: *Self,
+            editor: *ui_mod.PropertyEditorWindow,
+            parent: *ui_mod.PropertyEditorWindow.Item,
+        ) !*ui_mod.PropertyEditorWindow.Item {
             const root_id = @typeName(C);
-            const node = try editor.appendChildNode(parent, root_id, @typeName(C));
+            const root_node = try editor.appendChildNode(parent, root_id, @typeName(C));
             var iter = self.iterator();
             var buf: [128]u8 = undefined;
             defer iter.deinit();
@@ -107,12 +111,13 @@ fn AnyComponentManager(comptime C: type, comptime AL: type) type {
                 const id = try std.fmt.bufPrintZ(&buf, "{s}#{}", .{ @typeName(C), entry.entity });
                 const name = try std.fmt.bufPrintZ(buf[id.len + 1 ..], "{}", .{entry.entity});
                 _ = try editor.appendChild(
-                    node,
+                    root_node,
                     entry.item.propertyEditor(),
                     id,
                     name,
                 );
             }
+            return root_node;
         }
     };
 }

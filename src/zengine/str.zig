@@ -27,6 +27,6 @@ pub inline fn dupe(str: []const u8) ![]const u8 {
     return allocators.string().dupe(u8, str);
 }
 
-pub inline fn dupez(str: []const u8) ![:0]const u8 {
+pub inline fn dupeZ(str: []const u8) ![:0]const u8 {
     return allocators.string().dupeZ(u8, str);
 }

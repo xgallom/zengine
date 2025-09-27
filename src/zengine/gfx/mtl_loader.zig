@@ -4,8 +4,9 @@ const assert = std.debug.assert;
 const allocators = @import("../allocators.zig");
 const c = @import("../ext.zig").c;
 const math = @import("../math.zig");
-const str = @import("../str.zig");
 const RGBf32 = math.RGBf32;
+const str = @import("../str.zig");
+const ui = @import("../ui.zig");
 
 const log = std.log.scoped(.gfx_obj_loader);
 
@@ -13,45 +14,48 @@ pub const Materials = std.ArrayListUnmanaged(MaterialInfo);
 const LineIterator = std.mem.SplitIterator(u8, .scalar);
 
 pub const MaterialInfo = struct {
-    name: []const u8,
-    texture: ?[]const u8 = null,
-    diffuse_map: ?[]const u8 = null,
-    bump_map: ?[]const u8 = null,
+    name: [:0]const u8,
+    texture: ?[:0]const u8 = null,
+    diffuse_map: ?[:0]const u8 = null,
+    bump_map: ?[:0]const u8 = null,
 
-    ambient: RGBf32 = math.vector3.zero,
-    diffuse: RGBf32 = math.vector3.zero,
+    ambient: RGBf32 = math.vector3.one,
+    diffuse: RGBf32 = math.vector3.one,
     specular: RGBf32 = math.vector3.zero,
     emissive: RGBf32 = math.vector3.zero,
     filter: RGBf32 = math.vector3.zero,
 
-    specular_exp: f32 = 0,
+    specular_exp: f32 = 1,
     ior: f32 = 1,
     alpha: f32 = 1,
 
     mode: u8 = 0,
+
+    const Self = @This();
+
+    pub fn propertyEditor(self: *Self) ui.PropertyEditor(Self) {
+        return .init(self);
+    }
 };
 
 pub const Result = struct {
     allocator: std.mem.Allocator,
-    materials: Materials,
+    items: []MaterialInfo = &.{},
 
     pub fn deinit(self: *Result) void {
-        self.materials.deinit(self.allocator);
+        self.allocator.free(self.items);
     }
 };
 
 pub fn loadFile(gpa: std.mem.Allocator, path: []const u8) !Result {
-    var result = Result{
-        .allocator = gpa,
-        .materials = try .initCapacity(gpa, 1),
-    };
-    errdefer result.deinit();
-
     var file = try std.fs.openFileAbsolute(path, .{});
     defer file.close();
 
     const buf = try allocators.scratch().alloc(u8, 1 << 8);
     var reader = file.reader(buf);
+
+    var materials = try Materials.initCapacity(gpa, 1);
+    defer materials.deinit(gpa);
 
     var material_ptr: ?*MaterialInfo = null;
     while (reader.interface.takeDelimiterExclusive('\n')) |full_line| {
@@ -63,8 +67,8 @@ pub fn loadFile(gpa: std.mem.Allocator, path: []const u8) !Result {
             if (str.eql(cmd, "newmtl")) {
                 const name = str.trimRest(&iter);
                 if (name.len == 0) return error.SyntaxError;
-                material_ptr = try result.materials.addOne(gpa);
-                material_ptr.?.* = .{ .name = try str.dupe(name) };
+                material_ptr = try materials.addOne(gpa);
+                material_ptr.?.* = .{ .name = try str.dupeZ(name) };
             } else if (material_ptr) |mat| {
                 if (str.eql(cmd, "map_Ka")) {
                     mat.texture = try parsePath(&iter);
@@ -104,12 +108,15 @@ pub fn loadFile(gpa: std.mem.Allocator, path: []const u8) !Result {
         => |e| return e,
     }
 
-    return result;
+    return .{
+        .allocator = gpa,
+        .items = try materials.toOwnedSlice(gpa),
+    };
 }
 
-fn parsePath(iter: *LineIterator) ![]const u8 {
+fn parsePath(iter: *LineIterator) ![:0]const u8 {
     const rest = str.trimRest(iter);
-    if (rest.len != 0) return str.dupe(rest);
+    if (rest.len != 0) return str.dupeZ(rest);
     return error.SyntaxError;
 }
 

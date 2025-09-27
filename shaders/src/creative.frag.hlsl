@@ -3,9 +3,9 @@ cbuffer FragUniformBuffer : register(b0, space3) {
 };
 
 struct Input {
-    float4 position : SV_Position;
-    float3 tex_coord : TEXCOORD0;
-    float3 normal : NORMAL;
+    float2 tex_coord : TEXCOORD0;
+    float3 normal    : TEXCOORD1;
+    float3 world_pos : TEXCOORD2;
 };
 
 float get_max(float3 vector) {
@@ -37,6 +37,6 @@ float4 main(Input input) : SV_Target0
 
     //const float3 result = ((mapped * distance) + (inv_mapped * inv_distance)) / (get_max(mapped) * distance + get_max(inv_mapped) * inv_distance);
     //return float4(result, 1);
-    return float4(input.tex_coord.xyz, 1);
+    return float4(input.tex_coord.xy, 0, 1);
 }
 

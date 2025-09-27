@@ -101,12 +101,24 @@ float linearIndex(float2 idx, float times, int offset) {
     return idx.x + idx.y * times + offset;
 }
 
-float2 normalizeUv(float2 uv) {
+float2 normalizeUV(float2 uv) {
     return (uv - 0.5) * 2;
 }
 
 float2 normalizeMousePos(float2 mouse_pos) {
     return float2(2, 2) * (mouse_pos - 0.5);
+}
+
+float2 textureUV(float2 uv) {
+    return float2(uv.x, 1 - uv.y);
+}
+
+float2 textureUV(float3 uv) {
+    return float2(uv.x, 1 - uv.y);
+}
+
+float2 textureUV(float4 uv) {
+    return float2(uv.x, 1 - uv.y);
 }
 
 float2 aspectRatio(float wh_ratio) {
