@@ -20,11 +20,6 @@ pub const OpenConfig = struct {
     stage: Stage,
 };
 
-pub const Stage = enum(c.SDL_GPUShaderStage) {
-    vertex = c.SDL_GPU_SHADERSTAGE_VERTEX,
-    fragment = c.SDL_GPU_SHADERSTAGE_FRAGMENT,
-};
-
 const FormatConfig = struct {
     shader_format: c.SDL_GPUShaderFormat,
     shader_ext: []const u8,
@@ -36,6 +31,11 @@ const GraphicsMetadataJSON = struct {
     num_storage_textures: u32 = 0,
     num_storage_buffers: u32 = 0,
     num_uniform_buffers: u32 = 0,
+};
+
+pub const Stage = enum(c.SDL_GPUShaderStage) {
+    vertex = c.SDL_GPU_SHADERSTAGE_VERTEX,
+    fragment = c.SDL_GPU_SHADERSTAGE_FRAGMENT,
 };
 
 pub fn open(config: OpenConfig) !*c.SDL_GPUShader {
@@ -109,6 +109,7 @@ fn openShadersDir() !std.fs.Dir {
         allocators.scratch(),
         &.{ global.exePath(), "..", "shaders" },
     );
+    defer allocators.scratch().free(shaders_path);
     return std.fs.openDirAbsolute(shaders_path, .{});
 }
 
@@ -118,6 +119,7 @@ fn readShaderCode(
     shaders_dir: *std.fs.Dir,
 ) ![]const u8 {
     const path = try std.fmt.allocPrint(allocators.scratch(), "{s}{s}", .{ config.shader_path, format.shader_ext });
+    defer allocators.scratch().free(path);
     return fs.readFile(config.allocator, path, shaders_dir) catch |err| {
         log.err("error reading shader code file \"{s}\": {t}", .{ path, err });
         return err;
@@ -129,6 +131,7 @@ fn readShaderMeta(
     shaders_dir: *std.fs.Dir,
 ) !GraphicsMetadataJSON {
     const path = try std.fmt.allocPrint(allocators.scratch(), "{s}{s}", .{ config.shader_path, ".json" });
+    defer allocators.scratch().free(path);
     const data = fs.readFile(config.allocator, path, shaders_dir) catch |err| {
         log.err("error reading shader meta file \"{s}\": {t}", .{ path, err });
         return err;

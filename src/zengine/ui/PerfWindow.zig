@@ -62,6 +62,7 @@ pub fn element(self: *Self) UI.Element {
 
 fn drawPlots(self: *Self) void {
     const times = perf.updateStatsTimes();
+    const AxisLimits = plot_fmt.AxisLimits(u32, .{ .range_min = .range_0, .range_max = .range_pos });
 
     if (c.ImPlot_BeginPlot(
         "Framerate##framerate_plot",
@@ -76,10 +77,7 @@ fn drawPlots(self: *Self) void {
             c.ImPlotAxisFlags_AutoFit,
         );
 
-        var max: u32 = 0;
-        for (framerates) |peak| max = @max(max, peak);
-        c.ImPlot_SetupAxisLimits(c.ImAxis_Y1, 0, @floatFromInt(max / 10 * 11), c.ImPlotCond_Always);
-
+        AxisLimits.apply(c.ImAxis_Y1, framerates);
         plot_fmt.Time(.ms).apply(c.ImAxis_X1);
 
         c.ImPlot_PushStyleVar_Float(c.ImPlotStyleVar_FillAlpha, 0.25);
@@ -109,9 +107,7 @@ fn drawPlots(self: *Self) void {
         c.ImPlot_SetupAxis(c.ImAxis_X1, "", c.ImPlotAxisFlags_AutoFit);
         c.ImPlot_SetupAxis(c.ImAxis_Y1, "frame time", c.ImPlotAxisFlags_AutoFit);
 
-        var max: u32 = 0;
-        for (sample_maxes) |v| max = @max(max, v);
-        c.ImPlot_SetupAxisLimits(c.ImAxis_Y1, 0, @floatFromInt(max / 10 * 11), c.ImPlotCond_Always);
+        AxisLimits.apply(c.ImAxis_Y1, sample_maxes);
 
         plot_fmt.Time(.ms).apply(c.ImAxis_X1);
         plot_fmt.Time(.ns).apply(c.ImAxis_Y1);
@@ -213,8 +209,10 @@ fn drawInspector(self: *Self, ui: *const UI, is_open: *bool) void {
                                     "edge_node",
                                     walk.?,
                                 );
+
                                 self.drawCallGraphNode(item, .init);
                             }
+
                             c.igEndTable();
                         }
                     }
@@ -265,11 +263,7 @@ fn drawTableRow(_: *Self, id: [*:0]const u8, name: [*:0]const u8, value: u32) vo
 
     _ = c.igTableNextColumn();
     c.igAlignTextToFramePadding();
-    const text = std.fmt.bufPrintZ(
-        &buf,
-        "{D}",
-        .{value},
-    ) catch unreachable;
+    const text = std.fmt.bufPrintZ(&buf, "{D}", .{value}) catch unreachable;
     c.igTextUnformatted(text, null);
 
     c.igPopID();
@@ -295,6 +289,7 @@ fn drawModuleTreeNode(
         c.ImGuiTreeNodeFlags_NavLeftJumpsToParent |
         c.ImGuiTreeNodeFlags_SpanFullWidth |
         c.ImGuiTreeNodeFlags_DrawLinesToNodes;
+
     if (item.target.value) |value| {
         if (value.value == self.active_item) tree_flags |= c.ImGuiTreeNodeFlags_Selected;
     }
@@ -313,6 +308,7 @@ fn drawModuleTreeNode(
         while (walk != null) : (walk = walk.?.next) {
             self.drawModuleTreeNode(@fieldParentPtr("edge_node", walk.?), filt_res);
         }
+
         c.igTreePop();
     }
     c.igPopID();

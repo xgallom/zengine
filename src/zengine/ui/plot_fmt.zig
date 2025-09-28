@@ -27,7 +27,7 @@ pub fn AxisLimits(comptime T: type, comptime options: struct {
 }) type {
     const Limits = struct { min: f64, max: f64 };
     return struct {
-        pub fn apply(comptime axis: c.ImAxis, values: []const T) void {
+        pub fn apply(axis: c.ImAxis, values: []const T) void {
             if (values.len == 0) return;
             const limits: Limits = switch (comptime options.range_min) {
                 .range_0 => switch (comptime options.range_max) {
@@ -39,7 +39,6 @@ pub fn AxisLimits(comptime T: type, comptime options: struct {
                     else => rangeMinMax(values),
                 },
             };
-
             c.ImPlot_SetupAxisLimits(axis, limits.min, limits.max, c.ImPlotCond_Always);
         }
 
@@ -103,35 +102,26 @@ pub fn Metric(comptime unit: []const u8) type {
 
         pub fn format(value: f64, buf: [*c]u8, size: c_int, data: ?*anyopaque) callconv(.c) c_int {
             _ = data;
-
             if (value == 0) return bufPrintZ(buf, size, "0 {s}", .{unit});
-
             const abs = @abs(value);
             for (thresholds, prefixes) |threshold, prefix| {
-                if (abs >= threshold) return bufPrintZ(
-                    buf,
-                    size,
-                    "{} {s}{s}",
-                    .{ value / threshold, prefix, unit },
-                );
+                if (abs >= threshold) return bufPrintZ(buf, size, "{} {s}{s}", .{
+                    value / threshold,
+                    prefix,
+                    unit,
+                });
             }
-
             const threshold = thresholds[thresholds.len - 1];
             const prefix = prefixes[prefixes.len - 1];
-            return bufPrintZ(
-                buf,
-                size,
-                "{} {s}{s}",
-                .{ value / threshold, prefix, unit },
-            );
+            return bufPrintZ(buf, size, "{} {s}{s}", .{
+                value / threshold,
+                prefix,
+                unit,
+            });
         }
 
         pub fn apply(comptime axis: c.ImAxis) void {
-            c.ImPlot_SetupAxisFormat_PlotFormatter(
-                axis,
-                &format,
-                null,
-            );
+            c.ImPlot_SetupAxisFormat_PlotFormatter(axis, &format, null);
         }
     };
 }
@@ -145,11 +135,7 @@ pub fn Time(comptime unit: time.Unit) type {
         }
 
         pub fn apply(comptime axis: c.ImAxis) void {
-            c.ImPlot_SetupAxisFormat_PlotFormatter(
-                axis,
-                &format,
-                null,
-            );
+            c.ImPlot_SetupAxisFormat_PlotFormatter(axis, &format, null);
         }
     };
 }

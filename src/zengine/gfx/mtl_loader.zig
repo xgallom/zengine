@@ -19,11 +19,11 @@ pub const MaterialInfo = struct {
     diffuse_map: ?[:0]const u8 = null,
     bump_map: ?[:0]const u8 = null,
 
-    ambient: RGBf32 = math.vector3.one,
-    diffuse: RGBf32 = math.vector3.one,
-    specular: RGBf32 = math.vector3.zero,
-    emissive: RGBf32 = math.vector3.zero,
-    filter: RGBf32 = math.vector3.zero,
+    ambient: RGBf32 = math.rgbf32.one,
+    diffuse: RGBf32 = math.rgbf32.one,
+    specular: RGBf32 = math.rgbf32.zero,
+    emissive: RGBf32 = math.rgbf32.zero,
+    filter: RGBf32 = math.rgbf32.one,
 
     specular_exp: f32 = 1,
     ior: f32 = 1,
@@ -32,6 +32,15 @@ pub const MaterialInfo = struct {
     mode: u8 = 0,
 
     const Self = @This();
+
+    pub fn config(self: *const MaterialInfo) u32 {
+        var result: std.bit_set.IntegerBitSet(32) = .initEmpty();
+        if (self.texture != null) result.set(0);
+        if (self.diffuse_map != null) result.set(1);
+        if (self.bump_map != null) result.set(2);
+        if (!math.rgbf32.eqlExact(&self.filter, &math.rgbf32.zero)) result.set(3);
+        return result.mask;
+    }
 
     pub fn propertyEditor(self: *Self) ui.PropertyEditor(Self) {
         return .init(self);

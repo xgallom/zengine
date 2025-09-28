@@ -201,17 +201,18 @@ pub fn main() !void {
     var render_items = try ecs.PrimitiveComponentManager(gfx.Renderer.Item).init(allocators.gpa(), 128);
     defer render_items.deinit();
 
+    const pi = std.math.pi;
     _ = try render_items.push(.{
         .mesh = "Cat",
         .position = .{ 200, 0, 0 },
-        .rotation = math.euler.zero,
+        .rotation = .{ -pi / 2.0, 0, 0 },
         .scale = math.vertex.one,
     });
 
     _ = try render_items.push(.{
         .mesh = "Cow",
         .position = .{ 0, 0, 0 },
-        .rotation = math.euler.zero,
+        .rotation = .{ 0, -pi / 2.0, 0 },
         .scale = .{ 10, 10, 10 },
     });
 
@@ -230,6 +231,8 @@ pub fn main() !void {
     var perf_window = zengine.ui.PerfWindow.init(allocators.global());
 
     allocators.scratchRelease();
+
+    log.info("{any}", .{renderer.meshes.getPtr("Cat").nodes.items});
 
     return mainloop: while (true) {
         defer perf.reset();

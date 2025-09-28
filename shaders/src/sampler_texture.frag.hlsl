@@ -1,5 +1,10 @@
 #include <zeng.hlsl>
 
+#define MTL_HAS_TEXTURE     (1 << 0)
+#define MTL_HAS_DIFFUSE_MAP (1 << 1)
+#define MTL_HAS_BUMP_MAP    (1 << 2)
+#define MTL_HAS_FILTER      (1 << 3)
+
 cbuffer UniformBuffer : register(b0, space3) {
     float3 mtl_clr_ambient  : packoffset(c0) ;
     float3 mtl_clr_diffuse  : packoffset(c1);
@@ -9,6 +14,7 @@ cbuffer UniformBuffer : register(b0, space3) {
     float mtl_specular_exp  : packoffset(c5.x);
     float mtl_ior           : packoffset(c5.y);
     float mtl_alpha         : packoffset(c5.z);
+    uint32_t mtl_config     : packoffset(c5.w);
     float3 camera_pos       : packoffset(c6);
 };
 
@@ -52,9 +58,14 @@ float4 main(Input input) : SV_Target0
     const float diffuse_falloff = max(0, dot(light_dir, normal));
     const float specular_falloff = pow( max(0, dot(light_dir, camera_refl)), mtl_specular_exp );
 
-    const float3 ambient_clr = ambient_light * mtl_clr_ambient * TextureMap.Sample(SamplerTexture, tex_uv).xyz;
-    const float3 diffuse_clr = diffuse_light * mtl_clr_diffuse * DiffuseMap.Sample(SamplerDiffuse, tex_uv).xyz;
-    const float3 specular_clr = mtl_clr_specular;
+    float3 ambient_tex = float3(1, 1, 1);
+    float3 diffuse_tex = float3(1, 1, 1);
+    if (mtl_config & MTL_HAS_TEXTURE) ambient_tex = TextureMap.Sample(SamplerTexture, tex_uv).xyz;
+    if (mtl_config & MTL_HAS_DIFFUSE_MAP) diffuse_tex = DiffuseMap.Sample(SamplerDiffuse, tex_uv).xyz;
+
+    const float3 ambient_clr = ambient_light * mtl_clr_ambient * ambient_tex;
+    const float3 diffuse_clr = diffuse_light * mtl_clr_diffuse * diffuse_tex;
+    const float3 specular_clr = diffuse_light * mtl_clr_specular;
     const float3 emissive_clr = mtl_clr_emissive;
 
     const float3 ambient = ambient_clr;
@@ -62,14 +73,17 @@ float4 main(Input input) : SV_Target0
     const float3 specular = specular_falloff * specular_clr;
     const float3 emissive = emissive_clr;
 
-    const float3 color = ambient + diffuse + specular + emissive;
+    float3 color = ambient + diffuse + specular + emissive;
+    if (mtl_config & MTL_HAS_FILTER) color *= mtl_clr_filter;
     return float4(color, mtl_alpha);
 }
 
 float3 bumpMap(Input input)
 {
-    const float2 tex_uv = textureUV(input.tex_coord);
     const float3 vn = normalize(input.normal);
+    if (!(mtl_config & MTL_HAS_BUMP_MAP)) return vn;
+
+    const float2 tex_uv = textureUV(input.tex_coord);
     const float3 wp = input.world_pos;
 
     const float3 dx_wp = ddx(wp);

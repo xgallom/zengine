@@ -19,10 +19,9 @@ const Camera = @import("Camera.zig");
 const img = @import("img.zig");
 const Mesh = @import("Mesh.zig");
 const mtl_loader = @import("mtl_loader.zig");
+const MaterialInfo = mtl_loader.MaterialInfo;
 const obj_loader = @import("obj_loader.zig");
 const shader = @import("shader.zig");
-const MeshInfo = obj_loader.MeshInfo;
-const MaterialInfo = mtl_loader.MaterialInfo;
 const Texture = @import("Texture.zig");
 
 const log = std.log.scoped(.gfx_renderer);
@@ -41,7 +40,6 @@ cameras: Cameras,
 
 const Pipelines = PtrKeyMap(c.SDL_GPUGraphicsPipeline);
 const Meshes = KeyMap(Mesh, .{});
-const MeshInfos = KeyMap(MeshInfo, .{});
 const MaterialInfos = KeyMap(MaterialInfo, .{});
 const Textures = PtrKeyMap(c.SDL_GPUTexture);
 const Samplers = PtrKeyMap(c.SDL_GPUSampler);
@@ -395,7 +393,7 @@ pub fn createOriginMesh(self: *Self) InitError!*Mesh {
         log.err("failed appending origin mesh vertices: {t}", .{err});
         return InitError.BufferFailed;
     };
-    origin_mesh.vert_len = 4 * 3;
+    origin_mesh.vert_count = 4 * 3;
     origin_mesh.appendIndexes(math.LineFaceIndex, &.{
         .{ 0, 1 },
         .{ 0, 2 },
@@ -404,7 +402,7 @@ pub fn createOriginMesh(self: *Self) InitError!*Mesh {
         log.err("failed appending origin mesh faces: {t}", .{err});
         return InitError.BufferFailed;
     };
-    origin_mesh.index_len = 6;
+    origin_mesh.index_count = 6;
 
     return self.meshes.insert("origin", origin_mesh);
 }
@@ -412,9 +410,6 @@ pub fn createOriginMesh(self: *Self) InitError!*Mesh {
 fn createDefaultMaterial(self: *Self) InitError!*MaterialInfo {
     return self.materials.insert("default", .{
         .name = "default",
-        .texture = "default",
-        .diffuse_map = "default",
-        .bump_map = "default",
     });
 }
 
@@ -424,7 +419,7 @@ fn createDefaultTexture(self: *Self, state: *InitState) InitError!*Texture {
         log.err("failed creating default texture surface: {s}", .{c.SDL_GetError()});
         return InitError.TextureFailed;
     }
-    const pixel = c.SDL_MapSurfaceRGBA(surface, 0xff, 0xff, 0xff, 0xff);
+    const pixel = c.SDL_MapSurfaceRGBA(surface, 0xff, 0x00, 0xff, 0xff);
     assert(surface.*.pitch == @sizeOf(@TypeOf(pixel)));
     const pixels: [*]u32 = @ptrCast(@alignCast(surface.*.pixels));
     pixels[0] = pixel;
@@ -779,6 +774,7 @@ pub fn render(
 
         c.SDL_BindGPUGraphicsPipeline(render_pass, graphics_pipeline);
 
+        const default_texture = self.textures.getPtr("default");
         while (items_iter.next()) |_item| {
             const item: Item = _item;
             const mesh = self.meshes.getPtr(item.mesh);
@@ -819,6 +815,9 @@ pub fn render(
                 frag_uniform_buffer[20] = material.specular_exp;
                 frag_uniform_buffer[21] = material.ior;
                 frag_uniform_buffer[22] = material.alpha;
+                const config: *u32 = @ptrCast(&frag_uniform_buffer[23]);
+                config.* = material.config();
+                log.info("{s} {X:08}", .{ item.mesh, material.config() });
             }
 
             c.SDL_PushGPUFragmentUniformData(
@@ -828,43 +827,29 @@ pub fn render(
                 @intCast(@sizeOf(f32) * frag_uniform_buffer.len),
             );
 
+            const texture = if (material.texture) |tex| self.textures.getPtr(tex) else default_texture;
+            const diffuse_map = if (material.diffuse_map) |tex| self.textures.getPtr(tex) else default_texture;
+            const bump_map = if (material.bump_map) |tex| self.textures.getPtr(tex) else default_texture;
+
+            c.SDL_BindGPUFragmentSamplers(render_pass, 0, &[_]c.SDL_GPUTextureSamplerBinding{
+                .{ .texture = texture, .sampler = sampler },
+                .{ .texture = diffuse_map, .sampler = sampler },
+                .{ .texture = bump_map, .sampler = sampler },
+            }, 3);
+
             c.SDL_BindGPUVertexBuffers(render_pass, 0, &c.SDL_GPUBufferBinding{
                 .buffer = mesh.vert_buf,
                 .offset = 0,
             }, 1);
-
-            if (material.texture) |tex| {
-                const texture = self.textures.getPtr(tex);
-                c.SDL_BindGPUFragmentSamplers(render_pass, 0, &c.SDL_GPUTextureSamplerBinding{
-                    .texture = texture,
-                    .sampler = sampler,
-                }, 1);
-            }
-
-            if (material.diffuse_map) |tex| {
-                const texture = self.textures.getPtr(tex);
-                c.SDL_BindGPUFragmentSamplers(render_pass, 1, &c.SDL_GPUTextureSamplerBinding{
-                    .texture = texture,
-                    .sampler = sampler,
-                }, 1);
-            }
-
-            if (material.bump_map) |tex| {
-                const texture = self.textures.getPtr(tex);
-                c.SDL_BindGPUFragmentSamplers(render_pass, 2, &c.SDL_GPUTextureSamplerBinding{
-                    .texture = texture,
-                    .sampler = sampler,
-                }, 1);
-            }
 
             if (mesh.index_buf != null) {
                 c.SDL_BindGPUIndexBuffer(render_pass, &c.SDL_GPUBufferBinding{
                     .buffer = mesh.index_buf,
                     .offset = 0,
                 }, c.SDL_GPU_INDEXELEMENTSIZE_32BIT);
-                c.SDL_DrawGPUIndexedPrimitives(render_pass, @intCast(mesh.index_len), 1, 0, 0, 0);
+                c.SDL_DrawGPUIndexedPrimitives(render_pass, @intCast(mesh.vert_count), 1, 0, 0, 0);
             } else {
-                c.SDL_DrawGPUPrimitives(render_pass, @intCast(mesh.vert_len), 1, 0, 0);
+                c.SDL_DrawGPUPrimitives(render_pass, @intCast(mesh.vert_count), 1, 0, 0);
             }
         }
 

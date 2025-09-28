@@ -131,6 +131,11 @@ pub fn vectorNT(comptime N: comptime_int, comptime T: type) type {
             return sliceConst(len, self);
         }
 
+        pub fn eqlExact(self: *const Self, other: *const Self) bool {
+            for (0..len) |n| if (self[n] != other[n]) return false;
+            return true;
+        }
+
         pub fn neg(self: *Self) void {
             scale(self, scalar.neg_one);
         }

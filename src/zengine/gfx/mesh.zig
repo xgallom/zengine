@@ -19,8 +19,8 @@ vert_buf: ?*c.SDL_GPUBuffer = null,
 index_buf: ?*c.SDL_GPUBuffer = null,
 vert_byte_len: usize = 0,
 index_byte_len: usize = 0,
-vert_len: usize = 0,
-index_len: usize = 0,
+vert_count: usize = 0,
+index_count: usize = 0,
 state: State = .cpu,
 
 const Self = @This();
@@ -139,7 +139,7 @@ pub fn createGpuBuffers(self: *Self, gpu_device: ?*c.SDL_GPUDevice) !void {
 
     errdefer self.releaseGpuBuffers(gpu_device);
 
-    // TODO: solve vert_len and index_len
+    // TODO: solve vert_count and index_count
     // now they are set manually by obj_loader
     self.vert_byte_len = std.mem.sliceAsBytes(self.vert_data.items).len;
     self.vert_buf = c.SDL_CreateGPUBuffer(gpu_device, &c.SDL_GPUBufferCreateInfo{
@@ -173,8 +173,8 @@ pub fn releaseGpuBuffers(self: *Self, gpu_device: ?*c.SDL_GPUDevice) void {
     self.index_buf = null;
     self.vert_byte_len = 0;
     self.index_byte_len = 0;
-    self.vert_len = 0;
-    self.index_len = 0;
+    self.vert_count = 0;
+    self.index_count = 0;
     self.state = .cpu;
 }
 
