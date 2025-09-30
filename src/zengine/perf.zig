@@ -17,13 +17,13 @@ pub const perf_sections = sections(@This(), &.{.updateStats});
 pub const empty_section = TaggedSection("perf", "empty", "perf", .sub);
 
 const framerate_buf_count = 1 << 8;
-const framerate_idx_mask: usize = framerate_buf_count - 1;
+const framerate_mask = math.IntMask(framerate_buf_count);
 
 const frame_stats_count = 1 << 8;
-const stats_update_interval = 100;
+const stats_update_interval = 200;
 
 const frametime_buf_count = 1 << 8;
-const frametime_idx_mask: usize = frametime_buf_count - 1;
+const frametime_mask = math.IntMask(frametime_buf_count);
 
 pub const Value = *Section;
 pub const KeyIndex = struct {
@@ -64,12 +64,17 @@ const Self = struct {
     framerate_idx: usize = 0,
     last_update_idx: usize = 0,
     frames_per_sample: u32 = 0,
-    framerates: []u32,
+    framerates_avg: []u32,
+    framerates_max: []u32,
+    framerates_min: []u32,
     update_stats_times: []u32,
     sections: SectionHashMap,
     list_pusher: SectionsListTree.Pusher = undefined,
     update_stats_timer: time.StaticTimer(stats_update_interval),
+    framerate_imm_clock: time.Clock,
     framerate: u16 = 1,
+    framerate_max: u16 = 0,
+    framerate_min: u16 = 0,
 
     const SectionHashMap = std.StringArrayHashMapUnmanaged(*Section);
 
@@ -78,8 +83,12 @@ const Self = struct {
         const framerate_buf = try gpa.alloc(u64, framerate_buf_count);
         @memset(framerate_buf, 0);
 
-        const framerates = try gpa.alloc(u32, frame_stats_count);
-        @memset(framerates, 0);
+        const framerates_avg = try gpa.alloc(u32, frame_stats_count);
+        @memset(framerates_avg, 0);
+        const framerates_min = try gpa.alloc(u32, frame_stats_count);
+        @memset(framerates_min, 0);
+        const framerates_max = try gpa.alloc(u32, frame_stats_count);
+        @memset(framerates_max, 0);
 
         const update_stats_times = try gpa.alloc(u32, frame_stats_count);
         for (update_stats_times, 0..) |*stat_time, n| {
@@ -93,14 +102,17 @@ const Self = struct {
         }.initListItem;
 
         self.* = .{
-            .framerate_buf = framerate_buf,
-            .framerates = framerates,
-            .sections = try .init(gpa, &.{}, &.{}),
-            .tree = try .init(gpa, 128),
             .active_list = try initListItem(),
+            .tree = try .init(gpa, 128),
             .list = try .initCall(initListItem),
-            .update_stats_timer = .init,
+            .framerate_buf = framerate_buf,
+            .framerates_avg = framerates_avg,
+            .framerates_min = framerates_min,
+            .framerates_max = framerates_max,
             .update_stats_times = update_stats_times,
+            .sections = try .init(gpa, &.{}, &.{}),
+            .update_stats_timer = .init,
+            .framerate_imm_clock = .init(time.getNano()),
         };
         self.list_pusher = self.list.getPtr().pusher();
     }
@@ -108,7 +120,9 @@ const Self = struct {
     fn deinit(self: *Self) void {
         const gpa = allocators.arena(.perf);
         gpa.free(self.framerate_buf);
-        gpa.free(self.framerates);
+        gpa.free(self.framerates_avg);
+        gpa.free(self.framerates_min);
+        gpa.free(self.framerates_max);
         gpa.free(self.update_stats_times);
         var iter = self.sections.iterator();
         while (iter.next()) |i| gpa.destroy(i.value_ptr.*);
@@ -124,6 +138,10 @@ const Self = struct {
     }
 
     fn update(self: *Self, now: u64) void {
+        if (self.framerate_min == 0) {
+            @branchHint(.cold);
+            self.framerate_min = std.math.maxInt(u16);
+        }
         const framerate_start_time = (now -| 1001) + 1;
 
         self.framerate = 1;
@@ -132,7 +150,16 @@ const Self = struct {
         }
 
         self.framerate_idx += 1;
-        self.framerate_buf[self.framerate_idx & frametime_idx_mask] = now;
+        const idx = framerate_mask.offset(self.framerate_idx);
+        self.framerate_buf[idx] = now;
+
+        const now_nano = time.getNano();
+        const framerate_imm: u16 = @intCast(
+            @max(1, time.Unit.makePer(.ns, .s) / self.framerate_imm_clock.elapsed(now_nano)),
+        );
+        self.framerate_min = @min(self.framerate_min, framerate_imm);
+        self.framerate_max = @max(self.framerate_max, framerate_imm);
+        self.framerate_imm_clock.start(now_nano);
     }
 
     fn updateStats(self: *Self, now: u64, comptime force_update: bool) void {
@@ -144,8 +171,16 @@ const Self = struct {
 
         perf_sections.sub(.updateStats).begin();
 
-        @memmove(self.framerates[0 .. frame_stats_count - 1], self.framerates[1..]);
-        self.framerates[frame_stats_count - 1] = self.framerate;
+        @memmove(self.framerates_avg[0 .. frame_stats_count - 1], self.framerates_avg[1..]);
+        self.framerates_avg[frame_stats_count - 1] = self.framerate;
+
+        @memmove(self.framerates_min[0 .. frame_stats_count - 1], self.framerates_min[1..]);
+        self.framerates_min[frame_stats_count - 1] = self.framerate_min;
+        @memmove(self.framerates_max[0 .. frame_stats_count - 1], self.framerates_max[1..]);
+        self.framerates_max[frame_stats_count - 1] = self.framerate_max;
+
+        self.framerate_min = 0;
+        self.framerate_max = 0;
 
         self.commitList() catch unreachable;
 
@@ -260,7 +295,7 @@ const Section = struct {
     pub fn end(self: *Section) void {
         const now = time.getNano();
         if (self.pause_clock.isRunning()) self.clock.unpause(&self.pause_clock, now);
-        self.buf[self.idx & frametime_idx_mask] = @intCast(self.clock.elapsed(now));
+        self.buf[frametime_mask.offset(self.idx)] = @intCast(self.clock.elapsed(now));
         self.clock.reset();
         self.idx += 1;
         self.flags.state = .ended;
@@ -297,7 +332,7 @@ const Section = struct {
         var max: u32 = 0;
         var min: u32 = std.math.maxInt(u32);
         for (self.last_update_idx..self.idx) |n| {
-            const val = self.buf[n & frametime_idx_mask];
+            const val = self.buf[frametime_mask.offset(n)];
             acc += val;
             max = @max(max, val);
             min = @min(min, val);
@@ -476,9 +511,19 @@ pub inline fn framerate() u32 {
     return global_state.framerate;
 }
 
-pub inline fn frameratesSlice() []const u32 {
+pub inline fn frameratesAvg() []const u32 {
     assert(is_init);
-    return global_state.framerates;
+    return global_state.framerates_avg;
+}
+
+pub inline fn frameratesMin() []const u32 {
+    assert(is_init);
+    return global_state.framerates_min;
+}
+
+pub inline fn frameratesMax() []const u32 {
+    assert(is_init);
+    return global_state.framerates_max;
 }
 
 pub inline fn updateStatsTimes() []const u32 {

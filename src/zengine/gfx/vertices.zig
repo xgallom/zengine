@@ -1,3 +1,7 @@
+//!
+//! The zengine vertices
+//!
+
 const std = @import("std");
 const assert = std.debug.assert;
 
@@ -5,22 +9,22 @@ const math = @import("../math.zig");
 const batch = math.batch;
 
 allocator: std.mem.Allocator,
-items: [4][*]batch.Batch,
+items: [math.vector4.len][*]batch.Batch,
 /// the number of vertices stored, not the same as number of batches
 len: usize,
 
 const Self = @This();
 const ArrayList = std.ArrayList(batch.Batch);
 
-const dims = 3;
+const dims = math.vertex.len;
 
-pub fn init(allocator: std.mem.Allocator) !Self {
+pub fn init(allocator: std.mem.Allocator, w: math.Scalar) !Self {
     const none = &[_]batch.Batch{};
-    const w = (try allocator.alloc(batch.Batch, 1)).ptr;
-    w[0] = batch.batch.one;
+    const wp = try allocator.create(batch.Batch);
+    wp.* = @splat(w);
     return .{
         .allocator = allocator,
-        .items = .{ none, none, none, w },
+        .items = .{ none, none, none, wp },
         .len = 0,
     };
 }
@@ -42,11 +46,12 @@ pub fn push(self: *Self, vertices: []const math.Vertex) !void {
         self.items[d] = array_list.items.ptr;
     }
 
-    for (0..vertices.len) |v| {
-        const dest = self.len + v;
-        const dest_index = batch.batch.batchIndex(dest);
-        const dest_offset = batch.batch.batchOffset(dest);
-        inline for (0..dims) |d| {
+    inline for (0..dims) |d| {
+        for (0..vertices.len) |v| {
+            const dest = self.len + v;
+            const dest_index = batch.batch.batchIndex(dest);
+            const dest_offset = batch.batch.batchOffset(dest);
+
             self.items[d][dest_index][dest_offset] = vertices[v][d];
         }
     }

@@ -45,7 +45,7 @@ pub fn vectorNBT(comptime N: comptime_int, comptime NB: comptime_int, comptime T
         /// assumes bounds checking
         pub fn increment(self: *Self, dims: usize) void {
             assert(dims <= len);
-            const s = sliceLen(self);
+            const s = slice(self);
             for (0..dims) |n| {
                 s[n] = @ptrCast(@as([*]Scalar, @ptrCast(s[n])) + 1);
             }
@@ -53,7 +53,7 @@ pub fn vectorNBT(comptime N: comptime_int, comptime NB: comptime_int, comptime T
 
         pub fn cincrement(self: *CSelf, dims: usize) void {
             assert(dims <= len);
-            const s = sliceLenConst(self);
+            const s = sliceConst(self);
             for (0..dims) |n| {
                 s[n] = @ptrCast(@as([*]const Scalar, @ptrCast(s[n])) + 1);
             }
@@ -63,7 +63,7 @@ pub fn vectorNBT(comptime N: comptime_int, comptime NB: comptime_int, comptime T
         /// assumes bounds checking
         pub fn decrement(self: *Self, dims: usize) void {
             assert(dims <= len);
-            const s = sliceLen(self);
+            const s = slice(self);
             for (0..dims) |n| {
                 s[n] = @ptrCast(@as([*]Scalar, @ptrCast(s[n])) - 1);
             }
@@ -71,46 +71,46 @@ pub fn vectorNBT(comptime N: comptime_int, comptime NB: comptime_int, comptime T
 
         pub fn cdecrement(self: *CSelf, dims: usize) void {
             assert(dims <= len);
-            const s = sliceLenConst(self);
+            const s = sliceConst(self);
             for (0..dims) |n| {
                 s[n] = @ptrCast(@as([*]const Scalar, @ptrCast(s[n])) - 1);
             }
         }
 
-        pub fn slice(comptime L: usize, self: *Self) []Item {
+        pub fn sliceLen(comptime L: usize, self: *Self) []Item {
             comptime assert(L <= len);
             return self[0..L];
         }
 
-        pub fn cslice(comptime L: usize, self: *const Self) []const Item {
+        pub fn csliceLen(comptime L: usize, self: *const Self) []const Item {
             comptime assert(L <= len);
             return self[0..L];
         }
 
-        pub fn sliceConst(comptime L: usize, self: *CSelf) []CItem {
+        pub fn sliceLenConst(comptime L: usize, self: *CSelf) []CItem {
             comptime assert(L <= len);
             return self[0..L];
         }
 
-        pub fn csliceConst(comptime L: usize, self: *const CSelf) []const CItem {
+        pub fn csliceLenConst(comptime L: usize, self: *const CSelf) []const CItem {
             comptime assert(L <= len);
             return self[0..L];
         }
 
-        pub fn sliceLen(self: *Self) []Item {
-            return slice(len, self);
+        pub fn slice(self: *Self) []Item {
+            return sliceLen(len, self);
         }
 
-        pub fn csliceLen(self: *const Self) []const Item {
-            return slice(len, self);
+        pub fn cslice(self: *const Self) []const Item {
+            return csliceLen(len, self);
         }
 
-        pub fn sliceLenConst(self: *CSelf) []CItem {
-            return sliceConst(len, self);
+        pub fn sliceConst(self: *CSelf) []CItem {
+            return sliceLenConst(len, self);
         }
 
-        pub fn csliceLenConst(self: *const CSelf) []const CItem {
-            return sliceConst(len, self);
+        pub fn csliceConst(self: *const CSelf) []const CItem {
+            return csliceLenConst(len, self);
         }
 
         /// Y_n = L_n + R_n

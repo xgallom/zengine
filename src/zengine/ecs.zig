@@ -36,7 +36,7 @@ pub fn ECS(comptime config: struct {
         last_component_flag: ComponentFlag = 0,
         last_primitive_component_flag: ComponentFlag = 0,
 
-        const Self = @This();
+        pub const Self = @This();
 
         pub fn init(allocator: std.mem.Allocator) !Self {
             var self = Self{ .allocator = allocator };

@@ -27,39 +27,58 @@ pub fn AxisLimits(comptime T: type, comptime options: struct {
 }) type {
     const Limits = struct { min: f64, max: f64 };
     return struct {
-        pub fn apply(axis: c.ImAxis, values: []const T) void {
-            if (values.len == 0) return;
-            const limits: Limits = switch (comptime options.range_min) {
-                .range_0 => switch (comptime options.range_max) {
-                    .range_0 => .{ .min = 0, .max = 0 },
-                    else => .{ .min = 0, .max = rangeMax(values) },
-                },
-                else => switch (comptime options.range_max) {
-                    .range_0 => .{ .min = rangeMin(values), .max = 0 },
-                    else => rangeMinMax(values),
-                },
-            };
-            c.ImPlot_SetupAxisLimits(axis, limits.min, limits.max, c.ImPlotCond_Always);
+        pub fn applySlice(axis: c.ImAxis, slice: []const []const T) void {
+            if (slice.len == 0) return;
+            const len = slice[0].len;
+            if (len == 0) return;
+            for (slice) |values| assert(values.len == len);
+            const lims = limits(slice);
+            c.ImPlot_SetupAxisLimits(axis, lims.min, lims.max, c.ImPlotCond_Always);
         }
 
-        fn rangeMin(values: []const T) f64 {
-            var min: T = values[0];
-            for (values) |value| min = @min(min, value);
+        pub fn apply(axis: c.ImAxis, values: []const T) void {
+            if (values.len == 0) return;
+            const lims = limits(&.{values});
+            c.ImPlot_SetupAxisLimits(axis, lims.min, lims.max, c.ImPlotCond_Always);
+        }
+
+        fn limits(slice: []const []const T) Limits {
+            return switch (comptime options.range_min) {
+                .range_0 => switch (comptime options.range_max) {
+                    .range_0 => .{ .min = 0, .max = 0 },
+                    else => .{ .min = 0, .max = rangeMax(slice) },
+                },
+                else => switch (comptime options.range_max) {
+                    .range_0 => .{ .min = rangeMin(slice), .max = 0 },
+                    else => rangeMinMax(slice),
+                },
+            };
+        }
+
+        fn rangeMin(slice: []const []const T) f64 {
+            var min: T = slice[0][0];
+            for (slice) |values| {
+                for (values) |value| min = @min(min, value);
+            }
             return minVal(min);
         }
 
-        fn rangeMax(values: []const T) f64 {
-            var max: T = values[0];
-            for (values) |value| max = @max(max, value);
+        fn rangeMax(slice: []const []const T) f64 {
+            var max: T = slice[0][0];
+            for (slice) |values| {
+                for (values) |value| max = @max(max, value);
+            }
             return maxVal(max);
         }
 
-        fn rangeMinMax(values: []const T) Limits {
-            var min: T = values[0];
-            var max: T = values[0];
-            for (values) |value| {
-                min = @min(min, value);
-                max = @max(max, value);
+        fn rangeMinMax(slice: []const []const T) Limits {
+            var min: T = slice[0][0];
+            var max: T = slice[0][0];
+            for (slice) |values| {
+                for (values) |value| {
+                    min = @min(min, value);
+                    max = @max(max, value);
+                }
             }
             return .{ .min = minVal(min), .max = maxVal(max) };
         }

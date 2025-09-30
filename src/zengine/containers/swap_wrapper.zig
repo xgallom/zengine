@@ -5,6 +5,8 @@
 const std = @import("std");
 const assert = std.debug.assert;
 
+const math = @import("../math.zig");
+
 const log = std.log.scoped(.swapper);
 
 pub fn SwapWrapper(comptime T: type, comptime options: struct {
@@ -16,8 +18,8 @@ pub fn SwapWrapper(comptime T: type, comptime options: struct {
         items: [options.len]T = undefined,
         idx: usize = 0,
 
-        pub const uses_mask = @popCount(options.len) == 1;
         pub const Self = @This();
+        const mask = math.IntMask(options.len);
 
         pub fn initDefault(value: T) Self {
             var result = Self{};
@@ -51,18 +53,11 @@ pub fn SwapWrapper(comptime T: type, comptime options: struct {
         }
 
         pub fn getPrevPtr(self: *Self) *T {
-            const prev_idx = switch (comptime uses_mask) {
-                true => (self.idx -% 1) & (options.len - 1),
-                false => (self.idx -% 1) % options.len,
-            };
-            return &self.items[prev_idx];
+            return &self.items[mask.offset(self.idx -% 1)];
         }
 
         pub fn advance(self: *Self) *T {
-            const next_idx = switch (comptime uses_mask) {
-                true => (self.idx + 1) & (options.len - 1),
-                false => (self.idx + 1) % options.len,
-            };
+            const next_idx = mask.offset(self.idx + 1);
             if (comptime options.copy_on_advance) self.items[next_idx] = self.items[self.idx];
             self.idx = next_idx;
             return self.getPtr();

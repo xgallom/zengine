@@ -19,14 +19,16 @@ const log = std.log.scoped(.ui_perf_window);
 allocator: std.mem.Allocator,
 active_item: ?perf.Value = null,
 max_depth: u32 = 0,
-is_open: bool = true,
+is_open: bool = false,
 tab_bar: packed struct {
+    framerate_avg: bool = true,
+    framerate_imm: bool = false,
     module_tree: bool = true,
     call_graph: bool = false,
 } = .{},
 filter: TreeFilter = .{},
 
-pub const Self = @This();
+const Self = @This();
 pub const window_name = "Performance";
 var buf: [64]u8 = undefined;
 
@@ -64,34 +66,81 @@ fn drawPlots(self: *Self) void {
     const times = perf.updateStatsTimes();
     const AxisLimits = plot_fmt.AxisLimits(u32, .{ .range_min = .range_0, .range_max = .range_pos });
 
-    if (c.ImPlot_BeginPlot(
-        "Framerate##framerate_plot",
-        .{ .x = c.igGetWindowWidth() - 30, .y = 240 },
-        c.ImPlotFlags_NoFrame,
-    )) {
-        const framerates = perf.frameratesSlice();
-        c.ImPlot_SetupAxes(
-            "",
-            "fps",
-            c.ImPlotAxisFlags_AutoFit,
-            c.ImPlotAxisFlags_AutoFit,
-        );
+    if (c.igBeginTabBar("##tab_bar", c.ImGuiTabBarFlags_None)) {
+        const framerates_avg = perf.frameratesAvg();
+        const framerates_min = perf.frameratesMin();
+        const framerates_max = perf.frameratesMax();
 
-        AxisLimits.apply(c.ImAxis_Y1, framerates);
-        plot_fmt.Time(.ms).apply(c.ImAxis_X1);
+        if (c.igBeginTabItem(
+            "Framerate average",
+            &self.tab_bar.framerate_avg,
+            c.ImGuiTabItemFlags_NoCloseButton,
+        )) {
+            if (c.ImPlot_BeginPlot(
+                "Framerate##framerate_plot",
+                .{ .x = c.igGetWindowWidth() - 30, .y = 240 },
+                c.ImPlotFlags_NoFrame,
+            )) {
+                c.ImPlot_SetupAxes(
+                    "",
+                    "fps",
+                    c.ImPlotAxisFlags_AutoFit,
+                    c.ImPlotAxisFlags_AutoFit,
+                );
 
-        c.ImPlot_PushStyleVar_Float(c.ImPlotStyleVar_FillAlpha, 0.25);
+                plot_fmt.Time(.ms).apply(c.ImAxis_X1);
 
-        self.drawPlotFilled("##framerates", times, framerates);
+                c.ImPlot_PushStyleVar_Float(c.ImPlotStyleVar_FillAlpha, 0.25);
 
-        c.ImPlot_EndPlot();
+                AxisLimits.apply(c.ImAxis_Y1, framerates_avg);
+                self.drawPlotFilled("##framerates_avg", times, framerates_avg);
 
-        c.igText(
-            "Framerate: %d, Frames per sample: %d",
-            framerates[framerates.len - 1],
+                c.ImPlot_EndPlot();
+            }
+            c.igEndTabItem();
+        }
+
+        if (c.igBeginTabItem(
+            "Framerate immediate",
+            &self.tab_bar.framerate_imm,
+            c.ImGuiTabItemFlags_NoCloseButton,
+        )) {
+            if (c.ImPlot_BeginPlot(
+                "Framerate##framerate_plot",
+                .{ .x = c.igGetWindowWidth() - 30, .y = 240 },
+                c.ImPlotFlags_NoFrame,
+            )) {
+                c.ImPlot_SetupAxes(
+                    "",
+                    "fps",
+                    c.ImPlotAxisFlags_AutoFit,
+                    c.ImPlotAxisFlags_AutoFit,
+                );
+
+                plot_fmt.Time(.ms).apply(c.ImAxis_X1);
+
+                c.ImPlot_PushStyleVar_Float(c.ImPlotStyleVar_FillAlpha, 0.25);
+
+                AxisLimits.apply(c.ImAxis_Y1, framerates_max);
+                self.drawPlotFilled("##framerates_avg", times, &.{});
+                self.drawPlotLine("##framerates_max", times, framerates_max);
+                self.drawPlotLine("##framerates_min", times, framerates_min);
+
+                c.ImPlot_EndPlot();
+            }
+            c.igEndTabItem();
+        }
+
+        c.igSetNextItemWidth(-std.math.floatMin(f32));
+        const text = std.fmt.bufPrintZ(&buf, "Framerate: {d}, Max: {d}, Min: {d} Frames per sample: {}", .{
+            framerates_avg[framerates_avg.len - 1],
+            framerates_max[framerates_max.len - 1],
+            framerates_min[framerates_min.len - 1],
             perf.framesPerSample(),
-        );
+        }) catch unreachable;
+        c.igTextUnformatted(text.ptr, null);
     }
+    c.igEndTabBar();
 
     if (c.ImPlot_BeginPlot(
         "Frame stats##frame_stats_plot",

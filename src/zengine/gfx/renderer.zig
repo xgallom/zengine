@@ -17,9 +17,10 @@ const perf = @import("../perf.zig");
 const ui_mod = @import("../ui.zig");
 const Camera = @import("Camera.zig");
 const img = @import("img.zig");
-const Mesh = @import("Mesh.zig");
+const MeshBuffer = @import("MeshBuffer.zig");
+const Object = @import("Object.zig");
 const mtl_loader = @import("mtl_loader.zig");
-const MaterialInfo = mtl_loader.MaterialInfo;
+const MaterialInfo = @import("MaterialInfo.zig");
 const obj_loader = @import("obj_loader.zig");
 const shader = @import("shader.zig");
 const Texture = @import("Texture.zig");
@@ -32,14 +33,16 @@ const Self = @This();
 allocator: std.mem.Allocator,
 gpu_device: *c.SDL_GPUDevice,
 pipelines: Pipelines,
-meshes: Meshes,
+objects: Objects,
+mesh_bufs: MeshBuffers,
 materials: MaterialInfos,
 textures: Textures,
 samplers: Samplers,
 cameras: Cameras,
 
 const Pipelines = PtrKeyMap(c.SDL_GPUGraphicsPipeline);
-const Meshes = KeyMap(Mesh, .{});
+const Objects = KeyMap(Object, .{});
+const MeshBuffers = KeyMap(MeshBuffer, .{});
 const MaterialInfos = KeyMap(MaterialInfo, .{});
 const Textures = PtrKeyMap(c.SDL_GPUTexture);
 const Samplers = PtrKeyMap(c.SDL_GPUSampler);
@@ -52,7 +55,7 @@ const InitState = struct {
 };
 
 pub const InitError = error{
-    GpuFailed,
+    GPUFailed,
     ShaderFailed,
     WindowFailed,
     PipelineFailed,
@@ -71,12 +74,10 @@ pub const DrawError = error{
 };
 
 pub const Item = struct {
-    mesh: []const u8,
+    object: [:0]const u8,
     position: math.Vertex,
     rotation: math.Euler,
     scale: math.Vertex,
-
-    pub const exclude_properties: ui_mod.property_editor.PropertyList = &.{.mesh};
 
     pub fn propertyEditor(self: *Item) ui_mod.PropertyEditor(Item) {
         return .init(self);
@@ -106,10 +107,14 @@ pub fn init(engine: *const Engine) InitError!*Self {
     const stencil_format = self.stencilFormat();
     const swapchain_format = self.swapchainFormat(&state);
 
-    _ = try self.loadMesh(&state, "Cat", "cat.obj");
-    _ = try self.loadMesh(&state, "Cow", "cow_nonormals.obj");
+    // _ = try self.loadMesh(&state, "Cat", "cat.obj");
+    // _ = try self.loadMesh(&state, "Cow", "cow_nonormals.obj");
+    // _ = try self.loadMesh(&state, "Iron man", "IronMan.obj");
+    // _ = try self.loadMesh(&state, "Mountain", "mountain.obj");
+    _ = try self.loadMesh(&state, "Cube", "cube.obj");
     _ = try self.createOriginMesh();
     _ = try self.createDefaultMaterial();
+    _ = try self.createTestingMaterial();
     _ = try self.createDefaultTexture(&state);
     _ = try self.createStencilTexture(&state, stencil_format);
     _ = try self.createDefaultCamera();
@@ -123,7 +128,7 @@ pub fn init(engine: *const Engine) InitError!*Self {
         .address_mode_w = c.SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE,
     });
 
-    try self.createGpuData(&state);
+    try self.createGPUData(&state);
     try self.uploadTransferBuffers(&state);
     try self.commitSurfaceTextures(&state);
 
@@ -232,11 +237,11 @@ pub fn init(engine: *const Engine) InitError!*Self {
             .enable_depth_write = true,
         },
         .target_info = .{
-            .num_color_targets = 1,
             .color_target_descriptions = &c.SDL_GPUColorTargetDescription{
                 .format = swapchain_format,
                 .blend_state = .{},
             },
+            .num_color_targets = 1,
             .has_depth_stencil_target = true,
             .depth_stencil_format = stencil_format,
         },
@@ -269,8 +274,12 @@ pub fn deinit(self: *Self, engine: *const Engine) void {
         c.SDL_DestroyGPUDevice(self.gpu_device);
     }
     defer {
-        for (self.meshes.map.map.values()) |mesh| mesh.deinit(self.gpu_device);
-        self.meshes.deinit();
+        for (self.objects.map.map.values()) |object| object.deinit();
+        self.objects.deinit();
+    }
+    defer {
+        for (self.mesh_bufs.map.map.values()) |mesh| mesh.deinit(self.gpu_device);
+        self.mesh_bufs.deinit();
     }
     defer self.materials.deinit();
     defer {
@@ -292,7 +301,7 @@ pub fn deinit(self: *Self, engine: *const Engine) void {
 }
 
 fn cleanupInit(self: *Self, state: *InitState) void {
-    for (self.meshes.map.map.values()) |mesh| mesh.freeCpuData();
+    for (self.mesh_bufs.map.map.values()) |mesh_buf| mesh_buf.freeCpuData();
     for (state.surface_textures.map.map.values()) |tex| tex.deinit(self.gpu_device);
     state.surface_textures.deinit();
 }
@@ -348,7 +357,7 @@ fn createSelf(allocator: std.mem.Allocator, engine: *const Engine) InitError!*Se
     );
     if (gpu_device == null) {
         log.err("failed creating gpu device: {s}", .{c.SDL_GetError()});
-        return InitError.GpuFailed;
+        return InitError.GPUFailed;
     }
     errdefer c.SDL_DestroyGPUDevice(gpu_device);
 
@@ -363,7 +372,8 @@ fn createSelf(allocator: std.mem.Allocator, engine: *const Engine) InitError!*Se
         .allocator = allocator,
         .gpu_device = gpu_device.?,
         .pipelines = try .init(allocator, 128),
-        .meshes = try .init(allocator, 128),
+        .objects = try .init(allocator, 128),
+        .mesh_bufs = try .init(allocator, 128),
         .materials = try .init(allocator, 16),
         .textures = try .init(allocator, 128),
         .samplers = try .init(allocator, 128),
@@ -372,8 +382,8 @@ fn createSelf(allocator: std.mem.Allocator, engine: *const Engine) InitError!*Se
     return self;
 }
 
-pub fn createOriginMesh(self: *Self) InitError!*Mesh {
-    var origin_mesh = try Mesh.init(self.allocator);
+pub fn createOriginMesh(self: *Self) !*MeshBuffer {
+    var origin_mesh: MeshBuffer = try .init(self.allocator, .index);
     errdefer origin_mesh.deinit(self.gpu_device);
 
     origin_mesh.appendVertices(math.Vertex, &.{
@@ -404,12 +414,21 @@ pub fn createOriginMesh(self: *Self) InitError!*Mesh {
     };
     origin_mesh.index_count = 6;
 
-    return self.meshes.insert("origin", origin_mesh);
+    return self.mesh_bufs.insert("origin", origin_mesh);
 }
 
 fn createDefaultMaterial(self: *Self) InitError!*MaterialInfo {
     return self.materials.insert("default", .{
         .name = "default",
+    });
+}
+
+fn createTestingMaterial(self: *Self) InitError!*MaterialInfo {
+    return self.materials.insert("testing", .{
+        .name = "testing",
+        .clr_ambient = .{ 0, 1, 0 },
+        .clr_diffuse = .{ 0, 0, 1 },
+        .clr_specular = .{ 1, 0, 0 },
     });
 }
 
@@ -433,7 +452,7 @@ fn createStencilTexture(
     self: *Self,
     state: *InitState,
     stencil_format: c.SDL_GPUTextureFormat,
-) InitError!*c.SDL_GPUTexture {
+) !*c.SDL_GPUTexture {
     const stencil_texture = c.SDL_CreateGPUTexture(self.gpu_device, &c.SDL_GPUTextureCreateInfo{
         .type = c.SDL_GPU_TEXTURETYPE_2D,
         .format = stencil_format,
@@ -472,7 +491,7 @@ fn createPipeline(
     self: *Self,
     key: []const u8,
     info: *const c.SDL_GPUGraphicsPipelineCreateInfo,
-) InitError!*c.SDL_GPUGraphicsPipeline {
+) !*c.SDL_GPUGraphicsPipeline {
     const graphics_pipeline = c.SDL_CreateGPUGraphicsPipeline(self.gpu_device, info);
     if (graphics_pipeline == null) {
         log.err("failed creating graphics pipeline: {s}", .{c.SDL_GetError()});
@@ -483,8 +502,9 @@ fn createPipeline(
     return graphics_pipeline.?;
 }
 
-fn createDefaultCamera(self: *Self) InitError!*Camera {
+fn createDefaultCamera(self: *Self) !*Camera {
     var camera_position: math.Vector3 = .{ 4, 8, 10 };
+    // var camera_position: math.Vector3 = .{ -1438.067, 2358.586, 2820.102 };
     var camera_direction: math.Vector3 = undefined;
 
     math.vector3.scale(&camera_position, 15);
@@ -497,18 +517,30 @@ fn createDefaultCamera(self: *Self) InitError!*Camera {
     });
 }
 
-pub fn loadMesh(self: *Self, state: *InitState, key: []const u8, asset_path: []const u8) InitError!*Mesh {
+pub fn loadMesh(self: *Self, state: *InitState, key: []const u8, asset_path: []const u8) !*MeshBuffer {
     const mesh_path = try global.assetPath(asset_path);
 
     var result = obj_loader.loadFile(self.allocator, mesh_path) catch |err| {
         log.err("failed loading mesh obj file: {t}", .{err});
         return InitError.BufferFailed;
     };
-    errdefer result.mesh.deinit(self.gpu_device);
+    errdefer {
+        result.mesh_buf.deinit(self.gpu_device);
+        result.deinit(self.allocator);
+    }
 
     if (result.mtl_path) |mtl_path| try self.loadMaterials(state, mtl_path);
-    // TODO: objects and groups
-    return self.meshes.insert(key, result.mesh);
+    const mesh_buf = try self.mesh_bufs.insert(key, result.mesh_buf);
+
+    var iter = result.objects.iterator();
+    while (iter.next()) |e| {
+        const object = e.value_ptr;
+        object.mesh_buf = mesh_buf;
+        _ = try self.objects.insert(e.key_ptr.*, object.*);
+    }
+
+    result.cleanup(self.allocator);
+    return mesh_buf;
 }
 
 pub fn loadMaterials(self: *Self, state: *InitState, asset_path: []const u8) InitError!void {
@@ -522,11 +554,11 @@ pub fn loadMaterials(self: *Self, state: *InitState, asset_path: []const u8) Ini
         log.info("material {s}:", .{item.name});
         log.info("{?s}, {?s}, {?s}", .{ item.texture, item.diffuse_map, item.bump_map });
         log.info("{any}, {any}, {any}, {any}, {any}", .{
-            item.ambient,
-            item.diffuse,
-            item.specular,
-            item.emissive,
-            item.filter,
+            item.clr_ambient,
+            item.clr_diffuse,
+            item.clr_specular,
+            item.clr_emissive,
+            item.clr_filter,
         });
         log.info("{}, {}, {}, {}", .{ item.specular_exp, item.ior, item.alpha, item.mode });
         for (&[_]?[]const u8{ item.texture, item.diffuse_map, item.bump_map }) |opt_tex_path| {
@@ -536,7 +568,7 @@ pub fn loadMaterials(self: *Self, state: *InitState, asset_path: []const u8) Ini
     }
 }
 
-pub fn loadTexture(self: *Self, state: *InitState, asset_path: []const u8) InitError!*Texture {
+pub fn loadTexture(self: *Self, state: *InitState, asset_path: []const u8) !*Texture {
     if (state.surface_textures.getPtrOrNull(asset_path)) |ptr| return ptr;
 
     const tex_path = try global.assetPath(asset_path);
@@ -553,14 +585,14 @@ pub fn loadTexture(self: *Self, state: *InitState, asset_path: []const u8) InitE
     return state.surface_textures.insert(asset_path, texture);
 }
 
-fn createGpuData(self: *Self, state: *InitState) InitError!void {
-    for (self.meshes.map.map.values()) |mesh| try mesh.createGpuBuffers(self.gpu_device);
+fn createGPUData(self: *Self, state: *InitState) InitError!void {
+    for (self.mesh_bufs.map.map.values()) |mesh| try mesh.createGPUBuffers(self.gpu_device);
     for (state.surface_textures.map.map.values()) |tex| try tex.createTexture(self.gpu_device);
 }
 
 fn uploadTransferBuffers(self: *Self, state: *InitState) InitError!void {
     const TextureTransferBuffers = std.ArrayList(Texture.UploadTransferBuffer);
-    const MeshTransferBuffers = std.ArrayList(Mesh.UploadTransferBuffer);
+    const MeshTransferBuffers = std.ArrayList(MeshBuffer.UploadTransferBuffer);
 
     var tex_tbs: TextureTransferBuffers = try .initCapacity(self.allocator, state.surface_textures.map.map.count());
     defer {
@@ -568,7 +600,7 @@ fn uploadTransferBuffers(self: *Self, state: *InitState) InitError!void {
         tex_tbs.deinit(self.allocator);
     }
 
-    var mesh_tbs: MeshTransferBuffers = try .initCapacity(self.allocator, self.meshes.map.map.count());
+    var mesh_tbs: MeshTransferBuffers = try .initCapacity(self.allocator, self.mesh_bufs.map.map.count());
     defer {
         for (mesh_tbs.items) |*tb| tb.release(self.gpu_device);
         mesh_tbs.deinit(self.allocator);
@@ -579,7 +611,7 @@ fn uploadTransferBuffers(self: *Self, state: *InitState) InitError!void {
         tex_tbs.appendAssumeCapacity(tb);
     }
 
-    for (self.meshes.map.map.values()) |mesh| {
+    for (self.mesh_bufs.map.map.values()) |mesh| {
         const tb = try mesh.createUploadTransferBuffer(self.gpu_device);
         mesh_tbs.appendAssumeCapacity(tb);
     }
@@ -638,7 +670,7 @@ pub fn render(
     const window = engine.window;
     const graphics_pipeline = self.pipelines.getPtr("default");
     // const origin_graphics_pipeline = self.pipelines.getPtr("origin");
-    // const origin_mesh = self.meshes.getPtr("origin");
+    // const origin_mesh = self.mesh_bufs.getPtr("origin");
     const stencil_texture = self.textures.getPtr("stencil");
     const camera = self.cameras.getPtr("default");
     // const full_graphics_pipeline = self.full_graphics_pipeline;
@@ -695,10 +727,10 @@ pub fn render(
     log.debug("camera_direction: {any}", .{camera.direction});
 
     var uniform_buffer = try fa.alloc(f32, 32);
-    @memcpy(uniform_buffer[0..16], math.matrix4x4.sliceLenConst(tr_view_projection));
+    @memcpy(uniform_buffer[0..16], math.matrix4x4.sliceConst(tr_view_projection));
 
     var frag_uniform_buffer = try fa.alloc(f32, 7 * 4);
-    @memcpy(frag_uniform_buffer[24..27], math.vector3.sliceLenConst(&camera.position));
+    @memcpy(frag_uniform_buffer[24..27], math.vector3.sliceConst(&camera.position));
 
     // var frag_uniform_buffer: [4]f32 = .{ time_s, aspect_ratio, mouse_x, mouse_y };
     // var origin_frag_uniform_buffer: [4]f32 = .{ 1, 0, 1, 1 };
@@ -774,93 +806,97 @@ pub fn render(
 
         c.SDL_BindGPUGraphicsPipeline(render_pass, graphics_pipeline);
 
+        const default_mtl = if (std.debug.runtime_safety) "testing" else "default";
         const default_texture = self.textures.getPtr("default");
+        const default_sampler = self.samplers.getPtr("default");
+
         while (items_iter.next()) |_item| {
             const item: Item = _item;
-            const mesh = self.meshes.getPtr(item.mesh);
-            const mtl: []const u8 = blk: {
-                for (mesh.nodes.items) |node| {
-                    if (node.meta == .material) break :blk node.meta.material;
+            const object = self.objects.getPtr(item.object);
+
+            for (object.sections.items) |buf_section| {
+                const mtl = if (buf_section.material) |mtl| mtl else default_mtl;
+                // const mtl = default_mtl;
+
+                const material = self.materials.getPtr(mtl);
+                const mesh_buf = object.mesh_buf;
+
+                {
+                    const result = tr_model;
+                    result.* = math.matrix4x4.identity;
+                    // math.matrix4x4.rotateEuler(result, &.{ -time_s * pi / 10, -time_s * pi / 9, 0 }, .xyz);
+                    const euler_order: math.EulerOrder = .xyz;
+                    math.matrix4x4.scaleXYZ(result, &item.scale);
+                    math.matrix4x4.rotateEuler(result, &item.rotation, euler_order);
+                    math.matrix4x4.translateXYZ(result, &item.position);
                 }
-                break :blk "default";
-            };
+                @memcpy(uniform_buffer[16..32], math.matrix4x4.sliceConst(tr_model));
 
-            const material = self.materials.get(mtl);
-            const sampler = self.samplers.getPtr("default");
+                c.SDL_PushGPUVertexUniformData(
+                    command_buffer,
+                    0,
+                    uniform_buffer.ptr,
+                    @intCast(@sizeOf(f32) * uniform_buffer.len),
+                );
 
-            {
-                const result = tr_model;
-                result.* = math.matrix4x4.identity;
-                // math.matrix4x4.rotateEuler(result, &.{ -time_s * pi / 10, -time_s * pi / 9, 0 }, .xyz);
-                const euler_order: math.EulerOrder = .xyz;
-                math.matrix4x4.scaleXYZ(result, &item.scale);
-                math.matrix4x4.rotateEuler(result, &item.rotation, euler_order);
-                math.matrix4x4.translateXYZ(result, &item.position);
-            }
-            @memcpy(uniform_buffer[16..32], math.matrix4x4.sliceLenConst(tr_model));
+                @memcpy(frag_uniform_buffer[0..24], material.uniformBuffer()[0..]);
 
-            c.SDL_PushGPUVertexUniformData(
-                command_buffer,
-                0,
-                uniform_buffer.ptr,
-                @intCast(@sizeOf(f32) * uniform_buffer.len),
-            );
+                c.SDL_PushGPUFragmentUniformData(
+                    command_buffer,
+                    0,
+                    frag_uniform_buffer.ptr,
+                    @intCast(@sizeOf(f32) * frag_uniform_buffer.len),
+                );
 
-            {
-                @memcpy(frag_uniform_buffer[0..3], math.vector3.sliceLenConst(&material.ambient));
-                @memcpy(frag_uniform_buffer[4..7], math.vector3.sliceLenConst(&material.diffuse));
-                @memcpy(frag_uniform_buffer[8..11], math.vector3.sliceLenConst(&material.specular));
-                @memcpy(frag_uniform_buffer[12..15], math.vector3.sliceLenConst(&material.emissive));
-                @memcpy(frag_uniform_buffer[16..19], math.vector3.sliceLenConst(&material.filter));
-                frag_uniform_buffer[20] = material.specular_exp;
-                frag_uniform_buffer[21] = material.ior;
-                frag_uniform_buffer[22] = material.alpha;
-                const config: *u32 = @ptrCast(&frag_uniform_buffer[23]);
-                config.* = material.config();
-                log.info("{s} {X:08}", .{ item.mesh, material.config() });
-            }
+                const texture = if (material.texture) |tex| self.textures.getPtr(tex) else default_texture;
+                const diffuse_map = if (material.diffuse_map) |tex| self.textures.getPtr(tex) else default_texture;
+                const bump_map = if (material.bump_map) |tex| self.textures.getPtr(tex) else default_texture;
 
-            c.SDL_PushGPUFragmentUniformData(
-                command_buffer,
-                0,
-                frag_uniform_buffer.ptr,
-                @intCast(@sizeOf(f32) * frag_uniform_buffer.len),
-            );
+                c.SDL_BindGPUFragmentSamplers(render_pass, 0, &[_]c.SDL_GPUTextureSamplerBinding{
+                    .{ .texture = texture, .sampler = default_sampler },
+                    .{ .texture = diffuse_map, .sampler = default_sampler },
+                    .{ .texture = bump_map, .sampler = default_sampler },
+                }, 3);
 
-            const texture = if (material.texture) |tex| self.textures.getPtr(tex) else default_texture;
-            const diffuse_map = if (material.diffuse_map) |tex| self.textures.getPtr(tex) else default_texture;
-            const bump_map = if (material.bump_map) |tex| self.textures.getPtr(tex) else default_texture;
-
-            c.SDL_BindGPUFragmentSamplers(render_pass, 0, &[_]c.SDL_GPUTextureSamplerBinding{
-                .{ .texture = texture, .sampler = sampler },
-                .{ .texture = diffuse_map, .sampler = sampler },
-                .{ .texture = bump_map, .sampler = sampler },
-            }, 3);
-
-            c.SDL_BindGPUVertexBuffers(render_pass, 0, &c.SDL_GPUBufferBinding{
-                .buffer = mesh.vert_buf,
-                .offset = 0,
-            }, 1);
-
-            if (mesh.index_buf != null) {
-                c.SDL_BindGPUIndexBuffer(render_pass, &c.SDL_GPUBufferBinding{
-                    .buffer = mesh.index_buf,
+                c.SDL_BindGPUVertexBuffers(render_pass, 0, &c.SDL_GPUBufferBinding{
+                    .buffer = mesh_buf.vert_buf,
                     .offset = 0,
-                }, c.SDL_GPU_INDEXELEMENTSIZE_32BIT);
-                c.SDL_DrawGPUIndexedPrimitives(render_pass, @intCast(mesh.vert_count), 1, 0, 0, 0);
-            } else {
-                c.SDL_DrawGPUPrimitives(render_pass, @intCast(mesh.vert_count), 1, 0, 0);
+                }, 1);
+
+                switch (mesh_buf.type) {
+                    .vertex => c.SDL_DrawGPUPrimitives(
+                        render_pass,
+                        @intCast(buf_section.len),
+                        1,
+                        @intCast(buf_section.offset),
+                        0,
+                    ),
+                    .index => {
+                        c.SDL_BindGPUIndexBuffer(render_pass, &c.SDL_GPUBufferBinding{
+                            .buffer = mesh_buf.index_buf,
+                            .offset = 0,
+                        }, c.SDL_GPU_INDEXELEMENTSIZE_32BIT);
+                        c.SDL_DrawGPUIndexedPrimitives(
+                            render_pass,
+                            @intCast(buf_section.len),
+                            1,
+                            @intCast(buf_section.offset),
+                            0,
+                            0,
+                        );
+                    },
+                }
             }
         }
 
         section.sub(.items).end();
         section.sub(.origin).begin();
 
-        const origin_mesh = self.meshes.getPtr("origin");
+        const origin_mesh = self.mesh_bufs.getPtr("origin");
         const origin_graphics_pipeline = self.pipelines.getPtr("origin");
 
         tr_model.* = math.matrix4x4.identity;
-        @memcpy(uniform_buffer[16..32], math.matrix4x4.sliceLenConst(tr_model));
+        @memcpy(uniform_buffer[16..32], math.matrix4x4.sliceConst(tr_model));
 
         c.SDL_BindGPUVertexBuffers(render_pass, 0, &c.SDL_GPUBufferBinding{
             .buffer = origin_mesh.vert_buf,

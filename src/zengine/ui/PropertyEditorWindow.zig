@@ -21,7 +21,7 @@ max_depth: u32 = 0,
 is_open: bool = true,
 filter: TreeFilter = .{},
 
-pub const Self = @This();
+const Self = @This();
 pub const window_name = "Property Editor";
 
 pub const Item = struct {

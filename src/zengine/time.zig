@@ -197,8 +197,7 @@ pub fn StaticTimer(comptime interval: u64) type {
     return struct {
         updated_at: u64 = 0,
 
-        const Self = @This();
-
+        pub const Self = @This();
         pub const init: Self = .{};
 
         pub fn isArmed(self: *const Self, now: u64) bool {
@@ -232,7 +231,7 @@ pub const Timer = struct {
     updated_at: u64 = 0,
     interval: u64,
 
-    const Self = @This();
+    pub const Self = @This();
 
     pub fn init(interval: u64) Self {
         return .{ .interval = interval };

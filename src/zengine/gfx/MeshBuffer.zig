@@ -1,5 +1,5 @@
 //!
-//! The zengine mesh implementation
+//! The zengine gpu mesh buffer implementation
 //!
 
 const std = @import("std");
@@ -12,7 +12,6 @@ const Tree = @import("../containers.zig").Tree;
 const log = std.log.scoped(.gfx_mesh);
 
 allocator: std.mem.Allocator,
-nodes: NodeList = .empty,
 vert_data: VertexList = .empty,
 index_data: IndexList = .empty,
 vert_buf: ?*c.SDL_GPUBuffer = null,
@@ -22,9 +21,9 @@ index_byte_len: usize = 0,
 vert_count: usize = 0,
 index_count: usize = 0,
 state: State = .cpu,
+type: Type,
 
 const Self = @This();
-const NodeList = std.ArrayList(Node);
 const VertexList = std.ArrayList(math.Scalar);
 const IndexList = std.ArrayList(math.Index);
 
@@ -36,40 +35,26 @@ const State = enum {
     gpu_uploaded,
 };
 
-pub const Node = struct {
-    offset: usize,
-    meta: Meta,
-
-    pub const Target = enum {
-        vertex,
-        index,
-    };
-
-    pub const Type = enum {
-        object,
-        group,
-        smoothing,
-        material,
-    };
-
-    pub const Meta = union(Type) {
-        object: ?[:0]const u8,
-        group: [:0]const u8,
-        smoothing: u32,
-        material: [:0]const u8,
-    };
+const Type = enum {
+    vertex,
+    index,
 };
 
-pub fn init(allocator: std.mem.Allocator) !Self {
-    var result = Self{ .allocator = allocator };
-    try result.appendMeta(.{ .object = null }, .vertex);
-    return result;
+pub fn init(allocator: std.mem.Allocator, mesh_type: Type) !Self {
+    return .{
+        .allocator = allocator,
+        .type = mesh_type,
+    };
 }
 
 pub fn deinit(self: *Self, gpu_device: ?*c.SDL_GPUDevice) void {
-    self.releaseGpuBuffers(gpu_device);
+    self.releaseGPUBuffers(gpu_device);
     self.freeCpuData();
-    self.nodes.deinit(self.allocator);
+}
+
+pub fn vertices(self: *const Self) []math.Vertex {
+    const ptr: []math.Vertex = @ptrCast(self.vert_data.items);
+    return ptr;
 }
 
 pub fn ensureVerticesUnusedCapacity(self: *Self, comptime V: type, count: usize) !void {
@@ -102,6 +87,7 @@ pub fn appendVerticesAll(self: *Self, comptime V: type, verts_all: []const []con
 
 pub fn appendIndexes(self: *Self, comptime I: type, indexes: []const I) !void {
     assert(self.state == .cpu);
+    assert(self.type == .index);
     const ptr: [*]const math.Index = @ptrCast(indexes.ptr);
     const len = indexes.len * comptime math.elemLen(I);
     try self.index_data.appendSlice(self.allocator, ptr[0..len]);
@@ -109,18 +95,8 @@ pub fn appendIndexes(self: *Self, comptime I: type, indexes: []const I) !void {
 
 pub fn appendIndexesAll(self: *Self, comptime I: type, indexes_all: []const []const I) !void {
     assert(self.state == .cpu);
+    assert(self.type == .index);
     for (indexes_all) |indexes| try self.appendIndexes(I, indexes);
-}
-
-pub fn appendMeta(self: *Self, meta: Node.Meta, comptime target: Node.Target) !void {
-    const offset = switch (comptime target) {
-        .vertex => self.vert_data.items.len,
-        .index => self.index_data.items.len,
-    };
-    try self.nodes.append(self.allocator, .{
-        .offset = offset,
-        .meta = meta,
-    });
 }
 
 pub fn freeCpuData(self: *Self) void {
@@ -129,7 +105,7 @@ pub fn freeCpuData(self: *Self) void {
     self.index_data.clearAndFree(self.allocator);
 }
 
-pub fn createGpuBuffers(self: *Self, gpu_device: ?*c.SDL_GPUDevice) !void {
+pub fn createGPUBuffers(self: *Self, gpu_device: ?*c.SDL_GPUDevice) !void {
     assert(self.state == .cpu);
     assert(self.vert_buf == null);
     assert(self.index_buf == null);
@@ -137,7 +113,7 @@ pub fn createGpuBuffers(self: *Self, gpu_device: ?*c.SDL_GPUDevice) !void {
     assert(self.index_byte_len == 0);
     self.state = .gpu;
 
-    errdefer self.releaseGpuBuffers(gpu_device);
+    errdefer self.releaseGPUBuffers(gpu_device);
 
     // TODO: solve vert_count and index_count
     // now they are set manually by obj_loader
@@ -151,7 +127,7 @@ pub fn createGpuBuffers(self: *Self, gpu_device: ?*c.SDL_GPUDevice) !void {
         return error.BufferFailed;
     }
 
-    if (self.index_data.items.len == 0) return;
+    if (self.type == .vertex) return;
     self.index_byte_len = std.mem.sliceAsBytes(self.index_data.items).len;
     self.index_buf = c.SDL_CreateGPUBuffer(gpu_device, &c.SDL_GPUBufferCreateInfo{
         .usage = c.SDL_GPU_BUFFERUSAGE_INDEX,
@@ -163,7 +139,7 @@ pub fn createGpuBuffers(self: *Self, gpu_device: ?*c.SDL_GPUDevice) !void {
     }
 }
 
-pub fn releaseGpuBuffers(self: *Self, gpu_device: ?*c.SDL_GPUDevice) void {
+pub fn releaseGPUBuffers(self: *Self, gpu_device: ?*c.SDL_GPUDevice) void {
     assert(self.state == .cpu or self.state == .gpu);
 
     if (self.vert_buf != null) c.SDL_ReleaseGPUBuffer(gpu_device, self.vert_buf);

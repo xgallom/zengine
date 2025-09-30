@@ -89,7 +89,32 @@ pub fn beginDraw(self: *Self) void {
     c.ImGui_ImplSDLGPU3_NewFrame();
     c.ImGui_ImplSDL3_NewFrame();
     c.igNewFrame();
+}
 
+pub fn draw(self: *const Self, element: Element, is_open: *bool) void {
+    if (!self.render_ui or !is_open.*) return;
+    element.draw(self, is_open);
+}
+
+pub fn drawMainMenuBar(self: *const Self, config: struct {
+    allocs_open: *bool,
+    property_editor_open: *bool,
+    perf_open: *bool,
+}) void {
+    if (!self.render_ui) return;
+    if (c.igBeginMainMenuBar()) {
+        if (c.igBeginMenu("Window", true)) {
+            if (c.igMenuItem_Bool("Property Editor", null, false, true)) config.property_editor_open.* = true;
+            if (c.igMenuItem_Bool("Performance", null, false, true)) config.perf_open.* = true;
+            if (c.igMenuItem_Bool("Allocations", null, false, true)) config.allocs_open.* = true;
+            c.igEndMenu();
+        }
+    }
+    c.igEndMainMenuBar();
+}
+
+pub fn drawDock(self: *Self) void {
+    if (!self.render_ui) return;
     const viewport = c.igGetMainViewport();
     const dock_node = c.igDockSpaceOverViewport(
         0,
@@ -107,24 +132,19 @@ pub fn beginDraw(self: *Self) void {
         _ = c.igDockBuilderSplitNode(dock_node, c.ImGuiDir_Left, 1.0 / 4.0, &nodes[0], &nodes[3]);
         _ = c.igDockBuilderSplitNode(nodes[3], c.ImGuiDir_Right, 1.0 / 3.0, &nodes[2], &nodes[1]);
 
-        // const view_size = viewport.*.WorkSize;
-        // const side_size = c.ImVec2{ .x = 630, .y = view_size.y };
-        // const central_size = c.ImVec2{ .x = view_size.x - 2 * side_size.x, .y = view_size.y };
-        //
-        // c.igDockBuilderSetNodeSize(nodes[0], side_size);
-        // c.igDockBuilderSetNodeSize(nodes[1], central_size);
-        // c.igDockBuilderSetNodeSize(nodes[2], side_size);
+        const view_size = viewport.*.WorkSize;
+        const side_size = c.ImVec2{ .x = 630, .y = view_size.y };
+        const central_size = c.ImVec2{ .x = view_size.x - 2 * side_size.x, .y = view_size.y };
+
+        c.igDockBuilderSetNodeSize(nodes[0], side_size);
+        c.igDockBuilderSetNodeSize(nodes[1], central_size);
+        c.igDockBuilderSetNodeSize(nodes[2], side_size);
 
         c.igDockBuilderDockWindow(PropertyEditorWindow.window_name, nodes[0]);
         c.igDockBuilderDockWindow(PerfWindow.window_name, nodes[2]);
         c.igDockBuilderDockWindow(AllocsWindpw.window_name, nodes[2]);
         c.igDockBuilderFinish(dock_node);
     }
-}
-
-pub fn draw(self: *const Self, element: Element, is_open: *bool) void {
-    if (!self.render_ui or !is_open.*) return;
-    element.draw(self, is_open);
 }
 
 pub fn endDraw(self: *Self) void {

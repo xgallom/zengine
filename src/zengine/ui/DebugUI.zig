@@ -13,9 +13,9 @@ const UI = @import("UI.zig");
 
 const log = std.log.scoped(.ui_perf_window);
 
-is_open: bool = true,
+is_open: bool = false,
 
-pub const Self = @This();
+const Self = @This();
 
 pub fn init() Self {
     return .{};

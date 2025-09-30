@@ -8,7 +8,7 @@ const Alignment = std.mem.Alignment;
 
 const c = @import("ext.zig").c;
 
-pub const Self = @This();
+const Self = @This();
 
 pub inline fn malloc(size: usize) ?[*]u8 {
     const ptr = c.SDL_malloc(size);

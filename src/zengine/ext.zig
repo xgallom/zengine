@@ -15,5 +15,3 @@ pub const c = @cImport({
     @cInclude("cimgui_impl.h");
     @cInclude("cimplot.h");
 });
-pub const sdl = c;
-pub const ig = c;

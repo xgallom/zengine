@@ -7,6 +7,8 @@ const std = @import("std");
 pub const batch = @import("math/batch.zig");
 pub const matrixMxNT = @import("math/matrix.zig").matrixMxNT;
 pub const quatT = @import("math/quat.zig").quatT;
+pub const IntMask = @import("math/scalar.zig").IntMask;
+pub const scalarT = @import("math/scalar.zig").scalarT;
 const types = @import("math/types.zig");
 pub const Scalar = types.Scalar;
 pub const Scalar64 = types.Scalar64;
@@ -27,6 +29,7 @@ pub const Coords4f64 = types.Coords4f64;
 pub const RGBf32 = types.RGBf32;
 pub const RGBAf32 = types.RGBAf32;
 pub const Vertex = types.Vertex;
+pub const Vertex4 = types.Vertex4;
 pub const Position = types.Position;
 pub const Displacement = types.Displacement;
 pub const Euler = types.Euler;
@@ -43,20 +46,6 @@ pub const vectorNT = @import("math/vector.zig").vectorNT;
 
 pub const invalid_index = std.math.maxInt(Index);
 
-pub fn matrix3x3T(comptime T: type) type {
-    return matrixMxNT(3, 3, T);
-}
-pub fn matrix4x4T(comptime T: type) type {
-    return matrixMxNT(4, 4, T);
-}
-
-pub const matrix3x3 = matrixMxNT(3, 3, types.Scalar);
-pub const matrix3x3f64 = matrixMxNT(3, 3, types.Scalar64);
-pub const matrix4x4 = matrixMxNT(4, 4, types.Scalar);
-pub const matrix4x4f64 = matrixMxNT(4, 4, types.Scalar64);
-
-pub const quat = quatT(types.Scalar);
-
 pub fn vector2T(comptime T: type) type {
     return vectorNT(2, T);
 }
@@ -67,6 +56,16 @@ pub fn vector4T(comptime T: type) type {
     return vectorNT(4, T);
 }
 
+pub fn matrix3x3T(comptime T: type) type {
+    return matrixMxNT(3, 3, T);
+}
+pub fn matrix4x4T(comptime T: type) type {
+    return matrixMxNT(4, 4, T);
+}
+
+pub const scalar = scalarT(types.Scalar);
+pub const scalarf64 = scalarT(types.Scalar64);
+
 pub const vector2 = vectorNT(2, types.Scalar);
 pub const vector2f64 = vectorNT(2, types.Scalar64);
 pub const vector3 = vectorNT(3, types.Scalar);
@@ -74,10 +73,16 @@ pub const vector3f64 = vectorNT(3, types.Scalar64);
 pub const vector4 = vectorNT(4, types.Scalar);
 pub const vector4f64 = vectorNT(4, types.Scalar64);
 
+pub const matrix3x3 = matrixMxNT(3, 3, types.Scalar);
+pub const matrix3x3f64 = matrixMxNT(3, 3, types.Scalar64);
+pub const matrix4x4 = matrixMxNT(4, 4, types.Scalar);
+pub const matrix4x4f64 = matrixMxNT(4, 4, types.Scalar64);
+
 pub const rgbf32 = vector3;
 pub const rgbaf32 = vector4;
 pub const vertex = vector3;
 pub const euler = vector3;
+pub const quat = quatT(types.Scalar);
 
 pub fn percent(x: anytype) @TypeOf(x) {
     return x * 100;

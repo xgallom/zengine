@@ -10,7 +10,7 @@ pub fn Controls(comptime K: type) type {
     return struct {
         control_matrix: std.bit_set.IntegerBitSet(max_key + 1) = .initEmpty(),
 
-        const Self = @This();
+        pub const Self = @This();
         pub const Key = K;
         pub const Value = @typeInfo(Key).@"enum".tag_type;
         const max_key = std.math.maxInt(Value);
@@ -62,7 +62,7 @@ pub const CameraControls = Controls(enum(std.math.Log2Int(u32)) {
     first_custom,
     _,
 
-    const Self = @This();
+    pub const Self = @This();
 
     const last_custom = std.math.maxInt(std.math.Log2Int(u32));
     const max_custom = Self.last_custom - @intFromEnum(Self.first_custom);

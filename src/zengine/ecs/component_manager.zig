@@ -43,10 +43,10 @@ fn AnyComponentManager(comptime C: type, comptime AL: type) type {
             // std.Thread.sleep(1_000_000_000);
             const cap = @atomicLoad(usize, &self.components.components.capacity, .seq_cst);
             const bit_len = @atomicLoad(usize, &self.component_flags.bit_length, .seq_cst);
-            log.info("before {X} {X} {} {}", .{ std.Thread.getCurrentId(), @intFromPtr(self), cap, bit_len });
+            log.debug("before {X} {X} {} {}", .{ std.Thread.getCurrentId(), @intFromPtr(self), cap, bit_len });
 
             const entity = try self.components.push(value);
-            log.info("after {} {}", .{ self.components.cap(), self.components.len() });
+            log.debug("after {} {}", .{ self.components.cap(), self.components.len() });
 
             if (self.component_flags.capacity() < self.components.cap()) {
                 log.debug("resize flags {} {}", .{ self.component_flags.capacity(), self.components.cap() });
@@ -55,7 +55,7 @@ fn AnyComponentManager(comptime C: type, comptime AL: type) type {
             self.component_flags.set(entity);
             log.debug("flags set", .{});
 
-            log.info("after_flags {} {any}", .{ std.Thread.getCurrentId(), self });
+            log.debug("after_flags {} {any}", .{ std.Thread.getCurrentId(), self });
             return entity;
         }
 

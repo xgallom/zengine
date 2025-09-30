@@ -113,22 +113,32 @@ pub fn vectorNT(comptime N: comptime_int, comptime T: type) type {
             for (0..len) |n| result[n] = value;
         }
 
-        pub fn slice(comptime L: usize, self: *Self) []Scalar {
+        pub fn sliceLen(comptime L: usize, self: *Self) []Scalar {
             comptime assert(L <= len);
             return self[0..L];
         }
 
-        pub fn sliceConst(comptime L: usize, self: *const Self) []const Scalar {
+        pub fn sliceLenConst(comptime L: usize, self: *const Self) []const Scalar {
             comptime assert(L <= len);
             return self[0..L];
         }
 
-        pub fn sliceLen(self: *Self) []Scalar {
-            return slice(len, self);
+        pub fn slice(self: *Self) []Scalar {
+            return sliceLen(len, self);
         }
 
-        pub fn sliceLenConst(self: *const Self) []const Scalar {
-            return sliceConst(len, self);
+        pub fn sliceConst(self: *const Self) []const Scalar {
+            return sliceLenConst(len, self);
+        }
+
+        pub fn eqlAbs(self: *const Self, other: *const Self, comptime tolerance: Scalar) bool {
+            for (0..len) |n| if (!std.math.approxEqAbs(Scalar, self[n], other[n], tolerance)) return false;
+            return true;
+        }
+
+        pub fn eqlRel(self: *const Self, other: *const Self, comptime tolerance: Scalar) bool {
+            for (0..len) |n| if (!std.math.approxEqRel(Scalar, self[n], other[n], tolerance)) return false;
+            return true;
         }
 
         pub fn eqlExact(self: *const Self, other: *const Self) bool {
@@ -215,6 +225,10 @@ pub fn vectorNT(comptime N: comptime_int, comptime T: type) type {
             normalize(result);
         }
 
+        pub fn angle(lhs: *const Self, rhs: *const Self) Scalar {
+            return std.math.acos(dot(lhs, rhs) / (mag(lhs) * mag(rhs)));
+        }
+
         pub fn cross(result: *Self, lhs: *const Self, rhs: *const Self) void {
             comptime assert(N == 3);
             result[0] = lhs[1] * rhs[2] - lhs[2] * rhs[1];
@@ -253,28 +267,28 @@ test "vector3" {
 
     var result = lhs;
     ns.add(&result, &rhs);
-    try std.testing.expectEqualSlices(ns.Scalar, &.{ 3, 6, 9 }, ns.sliceLenConst(&result));
+    try std.testing.expectEqualSlices(ns.Scalar, &.{ 3, 6, 9 }, ns.sliceConst(&result));
     result = lhs;
     ns.sub(&result, &rhs);
-    try std.testing.expectEqualSlices(ns.Scalar, &.{ 1, 2, 3 }, ns.sliceLenConst(&result));
+    try std.testing.expectEqualSlices(ns.Scalar, &.{ 1, 2, 3 }, ns.sliceConst(&result));
     result = lhs;
     ns.mul(&result, &rhs);
-    try std.testing.expectEqualSlices(ns.Scalar, &.{ 2, 8, 18 }, ns.sliceLenConst(&result));
+    try std.testing.expectEqualSlices(ns.Scalar, &.{ 2, 8, 18 }, ns.sliceConst(&result));
     result = lhs;
     ns.div(&result, &rhs);
-    try std.testing.expectEqualSlices(ns.Scalar, &.{ 2, 2, 2 }, ns.sliceLenConst(&result));
+    try std.testing.expectEqualSlices(ns.Scalar, &.{ 2, 2, 2 }, ns.sliceConst(&result));
     result = lhs;
     ns.mulAdd(&result, &rhs, 2);
-    try std.testing.expectEqualSlices(ns.Scalar, &.{ 4, 8, 12 }, ns.sliceLenConst(&result));
+    try std.testing.expectEqualSlices(ns.Scalar, &.{ 4, 8, 12 }, ns.sliceConst(&result));
     result = lhs;
     ns.mulSub(&result, &rhs, 2);
-    try std.testing.expectEqualSlices(ns.Scalar, &.{ 0, 0, 0 }, ns.sliceLenConst(&result));
+    try std.testing.expectEqualSlices(ns.Scalar, &.{ 0, 0, 0 }, ns.sliceConst(&result));
     result = lhs;
     ns.scale(&result, 2);
-    try std.testing.expectEqualSlices(ns.Scalar, &.{ 4, 8, 12 }, ns.sliceLenConst(&result));
+    try std.testing.expectEqualSlices(ns.Scalar, &.{ 4, 8, 12 }, ns.sliceConst(&result));
     result = lhs;
     ns.scaleRecip(&result, 2);
-    try std.testing.expectEqualSlices(ns.Scalar, &.{ 1, 2, 3 }, ns.sliceLenConst(&result));
+    try std.testing.expectEqualSlices(ns.Scalar, &.{ 1, 2, 3 }, ns.sliceConst(&result));
     result = lhs;
     try std.testing.expect(ns.squareLength(&result) == 56);
     result = ns.Self{ 2, 2, 1 };
@@ -283,7 +297,7 @@ test "vector3" {
     ns.normalize(&result);
     {
         const len = @sqrt(2.0 * 2.0 + 2.0 * 2.0 + 1.0 * 1.0);
-        try std.testing.expectEqualSlices(ns.Scalar, &.{ 2.0 / len, 2.0 / len, 1.0 / len }, ns.sliceLenConst(&result));
+        try std.testing.expectEqualSlices(ns.Scalar, &.{ 2.0 / len, 2.0 / len, 1.0 / len }, ns.sliceConst(&result));
     }
     try std.testing.expect(ns.dot(&lhs, &rhs) == (2 * 1 + 4 * 2 + 6 * 3));
     {
@@ -314,28 +328,28 @@ test "vector3f64" {
 
     var result = lhs;
     ns.add(&result, &rhs);
-    try std.testing.expectEqualSlices(ns.Scalar, &.{ 3, 6, 9 }, ns.sliceLenConst(&result));
+    try std.testing.expectEqualSlices(ns.Scalar, &.{ 3, 6, 9 }, ns.sliceConst(&result));
     result = lhs;
     ns.sub(&result, &rhs);
-    try std.testing.expectEqualSlices(ns.Scalar, &.{ 1, 2, 3 }, ns.sliceLenConst(&result));
+    try std.testing.expectEqualSlices(ns.Scalar, &.{ 1, 2, 3 }, ns.sliceConst(&result));
     result = lhs;
     ns.mul(&result, &rhs);
-    try std.testing.expectEqualSlices(ns.Scalar, &.{ 2, 8, 18 }, ns.sliceLenConst(&result));
+    try std.testing.expectEqualSlices(ns.Scalar, &.{ 2, 8, 18 }, ns.sliceConst(&result));
     result = lhs;
     ns.div(&result, &rhs);
-    try std.testing.expectEqualSlices(ns.Scalar, &.{ 2, 2, 2 }, ns.sliceLenConst(&result));
+    try std.testing.expectEqualSlices(ns.Scalar, &.{ 2, 2, 2 }, ns.sliceConst(&result));
     result = lhs;
     ns.mulAdd(&result, &rhs, 2);
-    try std.testing.expectEqualSlices(ns.Scalar, &.{ 4, 8, 12 }, ns.sliceLenConst(&result));
+    try std.testing.expectEqualSlices(ns.Scalar, &.{ 4, 8, 12 }, ns.sliceConst(&result));
     result = lhs;
     ns.mulSub(&result, &rhs, 2);
-    try std.testing.expectEqualSlices(ns.Scalar, &.{ 0, 0, 0 }, ns.sliceLenConst(&result));
+    try std.testing.expectEqualSlices(ns.Scalar, &.{ 0, 0, 0 }, ns.sliceConst(&result));
     result = lhs;
     ns.scale(&result, 2);
-    try std.testing.expectEqualSlices(ns.Scalar, &.{ 4, 8, 12 }, ns.sliceLenConst(&result));
+    try std.testing.expectEqualSlices(ns.Scalar, &.{ 4, 8, 12 }, ns.sliceConst(&result));
     result = lhs;
     ns.scaleRecip(&result, 2);
-    try std.testing.expectEqualSlices(ns.Scalar, &.{ 1, 2, 3 }, ns.sliceLenConst(&result));
+    try std.testing.expectEqualSlices(ns.Scalar, &.{ 1, 2, 3 }, ns.sliceConst(&result));
     result = lhs;
     try std.testing.expect(ns.squareLength(&result) == 56);
     result = ns.Self{ 2, 2, 1 };
@@ -344,7 +358,7 @@ test "vector3f64" {
     ns.normalize(&result);
     {
         const len = @sqrt(2.0 * 2.0 + 2.0 * 2.0 + 1.0 * 1.0);
-        try std.testing.expectEqualSlices(ns.Scalar, &.{ 2.0 / len, 2.0 / len, 1.0 / len }, ns.sliceLenConst(&result));
+        try std.testing.expectEqualSlices(ns.Scalar, &.{ 2.0 / len, 2.0 / len, 1.0 / len }, ns.sliceConst(&result));
     }
     try std.testing.expect(ns.dot(&lhs, &rhs) == (2 * 1 + 4 * 2 + 6 * 3));
     {

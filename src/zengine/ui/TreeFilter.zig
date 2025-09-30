@@ -26,7 +26,7 @@ toggle_state: bool = false,
 buf: [256]u8 = @splat(0),
 text: [:0]const u8 = "",
 
-pub const Self = @This();
+const Self = @This();
 
 pub fn draw(self: *Self, _: *const UI, _: *bool) void {
     self.toggle_state = false;

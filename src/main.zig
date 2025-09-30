@@ -201,20 +201,51 @@ pub fn main() !void {
     var render_items = try ecs.PrimitiveComponentManager(gfx.Renderer.Item).init(allocators.gpa(), 128);
     defer render_items.deinit();
 
-    const pi = std.math.pi;
-    _ = try render_items.push(.{
-        .mesh = "Cat",
-        .position = .{ 200, 0, 0 },
-        .rotation = .{ -pi / 2.0, 0, 0 },
-        .scale = math.vertex.one,
-    });
+    // const pi = std.math.pi;
+    // _ = try render_items.push(.{
+    //     .object = "Cat",
+    //     .position = .{ 200, 0, 0 },
+    //     .rotation = .{ -pi / 2.0, 0, 0 },
+    //     .scale = math.vertex.one,
+    // });
 
+    // _ = try render_items.push(.{
+    //     .object = "Cow",
+    //     .position = .{ 0, 0, 0 },
+    //     .rotation = .{ 0, -pi / 2.0, 0 },
+    //     .scale = .{ 10, 10, 10 },
+    // });
+
+    // _ = try render_items.push(.{
+    //     .object = "Plane",
+    //     .position = .{ 0, -150, 0 },
+    //     .rotation = math.vertex.zero,
+    //     .scale = .{ 100, 100, 100 },
+    // });
+
+    // _ = try render_items.push(.{
+    //     .object = "Landscape",
+    //     .position = .{ 0, -150, 0 },
+    //     .rotation = math.vertex.zero,
+    //     .scale = .{ 100, 100, 100 },
+    // });
+
+    // const names = [_][:0]const u8{
+    //     "Cube +Z",
+    //     "Cube -X",
+    //     "Cube -Y",
+    //     "Cube -Z",
+    //     "Cube +X",
+    //     "Cube +Y",
+    // };
+    // for (names) |name| {
     _ = try render_items.push(.{
-        .mesh = "Cow",
+        .object = "Cube",
         .position = .{ 0, 0, 0 },
-        .rotation = .{ 0, -pi / 2.0, 0 },
+        .rotation = math.vertex.zero,
         .scale = .{ 10, 10, 10 },
     });
+    // }
 
     var debug_ui = zengine.ui.DebugUI.init();
 
@@ -231,8 +262,6 @@ pub fn main() !void {
     var perf_window = zengine.ui.PerfWindow.init(allocators.global());
 
     allocators.scratchRelease();
-
-    log.info("{any}", .{renderer.meshes.getPtr("Cat").nodes.items});
 
     return mainloop: while (true) {
         defer perf.reset();
@@ -271,7 +300,7 @@ pub fn main() !void {
                         if (sdl_event.key.repeat) break;
                         switch (sdl_event.key.key) {
                             c.SDLK_F1 => ui.show_ui = !ui.show_ui,
-                            c.SDLK_ESCAPE => break :mainloop,
+                            c.SDLK_ESCAPE => ui.show_ui = !ui.show_ui,
                             else => {},
                         }
                     },
@@ -433,6 +462,12 @@ pub fn main() !void {
         section.sub(.render).begin();
 
         ui.beginDraw();
+        ui.drawMainMenuBar(.{
+            .allocs_open = &allocs_window.is_open,
+            .property_editor_open = &property_editor.is_open,
+            .perf_open = &perf_window.is_open,
+        });
+        ui.drawDock();
 
         // if (ui.show_ui) c.igShowDemoWindow(&ui.show_ui);
         ui.draw(debug_ui.element(), &debug_ui.is_open);

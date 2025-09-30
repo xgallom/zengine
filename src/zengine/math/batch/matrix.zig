@@ -52,7 +52,7 @@ pub fn matrixMxNBT(comptime M: comptime_int, comptime N: comptime_int, comptime 
         /// advances the matrix in address space to next batch,
         /// assumes bounds checking
         pub fn increment(self: *CSelf) void {
-            const s = sliceLenConst(self);
+            const s = sliceConst(self);
             for (0..len) |n| {
                 s[n] += 1;
             }
@@ -61,35 +61,35 @@ pub fn matrixMxNBT(comptime M: comptime_int, comptime N: comptime_int, comptime 
         /// moves the matrix in address space to previous batch,
         /// assumes bounds checking
         pub fn decrement(self: *CSelf) void {
-            const s = sliceLenConst(self);
+            const s = sliceConst(self);
             for (0..len) |n| {
                 s[n] -= 1;
             }
         }
 
-        pub fn slice(comptime L: usize, self: *const Self) []Item {
+        pub fn sliceLen(comptime L: usize, self: *const Self) []Item {
             comptime assert(L <= len);
             return self[0..L];
         }
 
-        pub fn sliceConst(comptime L: usize, self: *const CSelf) []CItem {
+        pub fn sliceLenConst(comptime L: usize, self: *const CSelf) []CItem {
             comptime assert(L <= len);
             return self[0..L];
         }
 
-        pub fn sliceLen(self: *const Self) []Item {
-            return slice(len, self);
+        pub fn slice(self: *const Self) []Item {
+            return sliceLen(len, self);
         }
 
-        pub fn sliceLenConst(self: *const CSelf) []CItem {
-            return sliceConst(len, self);
+        pub fn sliceConst(self: *const CSelf) []CItem {
+            return sliceLenConst(len, self);
         }
 
         /// Y_mn = L_mn + R_mn
         pub fn add(result: *const Self, lhs: *const CSelf, rhs: *const CSelf) void {
-            const y = sliceLen(result);
-            const l = sliceLenConst(lhs);
-            const r = sliceLenConst(rhs);
+            const y = slice(result);
+            const l = sliceConst(lhs);
+            const r = sliceConst(rhs);
             for (0..len) |n| {
                 y[n].* = l[n].* + r[n].*;
             }
@@ -97,9 +97,9 @@ pub fn matrixMxNBT(comptime M: comptime_int, comptime N: comptime_int, comptime 
 
         /// Y_mn = L_mn - R_mn
         pub fn sub(result: *const Self, lhs: *const CSelf, rhs: *const CSelf) void {
-            const y = sliceLen(result);
-            const l = sliceLenConst(lhs);
-            const r = sliceLenConst(rhs);
+            const y = slice(result);
+            const l = sliceConst(lhs);
+            const r = sliceConst(rhs);
             for (0..len) |n| {
                 y[n].* = l[n].* - r[n].*;
             }
@@ -107,9 +107,9 @@ pub fn matrixMxNBT(comptime M: comptime_int, comptime N: comptime_int, comptime 
 
         /// Y_mn = L_mn * R_mn
         pub fn mul(result: *const Self, lhs: *const CSelf, rhs: *const CSelf) void {
-            const y = sliceLen(result);
-            const l = sliceLenConst(lhs);
-            const r = sliceLenConst(rhs);
+            const y = slice(result);
+            const l = sliceConst(lhs);
+            const r = sliceConst(rhs);
             for (0..len) |n| {
                 y[n].* = l[n].* * r[n].*;
             }
@@ -117,9 +117,9 @@ pub fn matrixMxNBT(comptime M: comptime_int, comptime N: comptime_int, comptime 
 
         /// Y_mn = L_mn / R_mn
         pub fn div(result: *const Self, lhs: *const CSelf, rhs: *const CSelf) void {
-            const y = sliceLen(result);
-            const l = sliceLenConst(lhs);
-            const r = sliceLenConst(rhs);
+            const y = slice(result);
+            const l = sliceConst(lhs);
+            const r = sliceConst(rhs);
             for (0..len) |n| {
                 y[n].* = l[n].* / r[n].*;
             }

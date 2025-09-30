@@ -69,6 +69,7 @@ pub const Coords4f64 = CoordsNT(4, Scalar64);
 pub const RGBf32 = Vector3;
 pub const RGBAf32 = Vector4;
 pub const Vertex = Vector3;
+pub const Vertex4 = Vector4;
 pub const TexCoord = Vector2;
 pub const Position = Vector4;
 pub const Displacement = Vector4;

@@ -12,6 +12,8 @@ const ui = @import("../ui.zig");
 
 const log = std.log.scoped(.gfx_camera);
 
+const Objects = std.ArrayList(Self);
+
 kind: Kind = .perspective,
 position: math.Vector3 = math.vector3.zero,
 direction: math.Vector3 = .{ 1, 0, 0 },

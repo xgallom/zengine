@@ -15,9 +15,9 @@ const plot_fmt = @import("plot_fmt.zig");
 
 const log = std.log.scoped(.ui_allocs_window);
 
-is_open: bool = true,
+is_open: bool = false,
 
-pub const Self = @This();
+const Self = @This();
 pub const window_name = "Allocations";
 var buf: [64]u8 = undefined;
 

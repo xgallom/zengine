@@ -29,7 +29,6 @@ pub fn ComponentArrayList(comptime C: type) type {
         }
 
         pub fn push(self: *Self, value: C) !Entity {
-            std.log.warn("addOne", .{});
             const entity = try self.components.addOne(self.allocator);
             self.components.set(entity, value);
             return @intCast(entity);
@@ -79,7 +78,6 @@ pub fn PrimitiveComponentArrayList(comptime C: type) type {
         }
 
         pub fn push(self: *Self, value: C) !Entity {
-            std.log.warn("addOne", .{});
             const ptr = try self.components.addOne(self.allocator);
             ptr.* = value;
             return @intCast(self.len() - 1);

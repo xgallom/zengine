@@ -1,3 +1,7 @@
+//!
+//! The zengine .mtl file loader
+//!
+
 const std = @import("std");
 const assert = std.debug.assert;
 
@@ -7,45 +11,12 @@ const math = @import("../math.zig");
 const RGBf32 = math.RGBf32;
 const str = @import("../str.zig");
 const ui = @import("../ui.zig");
+const MaterialInfo = @import("MaterialInfo.zig");
 
-const log = std.log.scoped(.gfx_obj_loader);
+const log = std.log.scoped(.gfx_mtl_loader);
 
 pub const Materials = std.ArrayListUnmanaged(MaterialInfo);
 const LineIterator = std.mem.SplitIterator(u8, .scalar);
-
-pub const MaterialInfo = struct {
-    name: [:0]const u8,
-    texture: ?[:0]const u8 = null,
-    diffuse_map: ?[:0]const u8 = null,
-    bump_map: ?[:0]const u8 = null,
-
-    ambient: RGBf32 = math.rgbf32.one,
-    diffuse: RGBf32 = math.rgbf32.one,
-    specular: RGBf32 = math.rgbf32.zero,
-    emissive: RGBf32 = math.rgbf32.zero,
-    filter: RGBf32 = math.rgbf32.one,
-
-    specular_exp: f32 = 1,
-    ior: f32 = 1,
-    alpha: f32 = 1,
-
-    mode: u8 = 0,
-
-    const Self = @This();
-
-    pub fn config(self: *const MaterialInfo) u32 {
-        var result: std.bit_set.IntegerBitSet(32) = .initEmpty();
-        if (self.texture != null) result.set(0);
-        if (self.diffuse_map != null) result.set(1);
-        if (self.bump_map != null) result.set(2);
-        if (!math.rgbf32.eqlExact(&self.filter, &math.rgbf32.zero)) result.set(3);
-        return result.mask;
-    }
-
-    pub fn propertyEditor(self: *Self) ui.PropertyEditor(Self) {
-        return .init(self);
-    }
-};
 
 pub const Result = struct {
     allocator: std.mem.Allocator,
@@ -88,15 +59,15 @@ pub fn loadFile(gpa: std.mem.Allocator, path: []const u8) !Result {
                 } else if (str.eql(cmd, "bump")) {
                     mat.bump_map = try parsePath(&iter);
                 } else if (str.eql(cmd, "Ka")) {
-                    mat.ambient = try parseRGBf32(&iter);
+                    mat.clr_ambient = try parseRGBf32(&iter);
                 } else if (str.eql(cmd, "Kd")) {
-                    mat.diffuse = try parseRGBf32(&iter);
+                    mat.clr_diffuse = try parseRGBf32(&iter);
                 } else if (str.eql(cmd, "Ks")) {
-                    mat.specular = try parseRGBf32(&iter);
+                    mat.clr_specular = try parseRGBf32(&iter);
                 } else if (str.eql(cmd, "Ke")) {
-                    mat.emissive = try parseRGBf32(&iter);
+                    mat.clr_emissive = try parseRGBf32(&iter);
                 } else if (str.eql(cmd, "Tf")) {
-                    mat.filter = try parseRGBf32(&iter);
+                    mat.clr_filter = try parseRGBf32(&iter);
                 } else if (str.eql(cmd, "Ns")) {
                     mat.specular_exp = try parseFloat(&iter);
                 } else if (str.eql(cmd, "Ni")) {

@@ -7,6 +7,27 @@ const assert = std.debug.assert;
 
 const types = @import("types.zig");
 
+pub fn IntMask(comptime len: comptime_int) type {
+    comptime assert(len > 0);
+    return struct {
+        pub const uses_mask = @popCount(@as(usize, len)) == 1;
+
+        pub inline fn index(elem_index: anytype) @TypeOf(elem_index) {
+            return switch (comptime uses_mask) {
+                true => elem_index >> comptime @ctz(len),
+                false => elem_index / len,
+            };
+        }
+
+        pub inline fn offset(elem_index: anytype) @TypeOf(elem_index) {
+            return switch (comptime uses_mask) {
+                true => elem_index & comptime (len - 1),
+                false => elem_index % len,
+            };
+        }
+    };
+}
+
 pub fn scalarT(comptime T: type) type {
     return switch (@typeInfo(T)) {
         .float, .comptime_float => struct {
@@ -36,6 +57,8 @@ pub fn scalarT(comptime T: type) type {
                     return @splat(value);
                 }
 
+                const mask = IntMask(len);
+
                 /// computes the number of vectors required to store elem_len values
                 // this reduces to binary arithmetic in release mode for power of two-sized batches
                 pub fn batchLen(elem_len: anytype) @TypeOf(elem_len) {
@@ -45,15 +68,13 @@ pub fn scalarT(comptime T: type) type {
                 }
 
                 /// computes position of the element in an array of vectors
-                // this reduces to binary arithmetic in release mode for power of two-sized batches
                 pub fn batchIndex(elem_index: anytype) @TypeOf(elem_index) {
-                    return elem_index / len;
+                    return mask.index(elem_index);
                 }
 
                 /// computes an offset into the vector on which the element is located
-                // this reduces to binary arithmetic in release mode for power of two-sized batches
                 pub fn batchOffset(elem_index: anytype) @TypeOf(elem_index) {
-                    return elem_index % len;
+                    return mask.offset(elem_index);
                 }
             },
             else => @compileError("Unsupported vector scalar type " ++ @typeName(@typeInfo(T).vector.child)),

@@ -30,7 +30,7 @@ pub fn LogAllocator(
             .free = free,
         };
 
-        const Self = @This();
+        pub const Self = @This();
 
         pub fn allocator(self: *Self) Allocator {
             return if (comptime enabled) .{
