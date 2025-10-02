@@ -4,7 +4,6 @@
 
 const std = @import("std");
 const assert = std.debug.assert;
-const builtin = @import("builtin");
 
 const allocators = @import("../allocators.zig");
 const c = @import("../ext.zig").c;
@@ -31,6 +30,30 @@ const GraphicsMetadataJSON = struct {
     num_storage_textures: u32 = 0,
     num_storage_buffers: u32 = 0,
     num_uniform_buffers: u32 = 0,
+    inputs: []IOVar,
+    outputs: []IOVar,
+
+    const IOVar = struct {
+        name: [:0]const u8,
+        location: u32,
+        vector_type: Type,
+        vector_size: u32,
+
+        const Type = enum(c.SDL_ShaderCross_IOVarType) {
+            unknown = c.SDL_SHADERCROSS_IOVAR_TYPE_UNKNOWN,
+            i8 = c.SDL_SHADERCROSS_IOVAR_TYPE_INT8,
+            u8 = c.SDL_SHADERCROSS_IOVAR_TYPE_UINT8,
+            i16 = c.SDL_SHADERCROSS_IOVAR_TYPE_INT16,
+            u16 = c.SDL_SHADERCROSS_IOVAR_TYPE_UINT16,
+            i32 = c.SDL_SHADERCROSS_IOVAR_TYPE_INT32,
+            u32 = c.SDL_SHADERCROSS_IOVAR_TYPE_UINT32,
+            i64 = c.SDL_SHADERCROSS_IOVAR_TYPE_INT64,
+            u64 = c.SDL_SHADERCROSS_IOVAR_TYPE_UINT64,
+            f16 = c.SDL_SHADERCROSS_IOVAR_TYPE_FLOAT16,
+            f32 = c.SDL_SHADERCROSS_IOVAR_TYPE_FLOAT32,
+            f64 = c.SDL_SHADERCROSS_IOVAR_TYPE_FLOAT64,
+        };
+    };
 };
 
 pub const Stage = enum(c.SDL_GPUShaderStage) {
@@ -48,6 +71,51 @@ pub fn open(config: OpenConfig) !*c.SDL_GPUShader {
     defer config.allocator.free(code);
 
     const meta = try readShaderMeta(&config, &shaders_dir);
+    // TODO: Work with shader meta io
+    //
+    // log.info(
+    //     \\ shader: {s}
+    //     \\ num_samplers: {}
+    //     \\ num_storage_textures: {}
+    //     \\ num_storage_buffers: {}
+    //     \\ num_uniform_buffers: {}
+    //     \\ inputs:
+    // , .{
+    //     config.shader_path,
+    //     meta.num_samplers,
+    //     meta.num_storage_textures,
+    //     meta.num_storage_buffers,
+    //     meta.num_uniform_buffers,
+    // });
+    // for (meta.inputs) |item| {
+    //     log.info(
+    //         \\   name: {s}
+    //         \\   location: {}
+    //         \\   vector_type: {t}
+    //         \\   vector_size: {}
+    //         \\
+    //     , .{
+    //         item.name,
+    //         item.location,
+    //         item.vector_type,
+    //         item.vector_size,
+    //     });
+    // }
+    // log.info("outputs:", .{});
+    // for (meta.outputs) |item| {
+    //     log.info(
+    //         \\   name: {s}
+    //         \\   location: {}
+    //         \\   vector_type: {t}
+    //         \\   vector_size: {}
+    //         \\
+    //     , .{
+    //         item.name,
+    //         item.location,
+    //         item.vector_type,
+    //         item.vector_size,
+    //     });
+    // }
 
     const shader = c.SDL_CreateGPUShader(config.gpu_device, &c.SDL_GPUShaderCreateInfo{
         .code_size = code.len,

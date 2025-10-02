@@ -103,6 +103,12 @@ pub fn vectorNT(comptime N: comptime_int, comptime T: type) type {
             return .{ .self = self };
         }
 
+        pub fn to(comptime U: type, self: *const Self) types.VectorNT(len, U) {
+            var result: types.VectorNT(len, U) = undefined;
+            for (0..len) |n| result[n] = scalar.to(U, self[n]);
+            return result;
+        }
+
         pub fn splat(value: Scalar) Self {
             var result: Self = undefined;
             for (0..len) |n| result[n] = value;
@@ -132,11 +138,13 @@ pub fn vectorNT(comptime N: comptime_int, comptime T: type) type {
         }
 
         pub fn eqlAbs(self: *const Self, other: *const Self, comptime tolerance: Scalar) bool {
+            comptime if (!scalar.is_float) @compileError("eqlAbs not supported for vector of " ++ @typeName(Scalar));
             for (0..len) |n| if (!std.math.approxEqAbs(Scalar, self[n], other[n], tolerance)) return false;
             return true;
         }
 
         pub fn eqlRel(self: *const Self, other: *const Self, comptime tolerance: Scalar) bool {
+            comptime if (!scalar.is_float) @compileError("eqlRel not supported for vector of " ++ @typeName(Scalar));
             for (0..len) |n| if (!std.math.approxEqRel(Scalar, self[n], other[n], tolerance)) return false;
             return true;
         }
@@ -179,8 +187,12 @@ pub fn vectorNT(comptime N: comptime_int, comptime T: type) type {
         }
 
         pub fn scaleRecip(self: *Self, multiplier: Scalar) void {
-            const recip = scalar.one / multiplier;
-            for (0..len) |n| self[n] *= recip;
+            if (comptime scalar.is_float) {
+                const recip = scalar.one / multiplier;
+                for (0..len) |n| self[n] *= recip;
+            } else {
+                for (0..len) |n| self[n] /= multiplier;
+            }
         }
 
         pub fn magSqr(self: *const Self) Scalar {
@@ -188,10 +200,12 @@ pub fn vectorNT(comptime N: comptime_int, comptime T: type) type {
         }
 
         pub fn mag(self: *const Self) Scalar {
+            comptime if (!scalar.is_float) @compileError("mag not supported for vector of " ++ @typeName(Scalar));
             return @sqrt(magSqr(self));
         }
 
         pub fn normalize(self: *Self) void {
+            comptime if (!scalar.is_float) @compileError("normalize not supported for vector of " ++ @typeName(Scalar));
             const vector_length = scalar.one / mag(self);
             for (0..len) |n| self[n] *= vector_length;
         }
@@ -226,11 +240,15 @@ pub fn vectorNT(comptime N: comptime_int, comptime T: type) type {
         }
 
         pub fn angle(lhs: *const Self, rhs: *const Self) Scalar {
-            return std.math.acos(dot(lhs, rhs) / (mag(lhs) * mag(rhs)));
+            return std.math.acos(std.math.clamp(
+                dot(lhs, rhs) / (mag(lhs) * mag(rhs)),
+                scalar.neg_one,
+                scalar.one,
+            ));
         }
 
         pub fn cross(result: *Self, lhs: *const Self, rhs: *const Self) void {
-            comptime assert(N == 3);
+            comptime if (len == 3) {} else @compileError("cross not supported for vector of " ++ len);
             result[0] = lhs[1] * rhs[2] - lhs[2] * rhs[1];
             result[1] = lhs[2] * rhs[0] - lhs[0] * rhs[2];
             result[2] = lhs[0] * rhs[1] - lhs[1] * rhs[0];

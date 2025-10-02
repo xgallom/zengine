@@ -36,6 +36,11 @@ fn AnyComponentManager(comptime C: type, comptime AL: type) type {
             defer self.component_flags.deinit(self.components.allocator);
         }
 
+        pub fn getPtr(self: *const Self, entity: Entity) *C {
+            assert(self.component_flags.isSet(entity));
+            return self.components.getPtr(entity);
+        }
+
         pub fn push(self: *Self, value: C) !Entity {
             self.lock.lock();
             defer self.lock.unlock();

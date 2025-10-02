@@ -65,8 +65,13 @@ pub fn Tree(comptime V: type, comptime options: struct {
                 return child;
             }
 
-            pub fn iterator(node: *Node) EdgeIterator {
+            pub fn iterator(node: *const Node) EdgeIterator {
                 return .{ .curr = node.edges.first };
+            }
+
+            pub fn next(node: *const Node) ?*Node {
+                if (node.edge_node.next) |edge_node| return @fieldParentPtr("edge_node", edge_node);
+                return null;
             }
         };
 
@@ -75,8 +80,8 @@ pub fn Tree(comptime V: type, comptime options: struct {
 
             pub fn next(i: *EdgeIterator) ?*Node {
                 if (i.curr) |curr| {
-                    defer i.curr = curr.next;
-                    return curr;
+                    i.curr = curr.next;
+                    return @fieldParentPtr("edge_node", curr);
                 }
                 return null;
             }

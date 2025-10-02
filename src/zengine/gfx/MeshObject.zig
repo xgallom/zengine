@@ -1,5 +1,5 @@
 //!
-//! The zengine gfx object implementation
+//! The zengine mesh object implementation
 //!
 
 const std = @import("std");
@@ -29,14 +29,22 @@ pub const Section = struct {
 };
 
 pub const Group = struct {
-    section: usize,
+    offset: usize,
     len: usize = 0,
+    name: [:0]const u8,
 };
 
 pub const AddSectionResult = struct {
     group: *Group,
     section: *Section,
 };
+
+pub const face_vert_counts: std.EnumArray(FaceType, usize) = .init(.{
+    .invalid = 0,
+    .point = 1,
+    .line = 2,
+    .triangle = 3,
+});
 
 allocator: std.mem.Allocator,
 mesh_buf: *MeshBuffer = undefined,
@@ -48,7 +56,7 @@ has_active_group: bool = false,
 
 const Self = @This();
 const Sections = std.ArrayList(Section);
-const Groups = std.StringArrayHashMapUnmanaged(Group);
+const Groups = std.ArrayList(Group);
 
 pub fn init(allocator: std.mem.Allocator, face_type: FaceType) Self {
     return .{
@@ -79,37 +87,38 @@ pub fn endSection(self: *Self, offset: usize) void {
     self.has_active_section = false;
 }
 
-fn splitSection(self: *Self, offset: usize) !usize {
-    assert(self.sections.items.len > 0);
-    assert(self.has_active_section);
+// fn splitSection(self: *Self, offset: usize) !usize {
+//     assert(self.sections.items.len > 0);
+//     assert(self.has_active_section);
+//
+//     const idx = self.sections.items.len - 1;
+//     const section = &self.sections.items[idx];
+//     if (section.offset == offset) {
+//         assert(section.len == 0);
+//         return idx;
+//     }
+//
+//     section.len = offset - section.offset;
+//     try self.sections.append(self.allocator, .{
+//         .offset = offset,
+//         .material = section.material,
+//     });
+//     return idx + 1;
+// }
 
-    const idx = self.sections.items.len - 1;
-    const section = &self.sections.items[idx];
-    if (section.offset == offset) {
-        assert(section.len == 0);
-        return idx;
-    }
-
-    section.len = offset - section.offset;
-    try self.sections.append(self.allocator, .{
+pub fn beginGroup(self: *Self, offset: usize, name: [:0]const u8) !void {
+    self.endGroup(offset);
+    try self.groups.append(self.allocator, .{
         .offset = offset,
-        .material = section.material,
+        .name = name,
     });
-    return idx + 1;
-}
-
-pub fn beginGroup(self: *Self, group: [:0]const u8, offset: usize) !void {
-    self.endGroup();
-    const section = try self.splitSection(offset);
-    try self.groups.putNoClobber(self.allocator, group, .{ .section = section });
     self.has_active_group = true;
 }
 
-pub fn endGroup(self: *Self) void {
-    const groups = self.groups.values();
+pub fn endGroup(self: *Self, offset: usize) void {
     if (!self.has_active_group) return;
-    assert(groups.len > 0);
-    const group = &groups[groups.len - 1];
-    group.len = self.sections.items.len - group.section;
+    assert(self.groups.items.len > 0);
+    const group = &self.groups.items[self.groups.items.len - 1];
+    group.len = offset - group.offset;
     self.has_active_group = false;
 }

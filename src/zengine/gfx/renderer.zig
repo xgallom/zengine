@@ -6,8 +6,8 @@ const std = @import("std");
 const assert = std.debug.assert;
 
 const allocators = @import("../allocators.zig");
-const KeyMap = @import("../containers.zig").KeyMap;
-const PtrKeyMap = @import("../containers.zig").PtrKeyMap;
+const KeyMap = @import("../containers.zig").ArrayKeyMap;
+const PtrKeyMap = @import("../containers.zig").ArrayPtrKeyMap;
 const ecs = @import("../ecs.zig");
 const Engine = @import("../Engine.zig");
 const c = @import("../ext.zig").c;
@@ -15,44 +15,39 @@ const global = @import("../global.zig");
 const math = @import("../math.zig");
 const perf = @import("../perf.zig");
 const ui_mod = @import("../ui.zig");
-const Camera = @import("Camera.zig");
-const img = @import("img.zig");
-const MeshBuffer = @import("MeshBuffer.zig");
-const Object = @import("Object.zig");
-const mtl_loader = @import("mtl_loader.zig");
 const MaterialInfo = @import("MaterialInfo.zig");
-const obj_loader = @import("obj_loader.zig");
+const MeshBuffer = @import("MeshBuffer.zig");
+const MeshObject = @import("MeshObject.zig");
 const shader = @import("shader.zig");
+const StorageBuffer = @import("StorageBuffer.zig");
+const Scene = @import("../Scene.zig");
 const Texture = @import("Texture.zig");
+
+const gfx_options = @import("../options.zig").gfx_options;
+const default_material = gfx_options.default_material;
 
 const log = std.log.scoped(.gfx_renderer);
 pub const sections = perf.sections(@This(), &.{ .init, .render });
 
-const Self = @This();
-
 allocator: std.mem.Allocator,
 gpu_device: *c.SDL_GPUDevice,
 pipelines: Pipelines,
-objects: Objects,
+mesh_objs: MeshObjects,
 mesh_bufs: MeshBuffers,
+storage_bufs: StorageBuffers,
 materials: MaterialInfos,
 textures: Textures,
 samplers: Samplers,
-cameras: Cameras,
+
+const Self = @This();
 
 const Pipelines = PtrKeyMap(c.SDL_GPUGraphicsPipeline);
-const Objects = KeyMap(Object, .{});
+const MeshObjects = KeyMap(MeshObject, .{});
 const MeshBuffers = KeyMap(MeshBuffer, .{});
+const StorageBuffers = KeyMap(StorageBuffer, .{});
 const MaterialInfos = KeyMap(MaterialInfo, .{});
 const Textures = PtrKeyMap(c.SDL_GPUTexture);
 const Samplers = PtrKeyMap(c.SDL_GPUSampler);
-const Cameras = KeyMap(Camera, .{});
-const SurfaceTextures = KeyMap(Texture, .{});
-
-const InitState = struct {
-    engine: *const Engine,
-    surface_textures: SurfaceTextures,
-};
 
 pub const InitError = error{
     GPUFailed,
@@ -62,6 +57,7 @@ pub const InitError = error{
     BufferFailed,
     MaterialFailed,
     TextureFailed,
+    SamplerFailed,
     CommandBufferFailed,
     CopyPassFailed,
     RenderPassFailed,
@@ -78,6 +74,8 @@ pub const Item = struct {
     position: math.Vertex,
     rotation: math.Euler,
     scale: math.Vertex,
+
+    pub const rotation_speed = 0.1;
 
     pub fn propertyEditor(self: *Item) ui_mod.PropertyEditor(Item) {
         return .init(self);
@@ -98,27 +96,10 @@ pub fn init(engine: *const Engine) InitError!*Self {
     const self = try createSelf(allocators.gpa(), engine);
     errdefer self.deinit(engine);
 
-    var state: InitState = .{
-        .engine = engine,
-        .surface_textures = try .init(self.allocator, 16),
-    };
-    defer self.cleanupInit(&state);
-
     const stencil_format = self.stencilFormat();
-    const swapchain_format = self.swapchainFormat(&state);
+    const swapchain_format = self.swapchainFormat(engine);
 
-    // _ = try self.loadMesh(&state, "Cat", "cat.obj");
-    // _ = try self.loadMesh(&state, "Cow", "cow_nonormals.obj");
-    // _ = try self.loadMesh(&state, "Iron man", "IronMan.obj");
-    // _ = try self.loadMesh(&state, "Mountain", "mountain.obj");
-    _ = try self.loadMesh(&state, "Cube", "cube.obj");
-    _ = try self.createOriginMesh();
-    _ = try self.createDefaultMaterial();
-    _ = try self.createTestingMaterial();
-    _ = try self.createDefaultTexture(&state);
-    _ = try self.createStencilTexture(&state, stencil_format);
-    _ = try self.createDefaultCamera();
-
+    _ = try self.createStencilTexture(engine, stencil_format);
     _ = try self.createSampler("default", &.{
         .min_filter = c.SDL_GPU_FILTER_LINEAR,
         .mag_filter = c.SDL_GPU_FILTER_LINEAR,
@@ -127,10 +108,6 @@ pub fn init(engine: *const Engine) InitError!*Self {
         .address_mode_v = c.SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE,
         .address_mode_w = c.SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE,
     });
-
-    try self.createGPUData(&state);
-    try self.uploadTransferBuffers(&state);
-    try self.commitSurfaceTextures(&state);
 
     const vertex_shader = shader.open(.{
         .allocator = self.allocator,
@@ -239,7 +216,17 @@ pub fn init(engine: *const Engine) InitError!*Self {
         .target_info = .{
             .color_target_descriptions = &c.SDL_GPUColorTargetDescription{
                 .format = swapchain_format,
-                .blend_state = .{},
+                .blend_state = .{
+                    .src_color_blendfactor = c.SDL_GPU_BLENDFACTOR_SRC_ALPHA,
+                    .dst_color_blendfactor = c.SDL_GPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA,
+                    .color_blend_op = c.SDL_GPU_BLENDOP_ADD,
+                    .alpha_blend_op = c.SDL_GPU_BLENDOP_MAX,
+                    .color_write_mask = 0x00,
+                    .src_alpha_blendfactor = c.SDL_GPU_BLENDFACTOR_ONE,
+                    .dst_alpha_blendfactor = c.SDL_GPU_BLENDFACTOR_ONE,
+                    .enable_blend = true,
+                    .enable_color_write_mask = false,
+                },
             },
             .num_color_targets = 1,
             .has_depth_stencil_target = true,
@@ -269,41 +256,28 @@ pub fn init(engine: *const Engine) InitError!*Self {
 pub fn deinit(self: *Self, engine: *const Engine) void {
     _ = c.SDL_WaitForGPUIdle(self.gpu_device);
 
-    defer {
-        c.SDL_ReleaseWindowFromGPUDevice(self.gpu_device, engine.window);
-        c.SDL_DestroyGPUDevice(self.gpu_device);
-    }
-    defer {
-        for (self.objects.map.map.values()) |object| object.deinit();
-        self.objects.deinit();
-    }
-    defer {
-        for (self.mesh_bufs.map.map.values()) |mesh| mesh.deinit(self.gpu_device);
-        self.mesh_bufs.deinit();
-    }
-    defer self.materials.deinit();
-    defer {
-        for (self.pipelines.map.values()) |graphics_pipeline| c.SDL_ReleaseGPUGraphicsPipeline(
-            self.gpu_device,
-            graphics_pipeline,
-        );
-        self.pipelines.deinit(self.allocator);
-    }
-    defer {
-        for (self.textures.map.values()) |texture| c.SDL_ReleaseGPUTexture(self.gpu_device, texture);
-        self.textures.deinit(self.allocator);
-    }
-    defer {
-        for (self.samplers.map.values()) |sampler| c.SDL_ReleaseGPUSampler(self.gpu_device, sampler);
-        self.samplers.deinit(self.allocator);
-    }
-    defer self.cameras.deinit();
-}
+    for (self.pipelines.map.values()) |graphics_pipeline| c.SDL_ReleaseGPUGraphicsPipeline(
+        self.gpu_device,
+        graphics_pipeline,
+    );
+    self.pipelines.deinit(self.allocator);
 
-fn cleanupInit(self: *Self, state: *InitState) void {
-    for (self.mesh_bufs.map.map.values()) |mesh_buf| mesh_buf.freeCpuData();
-    for (state.surface_textures.map.map.values()) |tex| tex.deinit(self.gpu_device);
-    state.surface_textures.deinit();
+    for (self.mesh_objs.map.values()) |object| object.deinit();
+    self.mesh_objs.deinit();
+
+    self.materials.deinit();
+
+    for (self.mesh_bufs.map.values()) |mesh| mesh.deinit(self.gpu_device);
+    self.mesh_bufs.deinit();
+    for (self.storage_bufs.map.values()) |buf| buf.deinit(self.gpu_device);
+    self.storage_bufs.deinit();
+    for (self.textures.map.values()) |texture| c.SDL_ReleaseGPUTexture(self.gpu_device, texture);
+    self.textures.deinit(self.allocator);
+    for (self.samplers.map.values()) |sampler| c.SDL_ReleaseGPUSampler(self.gpu_device, sampler);
+    self.samplers.deinit(self.allocator);
+
+    c.SDL_ReleaseWindowFromGPUDevice(self.gpu_device, engine.window);
+    c.SDL_DestroyGPUDevice(self.gpu_device);
 }
 
 fn stencilFormat(self: *const Self) c.SDL_GPUTextureFormat {
@@ -326,21 +300,21 @@ fn stencilFormat(self: *const Self) c.SDL_GPUTextureFormat {
     }
 }
 
-fn swapchainFormat(self: *const Self, state: *const InitState) c.SDL_GPUTextureFormat {
-    return c.SDL_GetGPUSwapchainTextureFormat(self.gpu_device, state.engine.window);
+fn swapchainFormat(self: *const Self, engine: *const Engine) c.SDL_GPUTextureFormat {
+    return c.SDL_GetGPUSwapchainTextureFormat(self.gpu_device, engine.window);
 }
 
-fn setPresentMode(self: *Self, state: *InitState) InitError!void {
+fn setPresentMode(self: *Self, engine: *const Engine) InitError!void {
     var present_mode: c.SDL_GPUPresentMode = c.SDL_GPU_PRESENTMODE_VSYNC;
     if (c.SDL_WindowSupportsGPUPresentMode(
         self.gpu_device,
-        state.engine.window,
+        engine.window,
         c.SDL_GPU_PRESENTMODE_MAILBOX,
     )) present_mode = c.SDL_GPU_PRESENTMODE_MAILBOX;
 
     if (!c.SDL_SetGPUSwapchainParameters(
         self.gpu_device,
-        state.engine.window,
+        engine.window,
         c.SDL_GPU_SWAPCHAINCOMPOSITION_SDR,
         present_mode,
     )) {
@@ -372,93 +346,107 @@ fn createSelf(allocator: std.mem.Allocator, engine: *const Engine) InitError!*Se
         .allocator = allocator,
         .gpu_device = gpu_device.?,
         .pipelines = try .init(allocator, 128),
-        .objects = try .init(allocator, 128),
+        .mesh_objs = try .init(allocator, 128),
         .mesh_bufs = try .init(allocator, 128),
+        .storage_bufs = try .init(allocator, 16),
         .materials = try .init(allocator, 16),
         .textures = try .init(allocator, 128),
         .samplers = try .init(allocator, 128),
-        .cameras = try .init(allocator, 128),
     };
     return self;
 }
 
-pub fn createOriginMesh(self: *Self) !*MeshBuffer {
-    var origin_mesh: MeshBuffer = try .init(self.allocator, .index);
-    errdefer origin_mesh.deinit(self.gpu_device);
-
-    origin_mesh.appendVertices(math.Vertex, &.{
-        .{ 0, 0, 0 },
-        .{ 0, 0, 0 },
-        .{ 0, 0, 0 },
-        .{ 1, 0, 0 },
-        .{ 0, 0, 0 },
-        .{ 0, 0, 0 },
-        .{ 0, 1, 0 },
-        .{ 0, 0, 0 },
-        .{ 0, 0, 0 },
-        .{ 0, 0, 1 },
-        .{ 0, 0, 0 },
-        .{ 0, 0, 0 },
-    }) catch |err| {
-        log.err("failed appending origin mesh vertices: {t}", .{err});
-        return InitError.BufferFailed;
-    };
-    origin_mesh.vert_count = 4 * 3;
-    origin_mesh.appendIndexes(math.LineFaceIndex, &.{
-        .{ 0, 1 },
-        .{ 0, 2 },
-        .{ 0, 3 },
-    }) catch |err| {
-        log.err("failed appending origin mesh faces: {t}", .{err});
-        return InitError.BufferFailed;
-    };
-    origin_mesh.index_count = 6;
-
-    return self.mesh_bufs.insert("origin", origin_mesh);
+pub fn createMeshObject(
+    self: *Self,
+    key: []const u8,
+    face_type: MeshObject.FaceType,
+) !*MeshObject {
+    const mesh_obj = try self.mesh_objs.create(key);
+    mesh_obj.* = .init(self.allocator, face_type);
+    return mesh_obj;
 }
 
-fn createDefaultMaterial(self: *Self) InitError!*MaterialInfo {
-    return self.materials.insert("default", .{
-        .name = "default",
-    });
+pub fn insertMeshObject(
+    self: *Self,
+    key: []const u8,
+    mesh_obj: *const MeshObject,
+) !*MeshObject {
+    return self.mesh_objs.insert(key, mesh_obj);
 }
 
-fn createTestingMaterial(self: *Self) InitError!*MaterialInfo {
-    return self.materials.insert("testing", .{
-        .name = "testing",
-        .clr_ambient = .{ 0, 1, 0 },
-        .clr_diffuse = .{ 0, 0, 1 },
-        .clr_specular = .{ 1, 0, 0 },
-    });
+pub fn createMeshBuffer(self: *Self, key: []const u8, mesh_type: MeshBuffer.Type) !*MeshBuffer {
+    const mesh_buf = try self.mesh_bufs.create(key);
+    mesh_buf.* = .init(self.allocator, mesh_type);
+    return mesh_buf;
 }
 
-fn createDefaultTexture(self: *Self, state: *InitState) InitError!*Texture {
-    const surface = c.SDL_CreateSurface(1, 1, img.pixel_format);
-    if (surface == null) {
-        log.err("failed creating default texture surface: {s}", .{c.SDL_GetError()});
-        return InitError.TextureFailed;
+pub fn insertMeshBuffer(self: *Self, key: []const u8, mesh_buf: *const MeshBuffer) !*MeshBuffer {
+    return self.mesh_bufs.insert(key, mesh_buf);
+}
+
+pub fn createStorageBuffer(self: *Self, key: []const u8) !*StorageBuffer {
+    const storage_buf = try self.storage_bufs.create(key);
+    storage_buf.* = .init(self.allocator);
+    return storage_buf;
+}
+
+pub fn insertStorageBuffer(
+    self: *Self,
+    key: []const u8,
+    storage_buf: *const StorageBuffer,
+) !*StorageBuffer {
+    return self.storage_bufs.insert(key, storage_buf);
+}
+
+pub fn createMaterial(self: *Self, key: [:0]const u8) !*MaterialInfo {
+    const material = try self.materials.create(key);
+    material.* = .{ .name = key };
+    return material;
+}
+
+pub fn insertMaterial(
+    self: *Self,
+    key: []const u8,
+    info: *const MaterialInfo,
+) !*MaterialInfo {
+    return self.materials.insert(key, info);
+}
+
+pub fn insertTexture(
+    self: *Self,
+    key: []const u8,
+    texture: *c.SDL_GPUTexture,
+) !*c.SDL_GPUTexture {
+    try self.textures.insert(self.allocator, key, texture);
+    return texture;
+}
+
+pub fn createSampler(
+    self: *Self,
+    key: []const u8,
+    info: *const c.SDL_GPUSamplerCreateInfo,
+) !*c.SDL_GPUSampler {
+    const sampler = c.SDL_CreateGPUSampler(self.gpu_device, info);
+    if (sampler == null) {
+        log.err("failed creating sampler: {s}", .{c.SDL_GetError()});
+        return InitError.SamplerFailed;
     }
-    const pixel = c.SDL_MapSurfaceRGBA(surface, 0xff, 0x00, 0xff, 0xff);
-    assert(surface.*.pitch == @sizeOf(@TypeOf(pixel)));
-    const pixels: [*]u32 = @ptrCast(@alignCast(surface.*.pixels));
-    pixels[0] = pixel;
-
-    var texture = Texture.init(surface);
-    errdefer texture.deinit(self.gpu_device);
-    return state.surface_textures.insert("default", texture);
+    errdefer c.SDL_ReleaseGPUSampler(self.gpu_device, sampler);
+    try self.samplers.insert(self.allocator, key, sampler.?);
+    return sampler.?;
 }
 
 fn createStencilTexture(
     self: *Self,
-    state: *InitState,
+    engine: *const Engine,
     stencil_format: c.SDL_GPUTextureFormat,
 ) !*c.SDL_GPUTexture {
     const stencil_texture = c.SDL_CreateGPUTexture(self.gpu_device, &c.SDL_GPUTextureCreateInfo{
         .type = c.SDL_GPU_TEXTURETYPE_2D,
         .format = stencil_format,
         .usage = c.SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET,
-        .width = @intCast(state.engine.window_size.x),
-        .height = @intCast(state.engine.window_size.y),
+        .width = @intCast(engine.window_size.x),
+        .height = @intCast(engine.window_size.y),
         .layer_count_or_depth = 1,
         .num_levels = 1,
         .sample_count = c.SDL_GPU_SAMPLECOUNT_1,
@@ -468,23 +456,8 @@ fn createStencilTexture(
         return InitError.BufferFailed;
     }
     errdefer c.SDL_ReleaseGPUTexture(self.gpu_device, stencil_texture);
-    try self.textures.insert(self.allocator, "stencil", stencil_texture.?);
+    _ = try self.insertTexture("stencil", stencil_texture.?);
     return stencil_texture.?;
-}
-
-fn createSampler(
-    self: *Self,
-    key: []const u8,
-    info: *const c.SDL_GPUSamplerCreateInfo,
-) InitError!*c.SDL_GPUSampler {
-    const sampler = c.SDL_CreateGPUSampler(self.gpu_device, info);
-    if (sampler == null) {
-        log.err("failed creating sampler: {s}", .{c.SDL_GetError()});
-        return InitError.BufferFailed;
-    }
-    errdefer c.SDL_ReleaseGPUSampler(self.gpu_device, sampler);
-    try self.samplers.insert(self.allocator, key, sampler.?);
-    return sampler.?;
 }
 
 fn createPipeline(
@@ -502,161 +475,10 @@ fn createPipeline(
     return graphics_pipeline.?;
 }
 
-fn createDefaultCamera(self: *Self) !*Camera {
-    var camera_position: math.Vector3 = .{ 4, 8, 10 };
-    // var camera_position: math.Vector3 = .{ -1438.067, 2358.586, 2820.102 };
-    var camera_direction: math.Vector3 = undefined;
-
-    math.vector3.scale(&camera_position, 15);
-    math.vector3.lookAt(&camera_direction, &camera_position, &math.vector3.zero);
-
-    return self.cameras.insert("default", .{
-        .kind = .perspective,
-        .position = camera_position,
-        .direction = camera_direction,
-    });
-}
-
-pub fn loadMesh(self: *Self, state: *InitState, key: []const u8, asset_path: []const u8) !*MeshBuffer {
-    const mesh_path = try global.assetPath(asset_path);
-
-    var result = obj_loader.loadFile(self.allocator, mesh_path) catch |err| {
-        log.err("failed loading mesh obj file: {t}", .{err});
-        return InitError.BufferFailed;
-    };
-    errdefer {
-        result.mesh_buf.deinit(self.gpu_device);
-        result.deinit(self.allocator);
-    }
-
-    if (result.mtl_path) |mtl_path| try self.loadMaterials(state, mtl_path);
-    const mesh_buf = try self.mesh_bufs.insert(key, result.mesh_buf);
-
-    var iter = result.objects.iterator();
-    while (iter.next()) |e| {
-        const object = e.value_ptr;
-        object.mesh_buf = mesh_buf;
-        _ = try self.objects.insert(e.key_ptr.*, object.*);
-    }
-
-    result.cleanup(self.allocator);
-    return mesh_buf;
-}
-
-pub fn loadMaterials(self: *Self, state: *InitState, asset_path: []const u8) InitError!void {
-    const mtl_path = try global.assetPath(asset_path);
-    var mtl = mtl_loader.loadFile(self.allocator, mtl_path) catch |err| {
-        log.err("error loading material: {t}", .{err});
-        return InitError.MaterialFailed;
-    };
-    defer mtl.deinit();
-    for (mtl.items) |item| {
-        log.info("material {s}:", .{item.name});
-        log.info("{?s}, {?s}, {?s}", .{ item.texture, item.diffuse_map, item.bump_map });
-        log.info("{any}, {any}, {any}, {any}, {any}", .{
-            item.clr_ambient,
-            item.clr_diffuse,
-            item.clr_specular,
-            item.clr_emissive,
-            item.clr_filter,
-        });
-        log.info("{}, {}, {}, {}", .{ item.specular_exp, item.ior, item.alpha, item.mode });
-        for (&[_]?[]const u8{ item.texture, item.diffuse_map, item.bump_map }) |opt_tex_path| {
-            if (opt_tex_path) |tex_path| _ = try self.loadTexture(state, tex_path);
-        }
-        _ = try self.materials.insert(item.name, item);
-    }
-}
-
-pub fn loadTexture(self: *Self, state: *InitState, asset_path: []const u8) !*Texture {
-    if (state.surface_textures.getPtrOrNull(asset_path)) |ptr| return ptr;
-
-    const tex_path = try global.assetPath(asset_path);
-    const surface = img.open(.{
-        .allocator = self.allocator,
-        .gpu_device = self.gpu_device,
-        .file_path = tex_path,
-    }) catch |err| {
-        log.err("failed reading image file: {t}", .{err});
-        return InitError.TextureFailed;
-    };
-    var texture = Texture.init(surface);
-    errdefer texture.deinit(self.gpu_device);
-    return state.surface_textures.insert(asset_path, texture);
-}
-
-fn createGPUData(self: *Self, state: *InitState) InitError!void {
-    for (self.mesh_bufs.map.map.values()) |mesh| try mesh.createGPUBuffers(self.gpu_device);
-    for (state.surface_textures.map.map.values()) |tex| try tex.createTexture(self.gpu_device);
-}
-
-fn uploadTransferBuffers(self: *Self, state: *InitState) InitError!void {
-    const TextureTransferBuffers = std.ArrayList(Texture.UploadTransferBuffer);
-    const MeshTransferBuffers = std.ArrayList(MeshBuffer.UploadTransferBuffer);
-
-    var tex_tbs: TextureTransferBuffers = try .initCapacity(self.allocator, state.surface_textures.map.map.count());
-    defer {
-        for (tex_tbs.items) |*tb| tb.release(self.gpu_device);
-        tex_tbs.deinit(self.allocator);
-    }
-
-    var mesh_tbs: MeshTransferBuffers = try .initCapacity(self.allocator, self.mesh_bufs.map.map.count());
-    defer {
-        for (mesh_tbs.items) |*tb| tb.release(self.gpu_device);
-        mesh_tbs.deinit(self.allocator);
-    }
-
-    for (state.surface_textures.map.map.values()) |tex| {
-        const tb = try tex.createUploadTransferBuffer(self.gpu_device);
-        tex_tbs.appendAssumeCapacity(tb);
-    }
-
-    for (self.mesh_bufs.map.map.values()) |mesh| {
-        const tb = try mesh.createUploadTransferBuffer(self.gpu_device);
-        mesh_tbs.appendAssumeCapacity(tb);
-    }
-
-    for (tex_tbs.items) |*tb| try tb.map(self.gpu_device);
-    for (mesh_tbs.items) |*tb| try tb.map(self.gpu_device);
-
-    const command_buffer = c.SDL_AcquireGPUCommandBuffer(self.gpu_device);
-    if (command_buffer == null) {
-        log.err("failed to acquire gpu command buffer: {s}", .{c.SDL_GetError()});
-        return InitError.CommandBufferFailed;
-    }
-    errdefer _ = c.SDL_CancelGPUCommandBuffer(command_buffer);
-
-    {
-        const copy_pass = c.SDL_BeginGPUCopyPass(command_buffer);
-        if (copy_pass == null) {
-            log.err("failed to begin copy pass: {s}", .{c.SDL_GetError()});
-            return InitError.CopyPassFailed;
-        }
-
-        for (tex_tbs.items) |*tb| tb.upload(copy_pass);
-        for (mesh_tbs.items) |*tb| tb.upload(copy_pass);
-
-        c.SDL_EndGPUCopyPass(copy_pass);
-    }
-
-    if (!c.SDL_SubmitGPUCommandBuffer(command_buffer)) {
-        log.err("failed submitting command buffer: {s}", .{c.SDL_GetError()});
-        return InitError.CommandBufferFailed;
-    }
-}
-
-fn commitSurfaceTextures(self: *Self, state: *InitState) InitError!void {
-    var iter = state.surface_textures.map.map.iterator();
-    while (iter.next()) |i| try self.textures.insert(
-        self.allocator,
-        i.key_ptr.*,
-        i.value_ptr.*.toTextureOwned(),
-    );
-}
-
 pub fn render(
     self: *const Self,
     engine: *const Engine,
+    scene: *const Scene,
     ui_ptr: ?*ui_mod.UI,
     items_iter: anytype,
 ) DrawError!bool {
@@ -672,7 +494,7 @@ pub fn render(
     // const origin_graphics_pipeline = self.pipelines.getPtr("origin");
     // const origin_mesh = self.mesh_bufs.getPtr("origin");
     const stencil_texture = self.textures.getPtr("stencil");
-    const camera = self.cameras.getPtr("default");
+    const camera = scene.cameras.getPtr("default");
     // const full_graphics_pipeline = self.full_graphics_pipeline;
 
     const fa = allocators.frame();
@@ -729,8 +551,12 @@ pub fn render(
     var uniform_buffer = try fa.alloc(f32, 32);
     @memcpy(uniform_buffer[0..16], math.matrix4x4.sliceConst(tr_view_projection));
 
-    var frag_uniform_buffer = try fa.alloc(f32, 7 * 4);
+    var frag_uniform_buffer = try fa.alloc(f32, 8 * 4);
+    const frag_uniform_buffer_u32: []u32 = @ptrCast(frag_uniform_buffer);
+    @memset(frag_uniform_buffer_u32, 0);
     @memcpy(frag_uniform_buffer[24..27], math.vector3.sliceConst(&camera.position));
+    frag_uniform_buffer_u32[28] = 1; // TODO: Single ambient light test
+    frag_uniform_buffer_u32[29] = 3; // TODO: Add directional lights
 
     // var frag_uniform_buffer: [4]f32 = .{ time_s, aspect_ratio, mouse_x, mouse_y };
     // var origin_frag_uniform_buffer: [4]f32 = .{ 1, 0, 1, 1 };
@@ -779,6 +605,7 @@ pub fn render(
                 .clear_color = c.SDL_FColor{ .r = 0.025, .g = 0, .b = 0.05, .a = 1 },
                 .load_op = c.SDL_GPU_LOADOP_CLEAR,
                 .store_op = c.SDL_GPU_STOREOP_STORE,
+                // .cycle = true,
             },
             1,
             &c.SDL_GPUDepthStencilTargetInfo{
@@ -806,17 +633,18 @@ pub fn render(
 
         c.SDL_BindGPUGraphicsPipeline(render_pass, graphics_pipeline);
 
-        const default_mtl = if (std.debug.runtime_safety) "testing" else "default";
         const default_texture = self.textures.getPtr("default");
         const default_sampler = self.samplers.getPtr("default");
+        const lights_buffer = self.storage_bufs.getPtr("lights");
+
+        c.SDL_BindGPUFragmentStorageBuffers(render_pass, 0, &lights_buffer.gpu_buf, 1);
 
         while (items_iter.next()) |_item| {
             const item: Item = _item;
-            const object = self.objects.getPtr(item.object);
+            const object = self.mesh_objs.getPtr(item.object);
 
             for (object.sections.items) |buf_section| {
-                const mtl = if (buf_section.material) |mtl| mtl else default_mtl;
-                // const mtl = default_mtl;
+                const mtl = if (buf_section.material) |mtl| mtl else default_material;
 
                 const material = self.materials.getPtr(mtl);
                 const mesh_buf = object.mesh_buf;
@@ -994,26 +822,6 @@ pub fn render(
     return true;
 }
 
-pub fn format(self: *const Self, w: *std.io.Writer) !void {
-    const camera = self.cameras.getPtr("default");
-    try w.print(
-        ".{{ .camera_position = {any}, .camera_direction = {any}, .kind = {t}, .{s} = {} }}",
-        .{
-            camera.position,
-            camera.direction,
-            @as(Camera.Kind, camera.kind),
-            switch (camera.kind) {
-                .ortographic => "scale",
-                .perspective => "fov",
-            },
-            switch (camera.kind) {
-                .ortographic => camera.orto_scale,
-                .perspective => camera.fov,
-            },
-        },
-    );
-}
-
 pub fn propertyEditorNode(
     self: *Self,
     editor: *ui_mod.PropertyEditorWindow,
@@ -1023,7 +831,7 @@ pub fn propertyEditorNode(
     const root_node = try editor.appendChildNode(parent, root_id, "Renderer");
     {
         const node = try editor.appendChildNode(root_node, root_id ++ ".materials", "Materials");
-        var iter = self.materials.map.map.iterator();
+        var iter = self.materials.map.iterator();
         var buf: [64]u8 = undefined;
         while (iter.next()) |entry| {
             const id = try std.fmt.bufPrint(&buf, "{s}#{s}", .{ @typeName(MaterialInfo), entry.key_ptr.* });
@@ -1035,19 +843,19 @@ pub fn propertyEditorNode(
             );
         }
     }
-    {
-        const node = try editor.appendChildNode(root_node, root_id ++ ".cameras", "Cameras");
-        var iter = self.cameras.map.map.iterator();
-        var buf: [64]u8 = undefined;
-        while (iter.next()) |entry| {
-            const id = try std.fmt.bufPrint(&buf, "{s}#{s}", .{ @typeName(Camera), entry.key_ptr.* });
-            _ = try editor.appendChild(
-                node,
-                entry.value_ptr.*.propertyEditor(),
-                id,
-                entry.key_ptr.*,
-            );
-        }
-    }
+    // {
+    //     const node = try editor.appendChildNode(root_node, root_id ++ ".cameras", "Cameras");
+    //     var iter = self.cameras.map.iterator();
+    //     var buf: [64]u8 = undefined;
+    //     while (iter.next()) |entry| {
+    //         const id = try std.fmt.bufPrint(&buf, "{s}#{s}", .{ @typeName(Camera), entry.key_ptr.* });
+    //         _ = try editor.appendChild(
+    //             node,
+    //             entry.value_ptr.*.propertyEditor(),
+    //             id,
+    //             entry.key_ptr.*,
+    //         );
+    //     }
+    // }
     return root_node;
 }

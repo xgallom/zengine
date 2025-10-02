@@ -5,7 +5,6 @@
 const std = @import("std");
 const assert = std.debug.assert;
 pub const Arena = std.heap.ArenaAllocator;
-const builtin = @import("builtin");
 
 const options = @import("zengine.zig").options;
 const log_allocator = @import("log_allocator.zig");

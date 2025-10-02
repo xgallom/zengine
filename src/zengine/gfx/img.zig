@@ -4,7 +4,6 @@
 
 const std = @import("std");
 const assert = std.debug.assert;
-const builtin = @import("builtin");
 
 const allocators = @import("../allocators.zig");
 const c = @import("../ext.zig").c;

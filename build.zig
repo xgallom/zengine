@@ -4,6 +4,7 @@ const ExtCommand = enum {
     external,
     sdl,
     sdl_image,
+    sdl_ttf,
     shadercross,
     cimgui,
     cimplot,
@@ -29,7 +30,7 @@ pub fn build(b: *std.Build) !void {
         b.fmt("clean-{t}.sh", .{ext_cmd_opt}),
     });
     const clean_ext = b.addSystemCommand(&.{clean_ext_cmd});
-    const clean_ext_step = b.step("clean-ext", "Clean external dependencies");
+    const clean_ext_step = b.step("ext-clean", "Clean external dependencies");
     clean_ext_step.dependOn(&clean_ext.step);
 
     const zengine = b.addModule("zengine", .{
@@ -48,6 +49,7 @@ pub fn build(b: *std.Build) !void {
 
     zengine.linkSystemLibrary("SDL3", .{});
     zengine.linkSystemLibrary("SDL3_image", .{});
+    zengine.linkSystemLibrary("SDL3_ttf", .{});
     zengine.linkSystemLibrary("SDL3_shadercross", .{});
     zengine.linkSystemLibrary("cimgui", .{});
     zengine.linkSystemLibrary("cimplot", .{});
@@ -64,7 +66,7 @@ pub fn build(b: *std.Build) !void {
 
     const exe = b.addExecutable(.{
         .name = "zeng",
-        .root_module = b.addModule("main", .{
+        .root_module = b.createModule(.{
             .root_source_file = b.path("src/main.zig"),
             .imports = &.{
                 .{ .name = "zengine", .module = zengine },
@@ -121,9 +123,6 @@ pub fn build(b: *std.Build) !void {
             .optimize = optimize,
         }),
     });
-
-    _ = try compile_shaders.step.addDirectoryWatchInput(b.path("shaders/include"));
-    _ = try compile_shaders.step.addDirectoryWatchInput(b.path("shaders/src"));
 
     // TODO: use instead of hlsl?
     //
@@ -185,6 +184,12 @@ pub fn build(b: *std.Build) !void {
     b.getInstallStep().dependOn(&install_shaders_dir.step);
 
     compile_shaders_cmd.has_side_effects = compile_shaders_opt orelse false;
+    // try addDirectoryWatchInput(b, &compile_shaders_cmd.step, "shaders/include");
+    // try addDirectoryWatchInput(b, &compile_shaders_cmd.step, "shaders/src");
+    // try addDirectoryWatchInput(b, &install_shaders_dir.step, "shaders/include");
+    // try addDirectoryWatchInput(b, &install_shaders_dir.step, "shaders/src");
+    // try addDirectoryWatchInput(b, b.getInstallStep(), "shaders/include");
+    // try addDirectoryWatchInput(b, b.getInstallStep(), "shaders/src");
 
     const run_cmd = b.addRunArtifact(exe);
     run_cmd.step.dependOn(b.getInstallStep());
@@ -216,4 +221,33 @@ pub fn build(b: *std.Build) !void {
     const all_step = b.step("zengine", "Build zengine with docs");
     all_step.dependOn(b.getInstallStep());
     all_step.dependOn(&install_docs.step);
+}
+
+fn addDirectoryWatchInput(b: *std.Build, step: *std.Build.Step, path: []const u8) !void {
+    const allowed_exts = [_][]const u8{".hlsl"};
+
+    if (try step.addDirectoryWatchInput(b.path(path))) {
+        var sources: std.ArrayList([]const u8) = .empty;
+        var dir = try std.fs.cwd().openDir(path, .{
+            .iterate = true,
+            .access_sub_paths = true,
+        });
+
+        var walker = try dir.walk(b.allocator);
+        defer walker.deinit();
+
+        while (try walker.next()) |entry| {
+            const ext = std.fs.path.extension(entry.basename);
+            const include_file = for (allowed_exts) |e| {
+                if (std.mem.eql(u8, ext, e))
+                    break true;
+            } else false;
+            if (include_file) try sources.append(b.allocator, b.pathJoin(&.{ path, entry.path }));
+        }
+
+        for (sources.items) |src_path| {
+            std.log.info("watch {s}", .{src_path});
+            try step.addWatchInput(b.path(src_path));
+        }
+    }
 }

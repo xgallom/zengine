@@ -19,6 +19,7 @@ pub const InputTypeEnum = union(enum) {
     text: void,
     combo: void,
     scalar: Scalar,
+    fields,
 
     pub const Scalar = enum {
         drag,
@@ -32,11 +33,13 @@ pub const InputType = struct {
     pub const combo: InputTypeEnum = .combo;
     pub const drag: InputTypeEnum = .{ .scalar = .drag };
     pub const slider: InputTypeEnum = .{ .scalar = .slider };
+    pub const fields: InputTypeEnum = .fields;
 };
 
 pub const Options = struct {
     pub const InputNull = struct {
         name: [:0]const u8,
+        show_value: bool = true,
     };
 
     pub const InputCheckbox = struct {
@@ -61,12 +64,17 @@ pub const Options = struct {
             input_type: ?InputTypeEnum.Scalar = null,
         };
     }
+
+    pub const InputFields = struct {
+        name: ?[:0]const u8 = null,
+    };
 };
 
 pub fn InputNull(comptime options: Options.InputNull) type {
     return struct {
         pub const Self = @This();
         pub const name = options.name;
+        pub const show_value = options.show_value;
 
         pub fn init() Self {
             return .{};
@@ -85,8 +93,10 @@ pub fn InputNull(comptime options: Options.InputNull) type {
             c.igTextUnformatted(name, null);
 
             _ = c.igTableNextColumn();
-            c.igAlignTextToFramePadding();
-            c.igTextUnformatted("null", null);
+            if (comptime show_value) {
+                c.igAlignTextToFramePadding();
+                c.igTextUnformatted("null", null);
+            }
 
             c.igPopID();
         }
@@ -185,7 +195,7 @@ pub fn InputCombo(comptime C: type, comptime options: Options.InputCombo) type {
     const type_info = @typeInfo(C).@"enum";
 
     if (!type_info.is_exhaustive) @compileError("Enum must be exhaustive");
-    if (type_info.tag_type != c_int and type_info.tag_type != c_uint) {
+    if (@sizeOf(type_info.tag_type) != @sizeOf(c_int)) {
         @compileError("Enum tag type must be c_int sized");
     }
 
@@ -272,6 +282,7 @@ pub fn InputScalar(comptime C: type, comptime count: usize, comptime options: Op
 
         pub const Self = @This();
         pub const name = options.name;
+        pub const depth = 0;
         pub const min: C = options.min orelse default_min;
         pub const max: C = options.max orelse default_max;
         pub const speed: f32 = options.speed orelse default_speed;
@@ -312,16 +323,20 @@ pub fn InputScalar(comptime C: type, comptime count: usize, comptime options: Op
     };
 }
 
-pub fn PropertyEditor(comptime C: type) type {
-    comptime assert(@typeInfo(C) == .@"struct");
-    const type_info = @typeInfo(C).@"struct";
+pub fn InputField(
+    comptime C: type,
+    comptime field: std.builtin.Type.StructField,
+) type {
+    const field_name = field.name ++ "_name";
+    const field_min = field.name ++ "_min";
+    const field_max = field.name ++ "_max";
+    const field_speed = field.name ++ "_speed";
+    const field_type = field.name ++ "_type";
 
     return struct {
         component: *C,
 
-        pub const fields = type_info.fields;
         pub const Self = @This();
-        pub const Component = C;
 
         pub fn init(component: *C) Self {
             return .{ .component = component };
@@ -332,48 +347,31 @@ pub fn PropertyEditor(comptime C: type) type {
         }
 
         pub fn drawImpl(component: *C, ui: *const UI, is_open: *bool) void {
-            const exclude_properties: PropertyList = comptime if (@hasDecl(C, "exclude_properties"))
-                @field(C, "exclude_properties")
-            else
-                &.{};
-
-            fields: inline for (fields) |field| {
-                comptime for (exclude_properties) |prop| {
-                    if (std.mem.eql(u8, field.name, @tagName(prop))) continue :fields;
-                };
-
-                const field_ptr = &@field(component, field.name);
-                if (comptime isOptional(field.type)) {
-                    if (field_ptr.* == null) {
-                        InputNull(.{
-                            .name = field.name,
-                        }).draw(ui, is_open);
-                    } else {
-                        drawFieldImpl(field, @ptrCast(field_ptr), ui, is_open);
-                    }
+            const field_ptr = &@field(component, field.name);
+            if (comptime isOptional(field.type)) {
+                if (field_ptr.* == null) {
+                    InputNull(.{
+                        .name = if (@hasDecl(C, field_name)) @field(C, field_name) else field.name,
+                    }).draw(ui, is_open);
                 } else {
-                    drawFieldImpl(field, field_ptr, ui, is_open);
+                    drawFieldImpl(@ptrCast(field_ptr), ui, is_open);
                 }
+            } else {
+                drawFieldImpl(field_ptr, ui, is_open);
             }
         }
 
         fn drawFieldImpl(
-            comptime field: std.builtin.Type.StructField,
-            field_ptr: *ResolveFieldType(field.type),
+            field_ptr: *ResolveOptional(field.type),
             ui: *const UI,
             is_open: *bool,
         ) void {
-            const field_min = field.name ++ "_min";
-            const field_max = field.name ++ "_max";
-            const field_speed = field.name ++ "_speed";
-            const field_type = field.name ++ "_type";
-
-            switch (@typeInfo(ResolveFieldType(field.type))) {
+            switch (@typeInfo(ResolveOptional(field.type))) {
                 .bool => InputCheckbox(.{
-                    .name = field.name,
+                    .name = if (@hasDecl(C, field_name)) @field(C, field_name) else field.name,
                 }).drawImpl(field_ptr, ui, is_open),
                 .int, .float => InputScalar(field.type, 1, .{
-                    .name = field.name,
+                    .name = if (@hasDecl(C, field_name)) @field(C, field_name) else field.name,
                     .min = if (@hasDecl(C, field_min)) @field(C, field_min) else null,
                     .max = if (@hasDecl(C, field_max)) @field(C, field_max) else null,
                     .speed = if (@hasDecl(C, field_speed)) @field(C, field_speed) else null,
@@ -385,7 +383,7 @@ pub fn PropertyEditor(comptime C: type) type {
                     if (field_info.sentinel() != 0) @compileError("Only zero-terminated strings supported");
 
                     InputText(.{
-                        .name = field.name,
+                        .name = if (@hasDecl(C, field_name)) @field(C, field_name) else field.name,
                         .read_only = field_info.is_const,
                     }).drawImpl(@constCast(field_ptr.*), ui, is_open);
                 },
@@ -401,10 +399,10 @@ pub fn PropertyEditor(comptime C: type) type {
 
                     switch (comptime input_type) {
                         .text => InputText(.{
-                            .name = field.name,
+                            .name = if (@hasDecl(C, field_name)) @field(C, field_name) else field.name,
                         }).drawImpl(field_ptr[0..len :0], ui, is_open),
                         .scalar => |scalar_type| InputScalar(field_info.child, len, .{
-                            .name = field.name,
+                            .name = if (@hasDecl(C, field_name)) @field(C, field_name) else field.name,
                             .min = if (@hasDecl(C, field_min)) @field(C, field_min) else null,
                             .max = if (@hasDecl(C, field_max)) @field(C, field_max) else null,
                             .speed = if (@hasDecl(C, field_speed)) @field(C, field_speed) else null,
@@ -414,7 +412,7 @@ pub fn PropertyEditor(comptime C: type) type {
                     }
                 },
                 .@"enum" => InputCombo(field.type, .{
-                    .name = field.name,
+                    .name = if (@hasDecl(C, field_name)) @field(C, field_name) else field.name,
                 }).drawImpl(field_ptr, ui, is_open),
                 inline else => |field_info| {
                     @compileLog(field_info);
@@ -432,10 +430,63 @@ pub fn PropertyEditor(comptime C: type) type {
     };
 }
 
+pub fn InputFields(comptime C: type, comptime options: Options.InputFields) type {
+    comptime assert(@typeInfo(C) == .@"struct");
+    const type_info = @typeInfo(C).@"struct";
+
+    return struct {
+        component: *C,
+
+        pub const Self = @This();
+        pub const fields = type_info.fields;
+
+        pub fn init(component: *C) Self {
+            return .{ .component = component };
+        }
+
+        pub fn draw(self: *const Self, ui: *const UI, is_open: *bool) void {
+            drawImpl(self.component, ui, is_open);
+        }
+
+        pub fn drawImpl(component: *C, ui: *const UI, is_open: *bool) void {
+            const exclude_properties: PropertyList = comptime if (@hasDecl(C, "exclude_properties"))
+                @field(C, "exclude_properties")
+            else
+                &.{};
+
+            if (comptime options.name) |name| {
+                InputNull(.{
+                    .name = name,
+                    .show_value = false,
+                }).draw(ui, is_open);
+            }
+
+            fields: inline for (fields) |field| {
+                comptime for (exclude_properties) |prop| {
+                    if (std.mem.eql(u8, field.name, @tagName(prop))) continue :fields;
+                };
+
+                InputField(C, field).drawImpl(component, ui, is_open);
+            }
+        }
+
+        pub fn element(self: *const Self) UI.Element {
+            return .{
+                .ptr = @ptrCast(self.component),
+                .drawFn = @ptrCast(&drawImpl),
+            };
+        }
+    };
+}
+
+pub fn PropertyEditor(comptime C: type) type {
+    return InputFields(C, .{});
+}
+
 fn isOptional(comptime T: type) bool {
     return @typeInfo(T) == .optional;
 }
 
-fn ResolveFieldType(comptime T: type) type {
-    return if (@typeInfo(T) == .optional) ResolveFieldType(std.meta.Child(T)) else T;
+fn ResolveOptional(comptime T: type) type {
+    return if (@typeInfo(T) == .optional) ResolveOptional(std.meta.Child(T)) else T;
 }

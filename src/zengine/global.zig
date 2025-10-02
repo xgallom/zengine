@@ -150,6 +150,6 @@ pub inline fn up() math.Vector3 {
     return .{ 0, 1, 0 };
 }
 
-pub inline fn cameraUp() math.Vector3 {
+pub inline fn cameraUp() math.Vertex {
     return .{ 0, 1, 0 };
 }

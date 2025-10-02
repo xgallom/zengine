@@ -35,12 +35,12 @@ const State = enum {
     gpu_uploaded,
 };
 
-const Type = enum {
+pub const Type = enum {
     vertex,
     index,
 };
 
-pub fn init(allocator: std.mem.Allocator, mesh_type: Type) !Self {
+pub fn init(allocator: std.mem.Allocator, mesh_type: Type) Self {
     return .{
         .allocator = allocator,
         .type = mesh_type,
@@ -67,6 +67,7 @@ pub fn ensureIndexesUnusedCapacity(self: *Self, comptime I: type, count: usize) 
 }
 
 pub fn appendVertices(self: *Self, comptime V: type, verts: []const V) !void {
+    comptime assert(math.Elem(V) == math.Scalar);
     assert(self.state == .cpu);
     const ptr: [*]const math.Scalar = @ptrCast(verts.ptr);
     const len = verts.len * comptime math.elemLen(V);
@@ -74,6 +75,7 @@ pub fn appendVertices(self: *Self, comptime V: type, verts: []const V) !void {
 }
 
 pub fn appendVerticesAssumeCapacity(self: *Self, comptime V: type, verts: []const V) void {
+    comptime assert(math.Elem(V) == math.Scalar);
     assert(self.state == .cpu);
     const ptr: [*]const math.Scalar = @ptrCast(verts.ptr);
     const len = verts.len * comptime math.elemLen(V);
@@ -106,11 +108,7 @@ pub fn freeCpuData(self: *Self) void {
 }
 
 pub fn createGPUBuffers(self: *Self, gpu_device: ?*c.SDL_GPUDevice) !void {
-    assert(self.state == .cpu);
-    assert(self.vert_buf == null);
-    assert(self.index_buf == null);
-    assert(self.vert_byte_len == 0);
-    assert(self.index_byte_len == 0);
+    assert(self.state == .cpu or self.state == .gpu);
     self.state = .gpu;
 
     errdefer self.releaseGPUBuffers(gpu_device);
@@ -118,24 +116,28 @@ pub fn createGPUBuffers(self: *Self, gpu_device: ?*c.SDL_GPUDevice) !void {
     // TODO: solve vert_count and index_count
     // now they are set manually by obj_loader
     self.vert_byte_len = std.mem.sliceAsBytes(self.vert_data.items).len;
-    self.vert_buf = c.SDL_CreateGPUBuffer(gpu_device, &c.SDL_GPUBufferCreateInfo{
-        .usage = c.SDL_GPU_BUFFERUSAGE_VERTEX,
-        .size = @intCast(self.vert_byte_len),
-    });
     if (self.vert_buf == null) {
-        log.err("failed creating vertex buffer: {s}", .{c.SDL_GetError()});
-        return error.BufferFailed;
+        self.vert_buf = c.SDL_CreateGPUBuffer(gpu_device, &c.SDL_GPUBufferCreateInfo{
+            .usage = c.SDL_GPU_BUFFERUSAGE_VERTEX,
+            .size = @intCast(self.vert_byte_len),
+        });
+        if (self.vert_buf == null) {
+            log.err("failed creating vertex buffer: {s}", .{c.SDL_GetError()});
+            return error.BufferFailed;
+        }
     }
 
     if (self.type == .vertex) return;
     self.index_byte_len = std.mem.sliceAsBytes(self.index_data.items).len;
-    self.index_buf = c.SDL_CreateGPUBuffer(gpu_device, &c.SDL_GPUBufferCreateInfo{
-        .usage = c.SDL_GPU_BUFFERUSAGE_INDEX,
-        .size = @intCast(self.index_byte_len),
-    });
     if (self.index_buf == null) {
-        log.err("failed creating index buffer: {s}", .{c.SDL_GetError()});
-        return error.BufferFailed;
+        self.index_buf = c.SDL_CreateGPUBuffer(gpu_device, &c.SDL_GPUBufferCreateInfo{
+            .usage = c.SDL_GPU_BUFFERUSAGE_INDEX,
+            .size = @intCast(self.index_byte_len),
+        });
+        if (self.index_buf == null) {
+            log.err("failed creating index buffer: {s}", .{c.SDL_GetError()});
+            return error.BufferFailed;
+        }
     }
 }
 

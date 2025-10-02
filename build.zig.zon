@@ -54,8 +54,8 @@
     .paths = .{
         "build.zig",
         "build.zig.zon",
-        "src",
         "shaders",
+        "src",
         "LICENSE.md",
         "README.md",
     },

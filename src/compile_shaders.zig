@@ -24,9 +24,9 @@ const usage =
 ;
 
 const Arguments = struct {
-    input_directory: []const u8,
-    output_directory: []const u8,
-    install_directory: ?[]const u8,
+    input_directory: [:0]const u8,
+    output_directory: [:0]const u8,
+    install_directory: ?[:0]const u8,
     include_directory: ?[:0]const u8,
 };
 
@@ -103,19 +103,58 @@ const ComputeMetadataJSON = struct {
 };
 
 const GraphicsMetadata = c.SDL_ShaderCross_GraphicsShaderMetadata;
+const GraphicsMetadataIOVar = c.SDL_ShaderCross_IOVarMetadata;
 const GraphicsMetadataJSON = struct {
     num_samplers: u32,
     num_storage_textures: u32,
     num_storage_buffers: u32,
     num_uniform_buffers: u32,
+    inputs: []IOVar,
+    outputs: []IOVar,
 
-    // TODO: inputs and outputs?
-    fn fromMetadata(info: *const GraphicsMetadata) GraphicsMetadataJSON {
+    const IOVar = struct {
+        name: [:0]const u8,
+        location: u32,
+        vector_type: Type,
+        vector_size: u32,
+
+        const Type = enum(c.SDL_ShaderCross_IOVarType) {
+            unknown = c.SDL_SHADERCROSS_IOVAR_TYPE_UNKNOWN,
+            i8 = c.SDL_SHADERCROSS_IOVAR_TYPE_INT8,
+            u8 = c.SDL_SHADERCROSS_IOVAR_TYPE_UINT8,
+            i16 = c.SDL_SHADERCROSS_IOVAR_TYPE_INT16,
+            u16 = c.SDL_SHADERCROSS_IOVAR_TYPE_UINT16,
+            i32 = c.SDL_SHADERCROSS_IOVAR_TYPE_INT32,
+            u32 = c.SDL_SHADERCROSS_IOVAR_TYPE_UINT32,
+            i64 = c.SDL_SHADERCROSS_IOVAR_TYPE_INT64,
+            u64 = c.SDL_SHADERCROSS_IOVAR_TYPE_UINT64,
+            f16 = c.SDL_SHADERCROSS_IOVAR_TYPE_FLOAT16,
+            f32 = c.SDL_SHADERCROSS_IOVAR_TYPE_FLOAT32,
+            f64 = c.SDL_SHADERCROSS_IOVAR_TYPE_FLOAT64,
+        };
+
+        fn fromMetadata(items: [*]const GraphicsMetadataIOVar, len: usize) ![]IOVar {
+            const buf = try allocators.global().alloc(IOVar, len);
+            for (items[0..len], 0..) |item, n| {
+                buf[n] = .{
+                    .name = std.mem.span(item.name),
+                    .location = item.location,
+                    .vector_type = @enumFromInt(item.vector_type),
+                    .vector_size = item.vector_size,
+                };
+            }
+            return buf;
+        }
+    };
+
+    fn fromMetadata(info: *const GraphicsMetadata) !GraphicsMetadataJSON {
         return .{
             .num_samplers = info.num_samplers,
             .num_storage_textures = info.num_storage_textures,
             .num_storage_buffers = info.num_storage_buffers,
             .num_uniform_buffers = info.num_uniform_buffers,
+            .inputs = try IOVar.fromMetadata(info.inputs, info.num_inputs),
+            .outputs = try IOVar.fromMetadata(info.outputs, info.num_outputs),
         };
     }
 };
@@ -192,31 +231,36 @@ pub fn main() !void {
 
         log.info("processing input file {s}", .{input_filename});
 
-        const output_filenames = std.EnumArray(FileFormat, []const u8).init(.{
-            .spirv = try std.fmt.allocPrint(
+        const output_filenames = std.EnumArray(FileFormat, [:0]const u8).init(.{
+            .spirv = try std.fmt.allocPrintSentinel(
                 allocators.scratch(),
                 "{s}" ++ FileFormat.extension(.spirv),
                 .{input_basename},
+                0,
             ),
-            .dxil = try std.fmt.allocPrint(
+            .dxil = try std.fmt.allocPrintSentinel(
                 allocators.scratch(),
                 "{s}" ++ FileFormat.extension(.dxil),
                 .{input_basename},
+                0,
             ),
-            .metal = try std.fmt.allocPrint(
+            .metal = try std.fmt.allocPrintSentinel(
                 allocators.global(),
                 "{s}" ++ FileFormat.extension(.metal),
                 .{input_basename},
+                0,
             ),
-            .hlsl = try std.fmt.allocPrint(
+            .hlsl = try std.fmt.allocPrintSentinel(
                 allocators.global(),
                 "{s}" ++ FileFormat.extension(.hlsl),
                 .{input_basename},
+                0,
             ),
-            .json = try std.fmt.allocPrint(
+            .json = try std.fmt.allocPrintSentinel(
                 allocators.global(),
                 "{s}" ++ FileFormat.extension(.json),
                 .{input_basename},
+                0,
             ),
         });
 
@@ -235,7 +279,7 @@ pub fn main() !void {
             .include_dir = if (arguments.include_directory) |dir| dir.ptr else null,
             .shader_stage = @intFromEnum(shader_stage),
             .enable_debug = std.debug.runtime_safety,
-            .name = (try allocators.scratch().dupeZ(u8, input_filename)).ptr,
+            .name = input_filename.ptr,
         };
 
         {
@@ -270,7 +314,7 @@ pub fn main() !void {
             .entrypoint = "main",
             .shader_stage = @intFromEnum(shader_stage),
             .enable_debug = std.debug.runtime_safety,
-            .name = (try allocators.scratch().dupeZ(u8, output_filenames.get(.spirv))).ptr,
+            .name = output_filenames.get(.spirv).ptr,
         };
 
         {
@@ -278,7 +322,7 @@ pub fn main() !void {
             const ptr = c.SDL_ShaderCross_TranspileMSLFromSPIRV(&spirv_info);
             if (ptr == null) fatal("failed transpiling metal from spirv: {s}", .{c.SDL_GetError()});
             metal_code.ptr = @ptrCast(@alignCast(ptr));
-            metal_code.len = std.mem.indexOfSentinel(u8, 0, metal_code.ptr);
+            metal_code.len = std.mem.len(metal_code.ptr);
             defer allocators.sdl().free(metal_code.ptr);
 
             const output_filename = output_filenames.get(.metal);
@@ -303,9 +347,9 @@ pub fn main() !void {
 fn parseArguments(allocator: std.mem.Allocator) !?Arguments {
     const args = try std.process.argsAlloc(allocator);
 
-    var input_directory: ?[]const u8 = null;
-    var output_directory: ?[]const u8 = null;
-    var install_directory: ?[]const u8 = null;
+    var input_directory: ?[:0]const u8 = null;
+    var output_directory: ?[:0]const u8 = null;
+    var install_directory: ?[:0]const u8 = null;
     var include_directory: ?[:0]const u8 = null;
 
     {
@@ -324,17 +368,17 @@ fn parseArguments(allocator: std.mem.Allocator) !?Arguments {
                 n += 1;
                 if (n >= args.len) fatal("expected argument after '{s}'", .{arg});
                 if (input_directory != null) fatal("duplicated argument {s}", .{arg});
-                input_directory = args[n];
+                input_directory = try allocator.dupeZ(u8, args[n]);
             } else if (std.mem.eql(u8, "--output-dir", arg)) {
                 n += 1;
                 if (n >= args.len) fatal("expected argument after '{s}'", .{arg});
                 if (output_directory != null) fatal("duplicated argument {s}", .{arg});
-                output_directory = args[n];
+                output_directory = try allocator.dupeZ(u8, args[n]);
             } else if (std.mem.eql(u8, "--install-dir", arg)) {
                 n += 1;
                 if (n >= args.len) fatal("expected argument after '{s}'", .{arg});
                 if (install_directory != null) fatal("duplicated argument {s}", .{arg});
-                install_directory = args[n];
+                install_directory = try allocator.dupeZ(u8, args[n]);
             } else if (std.mem.eql(u8, "--include-dir", arg)) {
                 n += 1;
                 if (n >= args.len) fatal("expected argument after '{s}'", .{arg});
@@ -404,7 +448,7 @@ fn writeGraphicsJsonFile(info: *const GraphicsMetadata, filename: []const u8, di
     defer allocators.scratch().free(writer_buf);
 
     var writer = file.writer(writer_buf);
-    try std.json.fmt(GraphicsMetadataJSON.fromMetadata(info), .{}).format(&writer.interface);
+    try std.json.fmt(try GraphicsMetadataJSON.fromMetadata(info), .{}).format(&writer.interface);
     try writer.end();
     log.info("processed output file {s}", .{filename});
 }

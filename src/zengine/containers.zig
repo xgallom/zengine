@@ -4,6 +4,8 @@
 
 const std = @import("std");
 
+pub const ArrayKeyMap = @import("containers/key_map.zig").ArrayKeyMap;
+pub const ArrayPtrKeyMap = @import("containers/key_map.zig").ArrayPtrKeyMap;
 pub const KeyMap = @import("containers/key_map.zig").KeyMap;
 pub const PtrKeyMap = @import("containers/key_map.zig").PtrKeyMap;
 pub const KeyTree = @import("containers/key_tree.zig").KeyTree;

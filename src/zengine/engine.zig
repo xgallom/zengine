@@ -56,7 +56,7 @@ pub fn initWindow(self: *Self) !void {
 }
 
 pub fn deinit(self: *Self) void {
-    defer c.SDL_Quit();
     if (self.window != null) c.SDL_DestroyWindow(self.window);
     self.* = .{};
+    c.SDL_Quit();
 }

@@ -15,22 +15,44 @@ bump_map: ?[:0]const u8 = null,
 
 clr_ambient: RGBf32 = math.rgbf32.one,
 clr_diffuse: RGBf32 = math.rgbf32.one,
-clr_specular: RGBf32 = math.rgbf32.one,
+clr_specular: RGBf32 = math.rgbf32.zero,
 clr_emissive: RGBf32 = math.rgbf32.zero,
 clr_filter: RGBf32 = math.rgbf32.one,
-specular_exp: f32 = 10,
+specular_exp: f32 = 1,
 ior: f32 = 1,
 alpha: f32 = 1,
 mode: u8 = 0,
 
 const Self = @This();
 
+pub const clr_ambient_min = 0;
+pub const clr_ambient_max = 1;
+pub const clr_ambient_speed = 0.05;
+pub const clr_diffuse_min = 0;
+pub const clr_diffuse_max = 1;
+pub const clr_diffuse_speed = 0.05;
+pub const clr_specular_min = 0;
+pub const clr_specular_max = 1;
+pub const clr_specular_speed = 0.05;
+pub const clr_emissive_min = 0;
+pub const clr_emissive_max = 1;
+pub const clr_emissive_speed = 0.05;
+pub const clr_filter_min = 0;
+pub const clr_filter_max = 1;
+pub const clr_filter_speed = 0.1;
+pub const specular_exp_min = 0.1;
+pub const specular_exp_speed = 0.1;
+pub const alpha_min = 0;
+pub const alpha_max = 1;
+pub const alpha_speed = 0.05;
+
 pub fn config(self: *const Self) u32 {
     var result: std.bit_set.IntegerBitSet(32) = .initEmpty();
     if (self.texture != null) result.set(0);
     if (self.diffuse_map != null) result.set(1);
     if (self.bump_map != null) result.set(2);
-    if (!math.rgbf32.eqlExact(&self.clr_filter, &math.rgbf32.zero)) result.set(3);
+    result.set(3);
+    // if (!math.rgbf32.eqlExact(&self.clr_filter, &math.rgbf32.zero)) result.set(3);
     return result.mask;
 }
 

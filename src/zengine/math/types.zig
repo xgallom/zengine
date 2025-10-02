@@ -66,6 +66,8 @@ pub const Coords3f64 = CoordsNT(3, Scalar64);
 pub const Coords4 = CoordsNT(4, Scalar);
 pub const Coords4f64 = CoordsNT(4, Scalar64);
 
+pub const RGBu8 = Vector3T(u8);
+pub const RGBAu8 = Vector4T(u8);
 pub const RGBf32 = Vector3;
 pub const RGBAf32 = Vector4;
 pub const Vertex = Vector3;

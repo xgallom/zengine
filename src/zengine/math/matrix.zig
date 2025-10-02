@@ -31,6 +31,7 @@ pub fn matrixMxNT(comptime M: comptime_int, comptime N: comptime_int, comptime T
         pub const identity = makeIdentity();
 
         fn makeIdentity() Self {
+            if (rows != cols) @compileError("Must be square matrix");
             var result = zero;
             for (0..rows) |i| {
                 result[i][i] = scalar.one;
@@ -76,83 +77,70 @@ pub fn matrixMxNT(comptime M: comptime_int, comptime N: comptime_int, comptime T
         pub fn add(self: *Self, other: *const Self) void {
             const s = slice(self);
             const o = sliceConst(other);
-            for (0..len) |n| {
-                s[n] += o[n];
-            }
+            for (0..len) |n| s[n] += o[n];
         }
 
         /// Y_mn -= O_mn
         pub fn sub(self: *Self, other: *const Self) void {
             const s = slice(self);
             const o = sliceConst(other);
-            for (0..len) |n| {
-                s[n] -= o[n];
-            }
+            for (0..len) |n| s[n] -= o[n];
         }
 
         /// Y_mn *= O_mn
         pub fn mul(self: *Self, other: *const Self) void {
             const s = slice(self);
             const o = sliceConst(other);
-            for (0..len) |n| {
-                s[n] *= o[n];
-            }
+            for (0..len) |n| s[n] *= o[n];
         }
 
         /// Y_mn /= O_mn
         pub fn div(self: *Self, other: *const Self) void {
             const s = slice(self);
             const o = sliceConst(other);
-            for (0..len) |n| {
-                s[n] /= o[n];
-            }
+            for (0..len) |n| s[n] /= o[n];
         }
 
         /// Y_mn += O_mn * mul
         pub fn mulAdd(self: *Self, other: *const Self, multiplier: Scalar) void {
             const s = slice(self);
             const o = sliceConst(other);
-            for (0..len) |n| {
-                s[n] = @mulAdd(Scalar, o[n], multiplier, s[n]);
-            }
+            for (0..len) |n| s[n] = @mulAdd(Scalar, o[n], multiplier, s[n]);
         }
 
         /// Y_mn -= O_mn * mul
         pub fn mulSub(self: *Self, other: *const Self, multiplier: Scalar) void {
             const s = slice(self);
             const o = sliceConst(other);
-            for (0..len) |n| {
-                s[n] = @mulAdd(Scalar, o[n], -multiplier, s[n]);
-            }
+            for (0..len) |n| s[n] = @mulAdd(Scalar, o[n], -multiplier, s[n]);
         }
 
         /// Y_mn *= mul
         pub fn scale(self: *Self, multiplier: Scalar) void {
             const s = slice(self);
-            for (0..len) |n| {
-                s[n] *= multiplier;
-            }
+            for (0..len) |n| s[n] *= multiplier;
         }
 
         /// Y_mn *= 1 / mul
         pub fn scaleRecip(self: *Self, multiplier: Scalar) void {
             const s = slice(self);
-            const recip = scalar.one / multiplier;
-            for (0..len) |n| {
-                s[n] *= recip;
+            if (comptime scalar.is_float) {
+                const recip = scalar.one / multiplier;
+                for (0..len) |n| s[n] *= recip;
+            } else {
+                const recip = scalar.one / multiplier;
+                for (0..len) |n| s[n] /= recip;
             }
         }
 
         /// Y_m = O_mn X_n
         pub fn apply(result: *vector.Self, operation: *const Self, operand: *const vector.Self) void {
-            for (0..rows) |y| {
-                vector.dotInto(&result[y], &operation[y], operand);
-            }
+            for (0..rows) |y| vector.dotInto(&result[y], &operation[y], operand);
         }
 
         /// Y_mn = L_mx R_xn
         pub fn dot(result: *Self, lhs: *const Self, rhs: *const Self) void {
-            comptime assert(rows == cols);
+            if (rows != cols) @compileError("Must be square matrix");
             for (0..rows) |y| {
                 for (0..cols) |x| {
                     result[y][x] = scalar.zero;
@@ -165,7 +153,7 @@ pub fn matrixMxNT(comptime M: comptime_int, comptime N: comptime_int, comptime T
 
         /// Y_mn = R_mx L_nx
         pub fn dotRight(result: *Self, lhs: *const Self, rhs: *const Self) void {
-            comptime assert(rows == cols);
+            if (rows != cols) @compileError("Must be square matrix");
             for (0..rows) |y| {
                 for (0..cols) |x| {
                     result[y][x] = scalar.zero;
@@ -178,7 +166,7 @@ pub fn matrixMxNT(comptime M: comptime_int, comptime N: comptime_int, comptime T
 
         /// Y_mn = X_nm
         pub fn transpose(self: *Self) void {
-            comptime assert(rows == cols);
+            if (rows != cols) @compileError("Must be square matrix");
             for (0..rows) |y| {
                 for (0..y) |x| {
                     const tmp = self[y][x];
@@ -201,7 +189,15 @@ pub fn matrixMxNT(comptime M: comptime_int, comptime N: comptime_int, comptime T
             };
         }
 
-        pub fn ortographicSides(result: *Self, top: Scalar, right: Scalar, bottom: Scalar, left: Scalar, near_plane: Scalar, far_plane: Scalar) void {
+        pub fn ortographicSides(
+            result: *Self,
+            top: Scalar,
+            right: Scalar,
+            bottom: Scalar,
+            left: Scalar,
+            near_plane: Scalar,
+            far_plane: Scalar,
+        ) void {
             if (rows == 4 and cols == 4) {} else @compileError("Wrong matrix dimensions");
             const x = right - left;
             const y = top - bottom;
@@ -214,7 +210,14 @@ pub fn matrixMxNT(comptime M: comptime_int, comptime N: comptime_int, comptime T
             };
         }
 
-        pub fn ortographicScale(result: *Self, orto_scale: Scalar, width: Scalar, height: Scalar, near_plane: Scalar, far_plane: Scalar) void {
+        pub fn ortographicScale(
+            result: *Self,
+            orto_scale: Scalar,
+            width: Scalar,
+            height: Scalar,
+            near_plane: Scalar,
+            far_plane: Scalar,
+        ) void {
             if (rows == 4 and cols == 4) {} else @compileError("Wrong matrix dimensions");
             const y: Scalar = orto_scale;
             const x = y * width / height;
@@ -227,7 +230,14 @@ pub fn matrixMxNT(comptime M: comptime_int, comptime N: comptime_int, comptime T
             };
         }
 
-        pub fn perspectiveFov(result: *Self, fov: Scalar, width: Scalar, height: Scalar, near_plane: Scalar, far_plane: Scalar) void {
+        pub fn perspectiveFov(
+            result: *Self,
+            fov: Scalar,
+            width: Scalar,
+            height: Scalar,
+            near_plane: Scalar,
+            far_plane: Scalar,
+        ) void {
             if (rows == 4 and cols == 4) {} else @compileError("Wrong matrix dimensions");
             const y = scalar.one / @tan(scalar.init(0.5) * fov);
             const x = y * height / width;
@@ -240,7 +250,12 @@ pub fn matrixMxNT(comptime M: comptime_int, comptime N: comptime_int, comptime T
             };
         }
 
-        pub fn camera(result: *Self, position: *const Vector3, direction: *const Vector3, up: *const Vector3) void {
+        pub fn camera(
+            result: *Self,
+            position: *const Vector3,
+            direction: *const Vector3,
+            up: *const Vector3,
+        ) void {
             if (rows == 4 and cols == 4) {} else @compileError("Wrong matrix dimensions");
             var coordinates: vector3.Coords = undefined;
             vector3.cameraCoords(&coordinates, direction, up);
@@ -257,7 +272,12 @@ pub fn matrixMxNT(comptime M: comptime_int, comptime N: comptime_int, comptime T
             };
         }
 
-        pub fn lookAt(result: *Self, position: *const Vector3, target: *const Vector3, up: *const Vector3) void {
+        pub fn lookAt(
+            result: *Self,
+            position: *const Vector3,
+            target: *const Vector3,
+            up: *const Vector3,
+        ) void {
             if (rows == 4 and cols == 4) {} else @compileError("Wrong matrix dimensions");
             var direction = target.*;
             vector3.sub(&direction, position);

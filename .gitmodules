@@ -2,9 +2,17 @@
 	path = external/SDL
 	url = https://github.com/libsdl-org/SDL.git
 	ignore = dirty
+[submodule "external/SDL_image"]
+	path = external/SDL_image
+	url = https://github.com/libsdl-org/SDL_image.git
+	ignore = dirty
 [submodule "external/SDL_shadercross"]
 	path = external/SDL_shadercross
 	url = https://github.com/libsdl-org/SDL_shadercross.git
+	ignore = dirty
+[submodule "external/SDL_ttf"]
+	path = external/SDL_ttf
+	url = https://github.com/libsdl-org/SDL_ttf.git
 	ignore = dirty
 [submodule "external/cimgui"]
 	path = external/cimgui
@@ -13,6 +21,4 @@
 [submodule "external/cimplot"]
 	path = external/cimplot
 	url = https://github.com/cimgui/cimplot.git
-[submodule "external/SDL_image"]
-	path = external/SDL_image
-	url = https://github.com/libsdl-org/SDL_image.git
+	ignore = dirty

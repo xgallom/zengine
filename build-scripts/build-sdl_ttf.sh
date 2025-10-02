@@ -1,10 +1,10 @@
 #!/bin/bash
 
-printf "Building SDL3 Shadercross\n"
+printf "Building SDL3 TTF\n"
 printf -- "----------------------------------------------------------------------------------------------------\n\n"
 
 SDIR="$PWD"
-PDIR="$PWD/external/SDL_shadercross"
+PDIR="$PWD/external/SDL_ttf"
 BDIR="$PDIR/build"
 IDIR="$PWD/external/build"
 
@@ -18,9 +18,9 @@ cd "$BDIR"
 
 CMAKE_INSTALL_PREFIX="$IDIR" cmake .. \
 	-DCMAKE_FIND_PACKAGE_REDIRECTS_DIR="$IDIR/lib/cmake" \
-	-DSDLSHADERCROSS_VENDORED=ON \
+	-DSDLTTF_VENDORED=ON \
 	-DBUILD_SHARED_LIBS=ON \
-	-DSDLSHADERCROSS_INSTALL=ON \
+	-DSDLTTF_INSTALL=ON \
 
 make -j 8
 make install

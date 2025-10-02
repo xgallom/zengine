@@ -26,6 +26,8 @@ pub const Coords3 = types.Coords3;
 pub const Coords3f64 = types.Coords3f64;
 pub const Coords4 = types.Coords4;
 pub const Coords4f64 = types.Coords4f64;
+pub const RGBu8 = types.RGBu8;
+pub const RGBAu8 = types.RGBAu8;
 pub const RGBf32 = types.RGBf32;
 pub const RGBAf32 = types.RGBAf32;
 pub const Vertex = types.Vertex;
@@ -78,6 +80,8 @@ pub const matrix3x3f64 = matrixMxNT(3, 3, types.Scalar64);
 pub const matrix4x4 = matrixMxNT(4, 4, types.Scalar);
 pub const matrix4x4f64 = matrixMxNT(4, 4, types.Scalar64);
 
+pub const rgbu8 = vector3T(u8);
+pub const rgbau8 = vector4T(u8);
 pub const rgbf32 = vector3;
 pub const rgbaf32 = vector4;
 pub const vertex = vector3;
@@ -92,7 +96,15 @@ pub fn elemLen(comptime T: type) comptime_int {
     return switch (@typeInfo(T)) {
         .int, .float => 1,
         inline .array, .vector => |type_info| type_info.len * elemLen(type_info.child),
-        else => @compileError("Unsupported type"),
+        else => @compileError("Expected int, float, array or vector type, found '" ++ @typeName(T) ++ "'"),
+    };
+}
+
+pub fn Elem(comptime T: type) type {
+    return switch (@typeInfo(T)) {
+        .int, .float, .comptime_int, .comptime_float => T,
+        inline .array, .vector => |type_info| Elem(type_info.child),
+        else => @compileError("Expected int, float, array or vector type, found '" ++ @typeName(T) ++ "'"),
     };
 }
 

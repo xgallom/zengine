@@ -12,7 +12,7 @@ const ui = @import("../ui.zig");
 
 const log = std.log.scoped(.gfx_camera);
 
-surface: ?*c.SDL_Surface,
+surface: ?*c.SDL_Surface = null,
 texture: ?*c.SDL_GPUTexture = null,
 state: State = .cpu,
 

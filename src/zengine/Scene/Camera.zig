@@ -5,39 +5,32 @@
 const std = @import("std");
 const assert = std.debug.assert;
 
-const c = @import("../ext.zig").c;
 const global = @import("../global.zig");
 const math = @import("../math.zig");
 const ui = @import("../ui.zig");
 
-const log = std.log.scoped(.gfx_camera);
-
-const Objects = std.ArrayList(Self);
+const log = std.log.scoped(.scene_camera);
 
 kind: Kind = .perspective,
-position: math.Vector3 = math.vector3.zero,
-direction: math.Vector3 = .{ 1, 0, 0 },
-up: math.Vector3 = global.cameraUp(),
+position: math.Vertex = math.vertex.zero,
+direction: math.Vertex = .{ 1, 0, 0 },
+up: math.Vertex = global.cameraUp(),
 fov: f32 = 45,
 orto_scale: f32 = 100,
 
 const Self = @This();
 
-pub const position_min = -1000;
-pub const position_max = 1000;
-pub const direction_min = -1000;
-pub const direction_max = 1000;
-pub const fov_min = 35;
-pub const fov_max = 135;
-pub const fov_speed = 1;
-pub const orto_scale_min = 1;
-pub const orto_scale_max = 500;
-pub const orto_scale_speed = 1;
-
-pub const Kind = enum(c_uint) {
+pub const Kind = enum(u32) {
     ortographic,
     perspective,
 };
+
+pub const fov_min = 35;
+pub const fov_max = 135;
+pub const fov_speed = 0.1;
+pub const orto_scale_min = 1;
+pub const orto_scale_max = 1000;
+pub const orto_scale_speed = 1;
 
 pub fn transform(self: *const Self, result: *math.Matrix4x4) void {
     math.matrix4x4.camera(

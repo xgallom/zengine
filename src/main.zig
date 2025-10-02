@@ -1,10 +1,16 @@
+//!
+//! The zengine main executable
+//!
+
 const std = @import("std");
 const assert = std.debug.assert;
+const builtin = @import("builtin");
 
 const zengine = @import("zengine");
 const allocators = zengine.allocators;
 const ecs = zengine.ecs;
 const gfx = zengine.gfx;
+const Scene = zengine.Scene;
 const global = zengine.global;
 const math = zengine.math;
 const perf = zengine.perf;
@@ -34,7 +40,13 @@ pub const std_options: std.Options = .{
     // },
 };
 
-pub const zengine_options: zengine.Options = .{};
+pub const zengine_options: zengine.Options = .{
+    .has_debug_ui = false,
+    .gfx = .{
+        .enable_normal_smoothing = true,
+        .normal_smoothing_angle_limit = 89,
+    },
+};
 
 const RenderItems = struct {
     iter: ecs.PrimitiveComponentManager(gfx.Renderer.Item).Iterator,
@@ -56,6 +68,13 @@ const RenderItems = struct {
 };
 
 pub fn main() !void {
+    for ([_]f32{ -1, -0.7, -0.5, -0.3, 0, 0.2, 0.5, 0.8, 1 }) |x| {
+        log.info("acos({}) = {}rad = {}deg", .{
+            x,
+            std.math.acos(x),
+            std.math.radiansToDegrees(std.math.acos(x)),
+        });
+    }
     // memory limit 1GB, SDL allocations are not tracked
     try allocators.init(1_000_000_000);
     defer allocators.deinit();
@@ -83,6 +102,9 @@ pub fn main() !void {
     const renderer = try gfx.Renderer.init(engine);
     defer renderer.deinit(engine);
 
+    const scene = try Scene.init();
+    defer scene.deinit();
+
     const ui = try UI.init(engine, renderer);
     defer ui.deinit();
     log.info("window size: {}", .{engine.window_size});
@@ -92,160 +114,99 @@ pub fn main() !void {
 
     var controls = zengine.controls.CameraControls{};
     var speed_change_timer = time.Timer.init(500);
-    var speed_scale: f32 = 1;
+    var speed_scale: f32 = 5;
 
     try perf.commitGraph();
-    defer {
-        perf.releaseGraph();
+    defer perf.releaseGraph();
+
+    var gfx_loader = try gfx.Loader.init(renderer);
+    defer gfx_loader.deinit();
+    {
+        errdefer gfx_loader.cancel();
+
+        _ = try gfx_loader.loadMesh(scene, "Cat", "cat.obj");
+        _ = try gfx_loader.loadMesh(scene, "Cow", "cow_nonormals.obj");
+        _ = try gfx_loader.loadMesh(scene, "Mountain", "mountain.obj");
+        _ = try gfx_loader.loadMesh(scene, "Cube", "cube.obj");
+        _ = try gfx_loader.createOriginMesh();
+        _ = try gfx_loader.createDefaultMaterial();
+        _ = try gfx_loader.createTestingMaterial();
+        _ = try gfx_loader.createDefaultTexture();
+
+        _ = try scene.createDefaultCamera();
+        _ = try scene.createDefaultLights();
+
+        _ = try gfx_loader.createLightsBuffer(scene);
+
+        try gfx_loader.commit();
     }
 
     sections.sub(.init).end();
 
-    const AudioFormat = enum(c_int) {
-        unknown = c.SDL_AUDIO_UNKNOWN,
-        u8 = c.SDL_AUDIO_U8,
-        s8 = c.SDL_AUDIO_S8,
-        s16be = c.SDL_AUDIO_S16BE,
-        s32be = c.SDL_AUDIO_S32BE,
-        f32be = c.SDL_AUDIO_F32BE,
-        s16 = c.SDL_AUDIO_S16,
-        s32 = c.SDL_AUDIO_S32,
-        f32 = c.SDL_AUDIO_F32,
-
-        fn asText(format: @This()) []const u8 {
-            return switch (format) {
-                inline else => |fmt| @tagName(fmt),
-            };
-        }
-    };
-
-    var in_device_count: c_int = undefined;
-    var in_devices: []c.SDL_AudioDeviceID = undefined;
-    in_devices.ptr = c.SDL_GetAudioRecordingDevices(&in_device_count) orelse unreachable;
-    in_devices.len = @intCast(in_device_count);
-    var in_infos = try std.ArrayList(struct {
-        name: [*:0]const u8,
-        spec: c.SDL_AudioSpec,
-        sample_frames: c_int,
-    }).initCapacity(allocators.global(), in_devices.len);
-    defer allocators.sdl().free(in_devices.ptr);
-    for (in_devices) |id| {
-        const info = in_infos.addOneAssumeCapacity();
-        if (!c.SDL_GetAudioDeviceFormat(id, &info.spec, &info.sample_frames)) {
-            log.err("failed getting audio spec for device {}: {s}", .{ id, c.SDL_GetError() });
-            return;
-        }
-        const name = c.SDL_GetAudioDeviceName(id);
-        if (name == null) {
-            log.err("failed getting name for audio device {}: {s}", .{ id, c.SDL_GetError() });
-            return;
-        }
-        info.name = name.?;
-    }
-    for (in_infos.items, in_devices) |info, id| {
-        const name = info.name;
-        const spec = info.spec;
-        const sample_frames = info.sample_frames;
-        log.info("audio in[{}]: {s} @{}Hz {t} {}ch {}f", .{
-            id,
-            name,
-            spec.freq,
-            @as(AudioFormat, @enumFromInt(spec.format)),
-            spec.channels,
-            sample_frames,
-        });
-    }
-
-    var out_device_count: c_int = undefined;
-    var out_devices: []c.SDL_AudioDeviceID = undefined;
-    out_devices.ptr = c.SDL_GetAudioPlaybackDevices(&out_device_count) orelse unreachable;
-    out_devices.len = @intCast(out_device_count);
-    var out_infos = try std.ArrayList(struct {
-        name: [*:0]const u8,
-        spec: c.SDL_AudioSpec,
-        sample_frames: c_int,
-    }).initCapacity(allocators.global(), out_devices.len);
-    defer allocators.sdl().free(out_devices.ptr);
-    for (out_devices) |id| {
-        const info = out_infos.addOneAssumeCapacity();
-        if (!c.SDL_GetAudioDeviceFormat(id, &info.spec, &info.sample_frames)) {
-            log.err("failed getting audio spec for device {}: {s}", .{ id, c.SDL_GetError() });
-            return;
-        }
-        const name = c.SDL_GetAudioDeviceName(id);
-        if (name == null) {
-            log.err("failed getting name for audio device {}: {s}", .{ id, c.SDL_GetError() });
-            return;
-        }
-        info.name = name.?;
-    }
-    for (out_infos.items, out_devices) |info, id| {
-        const name = info.name;
-        const spec = info.spec;
-        const sample_frames = info.sample_frames;
-        log.info("audio out[{}]: {s} @{}Hz {t} {}ch {}f", .{
-            id,
-            name,
-            spec.freq,
-            @as(AudioFormat, @enumFromInt(spec.format)),
-            spec.channels,
-            sample_frames,
-        });
-    }
-
-    for (0..10) |n| {
-        const key = try std.fmt.allocPrint(allocators.scratch(), "camera_{:02}", .{n + 1});
-        _ = try renderer.cameras.insert(key, .{});
-    }
-
     var render_items = try ecs.PrimitiveComponentManager(gfx.Renderer.Item).init(allocators.gpa(), 128);
     defer render_items.deinit();
 
-    // const pi = std.math.pi;
-    // _ = try render_items.push(.{
-    //     .object = "Cat",
-    //     .position = .{ 200, 0, 0 },
-    //     .rotation = .{ -pi / 2.0, 0, 0 },
-    //     .scale = math.vertex.one,
-    // });
+    const pi = std.math.pi;
 
-    // _ = try render_items.push(.{
-    //     .object = "Cow",
-    //     .position = .{ 0, 0, 0 },
-    //     .rotation = .{ 0, -pi / 2.0, 0 },
-    //     .scale = .{ 10, 10, 10 },
-    // });
+    const cat = try render_items.push(.{
+        .object = "Cat",
+        .position = .{ 200, 0, 0 },
+        .rotation = .{ -pi / 2.0, 0, 0 },
+        .scale = math.vertex.one,
+    });
 
-    // _ = try render_items.push(.{
-    //     .object = "Plane",
-    //     .position = .{ 0, -150, 0 },
-    //     .rotation = math.vertex.zero,
-    //     .scale = .{ 100, 100, 100 },
-    // });
-
-    // _ = try render_items.push(.{
-    //     .object = "Landscape",
-    //     .position = .{ 0, -150, 0 },
-    //     .rotation = math.vertex.zero,
-    //     .scale = .{ 100, 100, 100 },
-    // });
-
-    // const names = [_][:0]const u8{
-    //     "Cube +Z",
-    //     "Cube -X",
-    //     "Cube -Y",
-    //     "Cube -Z",
-    //     "Cube +X",
-    //     "Cube +Y",
-    // };
-    // for (names) |name| {
-    _ = try render_items.push(.{
-        .object = "Cube",
+    const cow = try render_items.push(.{
+        .object = "Cow",
         .position = .{ 0, 0, 0 },
-        .rotation = math.vertex.zero,
+        .rotation = .{ 0, -pi / 2.0, 0 },
         .scale = .{ 10, 10, 10 },
     });
-    // }
+
+    const plane = try render_items.push(.{
+        .object = "Plane",
+        .position = .{ 0, -150, 0 },
+        .rotation = math.vertex.zero,
+        .scale = .{ 100, 100, 100 },
+    });
+
+    const landscape = try render_items.push(.{
+        .object = "Landscape",
+        .position = .{ 0, -150, 0 },
+        .rotation = math.vertex.zero,
+        .scale = .{ 100, 100, 100 },
+    });
+
+    const cube_r = try render_items.push(.{
+        .object = "Cube R",
+        .position = .{ 100, 0, 0 },
+        .rotation = math.vertex.zero,
+        .scale = .{ 3, 3, 3 },
+    });
+    const cube_g = try render_items.push(.{
+        .object = "Cube G",
+        .position = .{ 0, 100, 0 },
+        .rotation = math.vertex.zero,
+        .scale = .{ 3, 3, 3 },
+    });
+    const cube_b = try render_items.push(.{
+        .object = "Cube B",
+        .position = .{ -100, 0, 0 },
+        .rotation = math.vertex.zero,
+        .scale = .{ 3, 3, 3 },
+    });
+    // const cube = try render_items.push(.{
+    //     .object = "Cube",
+    //     .position = .{ 65, 0, 0 },
+    //     .rotation = math.vertex.zero,
+    //     .scale = .{ 3, 3, 3 },
+    // });
+    //
+    // const smooth_cube = try render_items.push(.{
+    //     .object = "Smooth Cube",
+    //     .position = .{ -65, 0, 0 },
+    //     .rotation = math.vertex.zero,
+    //     .scale = .{ 3, 3, 3 },
+    // });
 
     var debug_ui = zengine.ui.DebugUI.init();
 
@@ -255,6 +216,9 @@ pub fn main() !void {
     const gfx_node = try property_editor.appendNode(@typeName(gfx), "gfx");
     _ = try renderer.propertyEditorNode(&property_editor, gfx_node);
 
+    const scene_node = try property_editor.appendNode(@typeName(Scene), "scene");
+    _ = try scene.propertyEditorNode(&property_editor, scene_node);
+
     const main_node = try property_editor.appendNode(@typeName(@This()), "main");
     _ = try render_items.propertyEditorNode(&property_editor, main_node);
 
@@ -262,6 +226,9 @@ pub fn main() !void {
     var perf_window = zengine.ui.PerfWindow.init(allocators.global());
 
     allocators.scratchRelease();
+
+    var rnd = std.Random.DefaultPrng.init(@intCast(std.time.milliTimestamp()));
+    var dir: math.Vertex = .{ 1, 0, 0 };
 
     return mainloop: while (true) {
         defer perf.reset();
@@ -375,7 +342,7 @@ pub fn main() !void {
         section.sub(.input).end();
         section.sub(.update).begin();
 
-        const camera = renderer.cameras.getPtr("default");
+        const camera = scene.cameras.getPtr("default");
 
         var coords: math.vector3.Coords = undefined;
         camera.coords(&coords);
@@ -388,6 +355,58 @@ pub fn main() !void {
         log.debug("coords_norm: {any}", .{coords});
 
         // math.vector2.localCoords(&coordinates2, &.{ 0, 1 }, &.{ 1, 0 });
+
+        const time_s = global.timeSinceStart().toFloat().toValue32(.s) * 2;
+        render_items.getPtr(cat).rotation[1] = 10 * time_s;
+        render_items.getPtr(cat).position[1] = 25 * @cos(5 * time_s);
+        render_items.getPtr(cow).rotation[0] = time_s;
+        // render_items.getPtr(cube).rotation[1] = 11 * time_s;
+        // render_items.getPtr(cube).rotation[2] = 11.1 * time_s;
+        // render_items.getPtr(smooth_cube).rotation[1] = 12 * time_s;
+        // render_items.getPtr(smooth_cube).rotation[2] = 10.9 * time_s;
+        _ = plane;
+        _ = landscape;
+
+        {
+            errdefer gfx_loader.cancel();
+
+            const diffuse_r = scene.lights.getPtr("diffuse_r");
+            const diffuse_g = scene.lights.getPtr("diffuse_g");
+            const diffuse_b = scene.lights.getPtr("diffuse_b");
+
+            const cos = @cos(time_s);
+            const sin = @sin(time_s);
+            const x = 150 * cos;
+            const y = 25 * cos;
+            const z = 150 * sin;
+
+            const rx: i64 = @intCast(rnd.next() % 31);
+            const ry: i64 = @intCast(rnd.next() % 31);
+            const rz: i64 = @intCast(rnd.next() % 31);
+            const dx: f32 = @floatFromInt(rx - 15);
+            const dy: f32 = @floatFromInt(ry - 15);
+            const dz: f32 = @floatFromInt(rz - 15);
+
+            var g_pos = diffuse_g.point.position;
+            var axis: math.Vertex = .{ dx, dy, dz };
+            math.vertex.normalize(&axis);
+            math.vertex.rotateDirectionScale(&dir, &axis, 20 * delta);
+            math.vertex.normalize(&dir);
+            math.vertex.translateScale(&g_pos, &dir, 20 * delta);
+
+            const r_pos = .{ x, y + 55, z };
+            const b_pos = .{ -x, -y + 55, -z };
+
+            render_items.getPtr(cube_r).position = r_pos;
+            diffuse_r.point.position = r_pos;
+            render_items.getPtr(cube_g).position = g_pos;
+            diffuse_g.point.position = g_pos;
+            render_items.getPtr(cube_b).position = b_pos;
+            diffuse_b.point.position = b_pos;
+
+            _ = try gfx_loader.createLightsBuffer(scene);
+            try gfx_loader.commit();
+        }
 
         if (controls.has(.yaw_neg))
             math.vector3.rotateDirectionScale(&camera.direction, &coords.x, -rotation_speed);
@@ -449,13 +468,13 @@ pub fn main() !void {
         math.vector3.normalize(&camera.direction);
         camera.orto_scale = std.math.clamp(
             camera.orto_scale,
-            gfx.Camera.orto_scale_min,
-            gfx.Camera.orto_scale_max,
+            Scene.Camera.orto_scale_min,
+            Scene.Camera.orto_scale_max,
         );
         camera.fov = std.math.clamp(
             camera.fov,
-            gfx.Camera.fov_min,
-            gfx.Camera.fov_max,
+            Scene.Camera.fov_min,
+            Scene.Camera.fov_max,
         );
 
         section.sub(.update).end();
@@ -480,7 +499,7 @@ pub fn main() !void {
         {
             var items = RenderItems.init(&render_items);
             defer items.deinit();
-            _ = try renderer.render(engine, ui, &items);
+            _ = try renderer.render(engine, scene, ui, &items);
         }
 
         section.sub(.render).end();
