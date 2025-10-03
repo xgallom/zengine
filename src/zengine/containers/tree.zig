@@ -87,6 +87,18 @@ pub fn Tree(comptime V: type, comptime options: struct {
             }
         };
 
+        pub const ConstEdgeIterator = struct {
+            curr: ?*const Edges.Node,
+
+            pub fn next(i: *ConstEdgeIterator) ?*const Node {
+                if (i.curr) |curr| {
+                    i.curr = curr.next;
+                    return @fieldParentPtr("edge_node", curr);
+                }
+                return null;
+            }
+        };
+
         pub const Pusher = struct {
             self: *Self,
             unmanaged: Unmanaged = .{},
@@ -132,6 +144,10 @@ pub fn Tree(comptime V: type, comptime options: struct {
         };
 
         pub fn iterator(self: *Self) EdgeIterator {
+            return .{ .curr = self.edges.first };
+        }
+
+        pub fn iteratorConst(self: *const Self) ConstEdgeIterator {
             return .{ .curr = self.edges.first };
         }
 

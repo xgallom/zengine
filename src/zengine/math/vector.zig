@@ -20,6 +20,33 @@ pub fn vectorNT(comptime N: comptime_int, comptime T: type) type {
         pub const zero = splat(scalar.zero);
         pub const one = splat(scalar.one);
         pub const neg_one = splat(scalar.neg_one);
+        pub const ntr_zero = makeNonTransformable(vectorNT(len - 1, T).zero);
+        pub const ntr_fwd = makeNonTransformableFwd(scalar.one);
+        pub const tr_zero = makeTransformable(vectorNT(len - 1, T).zero);
+        pub const tr_fwd = makeTransformableFwd(scalar.one);
+
+        pub fn makeNonTransformable(value: types.VectorNT(len - 1, T)) Self {
+            return value ++ .{scalar.zero};
+        }
+
+        pub fn makeTransformable(value: types.VectorNT(len - 1, T)) Self {
+            return value ++ .{scalar.one};
+        }
+
+        fn makeNonTransformableFwd(fwd: Scalar) Self {
+            comptime if (len == 4) {} else @compileError("forward not supported for vector of " ++ len);
+            var result = zero;
+            result[2] = -fwd;
+            return result;
+        }
+
+        fn makeTransformableFwd(fwd: Scalar) Self {
+            comptime if (len == 4) {} else @compileError("forward not supported for vector of " ++ len);
+            var result = zero;
+            result[2] = -fwd;
+            result[3] = scalar.one;
+            return result;
+        }
 
         pub const Map = struct {
             self: *Self,

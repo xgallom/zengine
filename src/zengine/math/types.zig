@@ -51,6 +51,7 @@ pub fn Coords4T(comptime T: type) type {
 
 pub const Vector2 = VectorNT(2, Scalar);
 pub const Vector2f64 = VectorNT(2, Scalar64);
+pub const Vector3i32 = VectorNT(3, i32);
 pub const Vector3 = VectorNT(3, Scalar);
 pub const Vector3f64 = VectorNT(3, Scalar64);
 pub const Vector4 = VectorNT(4, Scalar);
@@ -66,6 +67,8 @@ pub const Coords3f64 = CoordsNT(3, Scalar64);
 pub const Coords4 = CoordsNT(4, Scalar);
 pub const Coords4f64 = CoordsNT(4, Scalar64);
 
+pub const Point = Vector2T(i32);
+pub const Pointu32 = Vector2T(u32);
 pub const RGBu8 = Vector3T(u8);
 pub const RGBAu8 = Vector4T(u8);
 pub const RGBf32 = Vector3;
@@ -73,8 +76,6 @@ pub const RGBAf32 = Vector4;
 pub const Vertex = Vector3;
 pub const Vertex4 = Vector4;
 pub const TexCoord = Vector2;
-pub const Position = Vector4;
-pub const Displacement = Vector4;
 pub const Euler = Vector3;
 pub const Quat = Vector4;
 
@@ -105,6 +106,35 @@ pub const Axis4 = enum(u2) {
     pub const len = 4;
 };
 
+pub const TransformOp = enum {
+    translate,
+    rotate,
+    scale,
+    pub const len = 3;
+};
+
+pub const TransformOrder = enum {
+    srt, // scale, rotate, translate
+    str, // scale, translate, rotate
+    rst, // rotate, scale, translate
+    rts, // rotate, translate, scale
+    tsr, // translate, scale, rotate
+    trs, // translate, rotate, scale
+
+    pub const default = .srt;
+
+    pub fn transforms(self: TransformOrder) [TransformOp.len]TransformOp {
+        return switch (self) {
+            .srt => .{ .scale, .rotate, .translate },
+            .str => .{ .scale, .translate, .rotate },
+            .rst => .{ .rotate, .scale, .translate },
+            .rts => .{ .rotate, .translate, .scale },
+            .tsr => .{ .translate, .scale, .rotate },
+            .trs => .{ .translate, .rotate, .scale },
+        };
+    }
+};
+
 pub const EulerOrder = enum {
     xyz,
     xzy,
@@ -112,6 +142,8 @@ pub const EulerOrder = enum {
     yzx,
     zxy,
     zyx,
+
+    pub const default = .xyz;
 
     pub fn axes(self: EulerOrder) [Axis3.len]Axis3 {
         return switch (self) {

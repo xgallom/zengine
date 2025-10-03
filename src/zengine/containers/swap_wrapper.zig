@@ -21,7 +21,7 @@ pub fn SwapWrapper(comptime T: type, comptime options: struct {
         pub const Self = @This();
         const mask = math.IntMask(options.len);
 
-        pub fn initDefault(value: T) Self {
+        pub fn initFill(value: T) Self {
             var result = Self{};
             if (comptime options.copy_on_advance) {
                 result.items[0] = value;

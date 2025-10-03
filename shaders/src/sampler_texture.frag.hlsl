@@ -7,6 +7,7 @@
 
 #define LGH_CNT_AMBIENT     0
 #define LGH_CNT_DIRECTIONAL 1
+#define LGH_CNT_POINT       2
 
 cbuffer UniformBuffer : register(b0, space3) {
     float3 mtl_clr_ambient;
@@ -25,7 +26,19 @@ cbuffer UniformBuffer : register(b0, space3) {
     uint4  lgh_counts;
 };
 
+struct LightAmbient {
+    float3 clr;
+    float pwr;
+};
+
 struct LightDirectional {
+    float3 dir;
+    float3 clr;
+    float pwr_diffuse;
+    float pwr_specular;
+};
+
+struct LightPoint {
     float3 pos;
     float3 dir;
     float3 clr;
@@ -51,35 +64,35 @@ SamplerState SamplerBump     : register(s2, space2);
 StructuredBuffer<float4> LightsBuffer  : register(t3, space2);
 static uint lgh_idx = 0;
 
-float3 bumpMap(
-    in float3 normal, 
-    in float2 tex_coord, 
-    in float3 world_pos
-);
-LightDirectional lightDirectional(
-    in float3 normal,
-    in float3 world_pos,
-    in float3 camera_refl
-);
+float3 bumpMap(in float3 normal, in float2 tex_coord, in float3 world_pos);
+LightAmbient lightAmbient();
+LightDirectional lightDirectional(in float3 normal, in float3 world_pos, in float3 camera_refl);
+LightPoint lightPoint( in float3 normal, in float3 world_pos, in float3 camera_refl);
 
 float4 main(Input input) : SV_Target0 {
     const float2 tex_uv = textureUV(input.tex_coord);
     const float3 world_pos = input.world_pos;
     const float3 normal = bumpMap(input.normal, tex_uv, world_pos);
-
-    float3 ambient_light = float3(0, 0, 0);
-    for (uint n = 0; n < lgh_counts[LGH_CNT_AMBIENT]; ++n) {
-        const float4 lgh_ambient = LightsBuffer.Load(lgh_idx++);
-        ambient_light += lgh_ambient.xyz * lgh_ambient.w;
-    }
-
     const float3 camera_dir = normalize(camera_pos - world_pos);
     const float3 camera_refl = reflect(-camera_dir, normal);
 
+    float3 ambient_light = float3(0, 0, 0);
     float3 diffuse_light = float3(0, 0, 0);
     float3 specular_light = float3(0, 0, 0);
+
+    for (uint n = 0; n < lgh_counts[LGH_CNT_AMBIENT]; ++n) {
+        const LightAmbient light = lightAmbient();
+        ambient_light += light.clr * light.pwr;
+    }
+
     for (uint n = 0; n < lgh_counts[LGH_CNT_DIRECTIONAL]; ++n) {
         const LightDirectional light = lightDirectional(normal, world_pos, camera_refl);
+        diffuse_light += light.pwr_diffuse * light.clr;
+        specular_light += light.pwr_specular * light.clr;
+    }
+
+    for (uint n = 0; n < lgh_counts[LGH_CNT_POINT]; ++n) {
+        const LightPoint light = lightPoint(normal, world_pos, camera_refl);
         diffuse_light += light.pwr_diffuse * light.clr;
         specular_light += light.pwr_specular * light.clr;
     }
@@ -125,12 +138,32 @@ float3 bumpMap(
     return vn * (1 - bump_amt) + bump_amt * normalize( abs(det) * vn - surf_grad );
 }
 
-LightDirectional lightDirectional(
-    in float3 normal,
-    in float3 world_pos,
-    in float3 camera_refl
-) {
+LightAmbient lightAmbient() {
+    LightAmbient output;
+    const float4 light_clr = LightsBuffer.Load(lgh_idx++);
+
+    output.clr = light_clr.xyz;
+    output.pwr = light_clr.w;
+    return output;
+}
+
+LightDirectional lightDirectional(in float3 normal, in float3 world_pos, in float3 camera_refl) {
     LightDirectional output;
+    const float3 light_ray = LightsBuffer.Load(lgh_idx++).xyz;
+    const float4 light_clr = LightsBuffer.Load(lgh_idx++);
+    const float3 light_dir = normalize(light_ray);
+    const float diffuse_falloff = max(0, dot(light_dir, normal));
+    const float specular_falloff = pow( max(0, dot(light_dir, camera_refl)), mtl_specular_exp );
+
+    output.dir = light_dir;
+    output.clr = light_clr.xyz;
+    output.pwr_diffuse = light_clr.w * diffuse_falloff;
+    output.pwr_specular = light_clr.w * specular_falloff;
+    return output;
+}
+
+LightPoint lightPoint(in float3 normal, in float3 world_pos, in float3 camera_refl) {
+    LightPoint output;
     const float3 light_pos = LightsBuffer.Load(lgh_idx++).xyz;
     const float4 light_clr = LightsBuffer.Load(lgh_idx++);
     const float3 light_ray = light_pos - world_pos;
@@ -140,7 +173,7 @@ LightDirectional lightDirectional(
     const float light_dist_sqr = dot(light_ray, light_ray);
     const float light_dist = sqrt(light_dist_sqr);
     //const float dist_falloff = max(0, 1 / (0.01 + light_dist_sqr) - light_dist / 1e9);
-    const float dist_falloff = max(0, 1 / (0.01 + light_dist_sqr / 2));
+    const float dist_falloff = max(0, 1 / (0.01 + light_dist_sqr));
 
     output.pos = light_pos;
     output.dir = light_dir;

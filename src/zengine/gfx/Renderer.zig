@@ -14,14 +14,14 @@ const c = @import("../ext.zig").c;
 const global = @import("../global.zig");
 const math = @import("../math.zig");
 const perf = @import("../perf.zig");
+const Scene = @import("../Scene.zig");
 const ui_mod = @import("../ui.zig");
+const GPUBuffer = @import("GPUBuffer.zig");
+const GPUTexture = @import("GPUTexture.zig");
 const MaterialInfo = @import("MaterialInfo.zig");
 const MeshBuffer = @import("MeshBuffer.zig");
 const MeshObject = @import("MeshObject.zig");
 const shader = @import("shader.zig");
-const StorageBuffer = @import("StorageBuffer.zig");
-const Scene = @import("../Scene.zig");
-const Texture = @import("Texture.zig");
 
 const gfx_options = @import("../options.zig").gfx_options;
 const default_material = gfx_options.default_material;
@@ -44,7 +44,7 @@ const Self = @This();
 const Pipelines = PtrKeyMap(c.SDL_GPUGraphicsPipeline);
 const MeshObjects = KeyMap(MeshObject, .{});
 const MeshBuffers = KeyMap(MeshBuffer, .{});
-const StorageBuffers = KeyMap(StorageBuffer, .{});
+const StorageBuffers = KeyMap(GPUBuffer, .{});
 const MaterialInfos = KeyMap(MaterialInfo, .{});
 const Textures = PtrKeyMap(c.SDL_GPUTexture);
 const Samplers = PtrKeyMap(c.SDL_GPUSampler);
@@ -56,6 +56,7 @@ pub const InitError = error{
     PipelineFailed,
     BufferFailed,
     MaterialFailed,
+    SurfaceFailed,
     TextureFailed,
     SamplerFailed,
     CommandBufferFailed,
@@ -71,9 +72,7 @@ pub const DrawError = error{
 
 pub const Item = struct {
     object: [:0]const u8,
-    position: math.Vertex,
-    rotation: math.Euler,
-    scale: math.Vertex,
+    transform: *const math.Matrix4x4,
 
     pub const rotation_speed = 0.1;
 
@@ -91,7 +90,6 @@ pub fn init(engine: *const Engine) InitError!*Self {
         .register();
 
     sections.sub(.init).begin();
-    defer sections.sub(.init).end();
 
     const self = try createSelf(allocators.gpa(), engine);
     errdefer self.deinit(engine);
@@ -230,7 +228,7 @@ pub fn init(engine: *const Engine) InitError!*Self {
             },
             .num_color_targets = 1,
             .has_depth_stencil_target = true,
-            .depth_stencil_format = stencil_format,
+            .depth_stencil_format = @intFromEnum(stencil_format),
         },
     };
 
@@ -250,53 +248,57 @@ pub fn init(engine: *const Engine) InitError!*Self {
 
     _ = try self.createPipeline("full", &graphics_pipeline_create_info);
 
+    sections.sub(.init).end();
+    perf.perf_sections.sub(.test_section).end();
     return self;
 }
 
 pub fn deinit(self: *Self, engine: *const Engine) void {
     _ = c.SDL_WaitForGPUIdle(self.gpu_device);
+    const gpa = self.allocator;
+    const gpu_device = self.gpu_device;
 
     for (self.pipelines.map.values()) |graphics_pipeline| c.SDL_ReleaseGPUGraphicsPipeline(
         self.gpu_device,
         graphics_pipeline,
     );
-    self.pipelines.deinit(self.allocator);
+    self.pipelines.deinit(gpa);
 
-    for (self.mesh_objs.map.values()) |object| object.deinit();
+    for (self.mesh_objs.map.values()) |object| object.deinit(gpa);
     self.mesh_objs.deinit();
 
     self.materials.deinit();
 
-    for (self.mesh_bufs.map.values()) |mesh| mesh.deinit(self.gpu_device);
+    for (self.mesh_bufs.map.values()) |mesh| mesh.deinit(gpa, gpu_device);
     self.mesh_bufs.deinit();
-    for (self.storage_bufs.map.values()) |buf| buf.deinit(self.gpu_device);
+    for (self.storage_bufs.map.values()) |buf| buf.deinit(gpa, gpu_device);
     self.storage_bufs.deinit();
-    for (self.textures.map.values()) |texture| c.SDL_ReleaseGPUTexture(self.gpu_device, texture);
-    self.textures.deinit(self.allocator);
-    for (self.samplers.map.values()) |sampler| c.SDL_ReleaseGPUSampler(self.gpu_device, sampler);
-    self.samplers.deinit(self.allocator);
+    for (self.textures.map.values()) |texture| c.SDL_ReleaseGPUTexture(gpu_device, texture);
+    self.textures.deinit(gpa);
+    for (self.samplers.map.values()) |sampler| c.SDL_ReleaseGPUSampler(gpu_device, sampler);
+    self.samplers.deinit(gpa);
 
     c.SDL_ReleaseWindowFromGPUDevice(self.gpu_device, engine.window);
     c.SDL_DestroyGPUDevice(self.gpu_device);
 }
 
-fn stencilFormat(self: *const Self) c.SDL_GPUTextureFormat {
+fn stencilFormat(self: *const Self) GPUTexture.Format {
     if (c.SDL_GPUTextureSupportsFormat(
         self.gpu_device,
         c.SDL_GPU_TEXTUREFORMAT_D24_UNORM_S8_UINT,
         c.SDL_GPU_TEXTURETYPE_2D,
         c.SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET,
     )) {
-        return c.SDL_GPU_TEXTUREFORMAT_D24_UNORM_S8_UINT;
+        return .d24_unorm_s8_u;
     } else if (c.SDL_GPUTextureSupportsFormat(
         self.gpu_device,
         c.SDL_GPU_TEXTUREFORMAT_D32_FLOAT_S8_UINT,
         c.SDL_GPU_TEXTURETYPE_2D,
         c.SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET,
     )) {
-        return c.SDL_GPU_TEXTUREFORMAT_D32_FLOAT_S8_UINT;
+        return .d32_f_s8_u;
     } else {
-        return c.SDL_GPU_TEXTUREFORMAT_D32_FLOAT;
+        return .d32_f;
     }
 }
 
@@ -376,7 +378,7 @@ pub fn insertMeshObject(
 
 pub fn createMeshBuffer(self: *Self, key: []const u8, mesh_type: MeshBuffer.Type) !*MeshBuffer {
     const mesh_buf = try self.mesh_bufs.create(key);
-    mesh_buf.* = .init(self.allocator, mesh_type);
+    mesh_buf.* = .init(mesh_type);
     return mesh_buf;
 }
 
@@ -384,17 +386,17 @@ pub fn insertMeshBuffer(self: *Self, key: []const u8, mesh_buf: *const MeshBuffe
     return self.mesh_bufs.insert(key, mesh_buf);
 }
 
-pub fn createStorageBuffer(self: *Self, key: []const u8) !*StorageBuffer {
-    const storage_buf = try self.storage_bufs.create(key);
-    storage_buf.* = .init(self.allocator);
-    return storage_buf;
+pub fn createStorageBuffer(self: *Self, key: []const u8) !*GPUBuffer {
+    const gpu_buf = try self.storage_bufs.create(key);
+    gpu_buf.* = .empty;
+    return gpu_buf;
 }
 
 pub fn insertStorageBuffer(
     self: *Self,
     key: []const u8,
-    storage_buf: *const StorageBuffer,
-) !*StorageBuffer {
+    storage_buf: *const GPUBuffer,
+) !*GPUBuffer {
     return self.storage_bufs.insert(key, storage_buf);
 }
 
@@ -439,25 +441,20 @@ pub fn createSampler(
 fn createStencilTexture(
     self: *Self,
     engine: *const Engine,
-    stencil_format: c.SDL_GPUTextureFormat,
+    stencil_format: GPUTexture.Format,
 ) !*c.SDL_GPUTexture {
-    const stencil_texture = c.SDL_CreateGPUTexture(self.gpu_device, &c.SDL_GPUTextureCreateInfo{
-        .type = c.SDL_GPU_TEXTURETYPE_2D,
+    var stencil_texture = try GPUTexture.init(self.gpu_device, &.{
+        .type = .type_2d,
         .format = stencil_format,
-        .usage = c.SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET,
-        .width = @intCast(engine.window_size.x),
-        .height = @intCast(engine.window_size.y),
-        .layer_count_or_depth = 1,
-        .num_levels = 1,
-        .sample_count = c.SDL_GPU_SAMPLECOUNT_1,
+        .usage = .init(.{ .depth_stencil_target = true }),
+        .size = .{ @intCast(engine.window_size.x), @intCast(engine.window_size.y) },
     });
-    if (stencil_texture == null) {
+    if (stencil_texture.state() == .invalid) {
         log.err("failed creating stencil texture: {s}", .{c.SDL_GetError()});
         return InitError.BufferFailed;
     }
-    errdefer c.SDL_ReleaseGPUTexture(self.gpu_device, stencil_texture);
-    _ = try self.insertTexture("stencil", stencil_texture.?);
-    return stencil_texture.?;
+    errdefer stencil_texture.deinit(self.gpu_device);
+    return self.insertTexture("stencil", stencil_texture.toOwnedGPUTexture());
 }
 
 fn createPipeline(
@@ -479,12 +476,12 @@ pub fn render(
     self: *const Self,
     engine: *const Engine,
     scene: *const Scene,
+    flat: *const Scene.Flattened,
     ui_ptr: ?*ui_mod.UI,
     items_iter: anytype,
 ) DrawError!bool {
     const section = sections.sub(.render);
     section.begin();
-    defer section.end();
 
     section.sub(.acquire).begin();
 
@@ -518,6 +515,7 @@ pub fn render(
 
     if (swapchain_texture == null) {
         log.debug("skip draw", .{});
+        section.end();
         return false;
     }
 
@@ -527,7 +525,7 @@ pub fn render(
     const tr_projection = try fa.create(math.Matrix4x4);
     const tr_view = try fa.create(math.Matrix4x4);
     const tr_view_projection = try fa.create(math.Matrix4x4);
-    const tr_model = try fa.create(math.Matrix4x4);
+    // const tr_model = try fa.create(math.Matrix4x4);
 
     // const time_s = global.timeSinceStart().toFloat().toValue32(.s);
     // const aspect_ratio = @as(f32, @floatFromInt(engine.window_size.x)) / @as(f32, @floatFromInt(engine.window_size.y));
@@ -555,8 +553,10 @@ pub fn render(
     const frag_uniform_buffer_u32: []u32 = @ptrCast(frag_uniform_buffer);
     @memset(frag_uniform_buffer_u32, 0);
     @memcpy(frag_uniform_buffer[24..27], math.vector3.sliceConst(&camera.position));
-    frag_uniform_buffer_u32[28] = 1; // TODO: Single ambient light test
-    frag_uniform_buffer_u32[29] = 3; // TODO: Add directional lights
+    const light_counts = scene.lightCounts(flat);
+    frag_uniform_buffer_u32[28] = light_counts.get(.ambient);
+    frag_uniform_buffer_u32[29] = light_counts.get(.directional);
+    frag_uniform_buffer_u32[30] = light_counts.get(.point);
 
     // var frag_uniform_buffer: [4]f32 = .{ time_s, aspect_ratio, mouse_x, mouse_y };
     // var origin_frag_uniform_buffer: [4]f32 = .{ 1, 0, 1, 1 };
@@ -649,16 +649,7 @@ pub fn render(
                 const material = self.materials.getPtr(mtl);
                 const mesh_buf = object.mesh_buf;
 
-                {
-                    const result = tr_model;
-                    result.* = math.matrix4x4.identity;
-                    // math.matrix4x4.rotateEuler(result, &.{ -time_s * pi / 10, -time_s * pi / 9, 0 }, .xyz);
-                    const euler_order: math.EulerOrder = .xyz;
-                    math.matrix4x4.scaleXYZ(result, &item.scale);
-                    math.matrix4x4.rotateEuler(result, &item.rotation, euler_order);
-                    math.matrix4x4.translateXYZ(result, &item.position);
-                }
-                @memcpy(uniform_buffer[16..32], math.matrix4x4.sliceConst(tr_model));
+                @memcpy(uniform_buffer[16..32], math.matrix4x4.sliceConst(item.transform));
 
                 c.SDL_PushGPUVertexUniformData(
                     command_buffer,
@@ -687,7 +678,7 @@ pub fn render(
                 }, 3);
 
                 c.SDL_BindGPUVertexBuffers(render_pass, 0, &c.SDL_GPUBufferBinding{
-                    .buffer = mesh_buf.vert_buf,
+                    .buffer = mesh_buf.gpu_bufs.getPtrConst(.vertex).gpu_buf,
                     .offset = 0,
                 }, 1);
 
@@ -701,7 +692,7 @@ pub fn render(
                     ),
                     .index => {
                         c.SDL_BindGPUIndexBuffer(render_pass, &c.SDL_GPUBufferBinding{
-                            .buffer = mesh_buf.index_buf,
+                            .buffer = mesh_buf.gpu_bufs.getPtrConst(.index).gpu_buf,
                             .offset = 0,
                         }, c.SDL_GPU_INDEXELEMENTSIZE_32BIT);
                         c.SDL_DrawGPUIndexedPrimitives(
@@ -723,15 +714,14 @@ pub fn render(
         const origin_mesh = self.mesh_bufs.getPtr("origin");
         const origin_graphics_pipeline = self.pipelines.getPtr("origin");
 
-        tr_model.* = math.matrix4x4.identity;
-        @memcpy(uniform_buffer[16..32], math.matrix4x4.sliceConst(tr_model));
+        @memcpy(uniform_buffer[16..32], math.matrix4x4.sliceConst(&math.matrix4x4.identity));
 
         c.SDL_BindGPUVertexBuffers(render_pass, 0, &c.SDL_GPUBufferBinding{
-            .buffer = origin_mesh.vert_buf,
+            .buffer = origin_mesh.gpu_bufs.getPtrConst(.vertex).gpu_buf,
             .offset = 0,
         }, 1);
         c.SDL_BindGPUIndexBuffer(render_pass, &c.SDL_GPUBufferBinding{
-            .buffer = origin_mesh.index_buf,
+            .buffer = origin_mesh.gpu_bufs.getPtrConst(.index).gpu_buf,
             .offset = 0,
         }, c.SDL_GPU_INDEXELEMENTSIZE_32BIT);
         c.SDL_PushGPUVertexUniformData(command_buffer, 0, uniform_buffer.ptr, @intCast(@sizeOf(f32) * uniform_buffer.len));
@@ -819,6 +809,7 @@ pub fn render(
         return DrawError.DrawFailed;
     }
 
+    section.end();
     return true;
 }
 

@@ -22,22 +22,24 @@ const UI = zengine.ui.UI;
 
 const log = std.log.scoped(.main);
 const main_section = perf.section(@This()).sub(.main);
-const sections = main_section.sections(&.{ .init, .frame });
+const sections = main_section.sections(&.{ .init, .load, .frame });
 
 pub const std_options: std.Options = .{
     .log_level = .info,
-    // .log_scope_levels = &.{
-    // .{ .scope = .alloc, .level = .debug },
-    // .{ .scope = .engine, .level = .debug },
-    // .{ .scope = .gfx_mesh, .level = .debug },
-    // .{ .scope = .gfx_obj_loader, .level = .debug },
-    // .{ .scope = .gfx_renderer, .level = .debug },
-    // .{ .scope = .gfx_shader, .level = .debug },
-    // .{ .scope = .key_tree, .level = .debug },
-    // .{ .scope = .radix_tree, .level = .debug },
-    // .{ .scope = .scheduler, .level = .debug },
-    // .{ .scope = .tree, .level = .debug },
-    // },
+    .log_scope_levels = &.{
+        // .{ .scope = .alloc, .level = .debug },
+        // .{ .scope = .engine, .level = .debug },
+        // .{ .scope = .gfx_mesh, .level = .debug },
+        // .{ .scope = .gfx_obj_loader, .level = .debug },
+        // .{ .scope = .gfx_renderer, .level = .debug },
+        // .{ .scope = .gfx_shader, .level = .debug },
+        // .{ .scope = .gfx_loader, .level = .debug },
+        // .{ .scope = .key_tree, .level = .debug },
+        // .{ .scope = .radix_tree, .level = .debug },
+        // .{ .scope = .scheduler, .level = .debug },
+        // .{ .scope = .tree, .level = .debug },
+        // .{ .scope = .scene, .level = .debug },
+    },
 };
 
 pub const zengine_options: zengine.Options = .{
@@ -49,20 +51,23 @@ pub const zengine_options: zengine.Options = .{
 };
 
 const RenderItems = struct {
-    iter: ecs.PrimitiveComponentManager(gfx.Renderer.Item).Iterator,
+    items: Scene.FlatList.Slice,
+    idx: usize = 0,
 
     const Self = @This();
 
-    pub fn init(positions: *ecs.PrimitiveComponentManager(gfx.Renderer.Item)) Self {
-        return .{ .iter = positions.iterator() };
-    }
-
-    pub fn deinit(self: *Self) void {
-        self.iter.deinit();
+    pub fn init(flat: *const Scene.Flattened) Self {
+        return .{ .items = flat.getPtrConst(.object).slice() };
     }
 
     pub fn next(self: *Self) ?gfx.Renderer.Item {
-        if (self.iter.next()) |pos| return pos.item.*;
+        if (self.idx < self.items.len) {
+            defer self.idx += 1;
+            return .{
+                .object = self.items.items(.target)[self.idx],
+                .transform = &self.items.items(.transform)[self.idx],
+            };
+        }
         return null;
     }
 };
@@ -87,6 +92,9 @@ pub fn main() !void {
 
     try main_section.register();
     try sections.register();
+    try sections.sub(.load)
+        .sections(&.{ .gfx, .scene, .ui })
+        .register();
     try sections.sub(.frame)
         .sections(&.{ .init, .input, .update, .render })
         .register();
@@ -96,6 +104,7 @@ pub fn main() !void {
 
     main_section.begin();
     sections.sub(.init).begin();
+    perf.perf_sections.sub(.test_section).begin();
 
     try engine.initWindow();
 
@@ -119,6 +128,10 @@ pub fn main() !void {
     try perf.commitGraph();
     defer perf.releaseGraph();
 
+    sections.sub(.init).end();
+    sections.sub(.load).begin();
+    sections.sub(.load).sub(.gfx).begin();
+
     var gfx_loader = try gfx.Loader.init(renderer);
     defer gfx_loader.deinit();
     {
@@ -134,66 +147,86 @@ pub fn main() !void {
         _ = try gfx_loader.createDefaultTexture();
 
         _ = try scene.createDefaultCamera();
-        _ = try scene.createDefaultLights();
 
-        _ = try gfx_loader.createLightsBuffer(scene);
+        _ = try scene.createLight("Ambient", .ambient(.{
+            .color = .{ 255, 255, 255 },
+            .intensity = 0.05,
+        }));
+        _ = try scene.createLight("Directional M", .directional(.{
+            .color = .{ 255, 32, 255 },
+            .intensity = 0.25,
+        }));
+        _ = try scene.createLight("Diffuse R", .point(.{
+            .color = .{ 255, 32, 64 },
+            .intensity = 2e4,
+        }));
+        _ = try scene.createLight("Diffuse G", .point(.{
+            .color = .{ 32, 255, 64 },
+            .intensity = 8e3,
+        }));
+        _ = try scene.createLight("Diffuse B", .point(.{
+            .color = .{ 64, 32, 255 },
+            .intensity = 2e4,
+        }));
 
         try gfx_loader.commit();
     }
 
-    sections.sub(.init).end();
-
-    var render_items = try ecs.PrimitiveComponentManager(gfx.Renderer.Item).init(allocators.gpa(), 128);
-    defer render_items.deinit();
+    sections.sub(.load).sub(.gfx).end();
+    sections.sub(.load).sub(.scene).begin();
 
     const pi = std.math.pi;
 
-    const cat = try render_items.push(.{
-        .object = "Cat",
-        .position = .{ 200, 0, 0 },
+    _ = try scene.createRootNode(.light("Ambient"), &.{});
+    const dir_light = try scene.createRootNode(.light("Directional M"), &.{});
+
+    const objects = try scene.createRootNode(.node(), &.{
+        .order = .srt,
+    });
+    const ground = try scene.createRootNode(.node(), &.{
+        .translation = .{ 0, -450, 0 },
+        .scale = .{ 250, 250, 250 },
+    });
+    const lights = try scene.createRootNode(.node(), &.{});
+
+    const cat = try scene.createChildNode(objects, .object("Cat"), &.{
+        .translation = .{ 200, 0, 0 },
         .rotation = .{ -pi / 2.0, 0, 0 },
-        .scale = math.vertex.one,
     });
 
-    const cow = try render_items.push(.{
-        .object = "Cow",
-        .position = .{ 0, 0, 0 },
+    const cow = try scene.createChildNode(objects, .object("Cow"), &.{
+        .translation = .{ 0, 0, 0 },
         .rotation = .{ 0, -pi / 2.0, 0 },
         .scale = .{ 10, 10, 10 },
     });
 
-    const plane = try render_items.push(.{
-        .object = "Plane",
-        .position = .{ 0, -150, 0 },
-        .rotation = math.vertex.zero,
-        .scale = .{ 100, 100, 100 },
-    });
+    _ = try scene.createChildNode(ground, .object("Plane"), &.{});
+    _ = try scene.createChildNode(ground, .object("Landscape"), &.{});
 
-    const landscape = try render_items.push(.{
-        .object = "Landscape",
-        .position = .{ 0, -150, 0 },
-        .rotation = math.vertex.zero,
-        .scale = .{ 100, 100, 100 },
+    const cube_r = try scene.createChildNode(lights, .node(), &.{
+        .translation = .{ 100, 0, 0 },
     });
+    _ = try scene.createChildNode(cube_r, .object("Cube R"), &.{
+        .scale = .{ 3, 3, 3 },
+    });
+    _ = try scene.createChildNode(cube_r, .light("Diffuse R"), &.{});
 
-    const cube_r = try render_items.push(.{
-        .object = "Cube R",
-        .position = .{ 100, 0, 0 },
-        .rotation = math.vertex.zero,
+    const cube_g = try scene.createChildNode(lights, .node(), &.{
+        .translation = .{ 0, 100, 0 },
+    });
+    _ = try scene.createChildNode(cube_g, .object("Cube G"), &.{
         .scale = .{ 3, 3, 3 },
     });
-    const cube_g = try render_items.push(.{
-        .object = "Cube G",
-        .position = .{ 0, 100, 0 },
-        .rotation = math.vertex.zero,
+    _ = try scene.createChildNode(cube_g, .light("Diffuse G"), &.{});
+
+    const cube_b = try scene.createChildNode(lights, .node(), &.{
+        .translation = .{ -100, 0, 0 },
+    });
+    _ = try scene.createChildNode(cube_b, .object("Cube B"), &.{
         .scale = .{ 3, 3, 3 },
     });
-    const cube_b = try render_items.push(.{
-        .object = "Cube B",
-        .position = .{ -100, 0, 0 },
-        .rotation = math.vertex.zero,
-        .scale = .{ 3, 3, 3 },
-    });
+    _ = try scene.createChildNode(cube_b, .light("Diffuse B"), &.{});
+
     // const cube = try render_items.push(.{
     //     .object = "Cube",
     //     .position = .{ 65, 0, 0 },
@@ -208,6 +241,9 @@ pub fn main() !void {
     //     .scale = .{ 3, 3, 3 },
     // });
 
+    sections.sub(.load).sub(.scene).end();
+    sections.sub(.load).sub(.ui).begin();
+
     var debug_ui = zengine.ui.DebugUI.init();
 
     var property_editor = zengine.ui.PropertyEditorWindow.init(allocators.global());
@@ -219,11 +255,14 @@ pub fn main() !void {
     const scene_node = try property_editor.appendNode(@typeName(Scene), "scene");
     _ = try scene.propertyEditorNode(&property_editor, scene_node);
 
-    const main_node = try property_editor.appendNode(@typeName(@This()), "main");
-    _ = try render_items.propertyEditorNode(&property_editor, main_node);
+    // const main_node = try property_editor.appendNode(@typeName(@This()), "main");
+    // _ = try render_items.propertyEditorNode(&property_editor, main_node);
 
     var allocs_window = zengine.ui.AllocsWindow.init();
     var perf_window = zengine.ui.PerfWindow.init(allocators.global());
+
+    sections.sub(.load).sub(.ui).end();
+    sections.sub(.load).end();
 
     allocators.scratchRelease();
 
@@ -233,12 +272,9 @@ pub fn main() !void {
     return mainloop: while (true) {
         defer perf.reset();
 
-        main_section.push();
-        defer main_section.pop();
-
         const section = sections.sub(.frame);
+        main_section.push();
         section.begin();
-        defer section.end();
 
         section.sub(.init).begin();
 
@@ -357,56 +393,6 @@ pub fn main() !void {
         // math.vector2.localCoords(&coordinates2, &.{ 0, 1 }, &.{ 1, 0 });
 
         const time_s = global.timeSinceStart().toFloat().toValue32(.s) * 2;
-        render_items.getPtr(cat).rotation[1] = 10 * time_s;
-        render_items.getPtr(cat).position[1] = 25 * @cos(5 * time_s);
-        render_items.getPtr(cow).rotation[0] = time_s;
-        // render_items.getPtr(cube).rotation[1] = 11 * time_s;
-        // render_items.getPtr(cube).rotation[2] = 11.1 * time_s;
-        // render_items.getPtr(smooth_cube).rotation[1] = 12 * time_s;
-        // render_items.getPtr(smooth_cube).rotation[2] = 10.9 * time_s;
-        _ = plane;
-        _ = landscape;
-
-        {
-            errdefer gfx_loader.cancel();
-
-            const diffuse_r = scene.lights.getPtr("diffuse_r");
-            const diffuse_g = scene.lights.getPtr("diffuse_g");
-            const diffuse_b = scene.lights.getPtr("diffuse_b");
-
-            const cos = @cos(time_s);
-            const sin = @sin(time_s);
-            const x = 150 * cos;
-            const y = 25 * cos;
-            const z = 150 * sin;
-
-            const rx: i64 = @intCast(rnd.next() % 31);
-            const ry: i64 = @intCast(rnd.next() % 31);
-            const rz: i64 = @intCast(rnd.next() % 31);
-            const dx: f32 = @floatFromInt(rx - 15);
-            const dy: f32 = @floatFromInt(ry - 15);
-            const dz: f32 = @floatFromInt(rz - 15);
-
-            var g_pos = diffuse_g.point.position;
-            var axis: math.Vertex = .{ dx, dy, dz };
-            math.vertex.normalize(&axis);
-            math.vertex.rotateDirectionScale(&dir, &axis, 20 * delta);
-            math.vertex.normalize(&dir);
-            math.vertex.translateScale(&g_pos, &dir, 20 * delta);
-
-            const r_pos = .{ x, y + 55, z };
-            const b_pos = .{ -x, -y + 55, -z };
-
-            render_items.getPtr(cube_r).position = r_pos;
-            diffuse_r.point.position = r_pos;
-            render_items.getPtr(cube_g).position = g_pos;
-            diffuse_g.point.position = g_pos;
-            render_items.getPtr(cube_b).position = b_pos;
-            diffuse_b.point.position = b_pos;
-
-            _ = try gfx_loader.createLightsBuffer(scene);
-            try gfx_loader.commit();
-        }
 
         if (controls.has(.yaw_neg))
             math.vector3.rotateDirectionScale(&camera.direction, &coords.x, -rotation_speed);
@@ -439,7 +425,7 @@ pub fn main() !void {
             math.vector3.translateDirectionScale(&camera.position, &coords.z, translation_speed);
 
         {
-            const scale = switch (camera.kind) {
+            const scale = switch (camera.type) {
                 .ortographic => &camera.orto_scale,
                 .perspective => &camera.fov,
             };
@@ -458,7 +444,7 @@ pub fn main() !void {
         // speed_change_timer.update(now);
 
         if (controls.has(.custom(2))) {
-            camera.kind = switch (camera.kind) {
+            camera.type = switch (camera.type) {
                 .ortographic => .perspective,
                 .perspective => .ortographic,
             };
@@ -476,6 +462,52 @@ pub fn main() !void {
             Scene.Camera.fov_min,
             Scene.Camera.fov_max,
         );
+
+        var flat_scene: Scene.Flattened = undefined;
+        {
+            errdefer gfx_loader.cancel();
+
+            const cos = @cos(time_s);
+            const sin = @sin(time_s);
+            const x = 150 * cos;
+            const y = 25 * cos;
+            const z = 150 * sin;
+
+            const rx: i64 = @intCast(rnd.next() % 31);
+            const ry: i64 = @intCast(rnd.next() % 31);
+            const rz: i64 = @intCast(rnd.next() % 31);
+            const dx: f32 = @floatFromInt(rx - 15);
+            const dy: f32 = @floatFromInt(ry - 15);
+            const dz: f32 = @floatFromInt(rz - 15);
+
+            var g_pos = cube_g.transform.translation;
+            var axis: math.Vertex = .{ dx, dy, dz };
+            math.vertex.normalize(&axis);
+            math.vertex.rotateDirectionScale(&dir, &axis, 20 * delta);
+            math.vertex.normalize(&dir);
+            math.vertex.translateScale(&g_pos, &dir, 20 * delta);
+
+            const r_pos = .{ x, y + 55, z };
+            const b_pos = .{ -x, -y + 55, -z };
+
+            dir_light.transform.rotation[0] = time_s;
+
+            objects.transform.translation[1] = 30 * cos + 30;
+            objects.transform.rotation[0] = time_s / pi;
+            objects.transform.rotation[1] = time_s;
+            cat.transform.rotation[1] = 10 * time_s;
+            cat.transform.translation[1] = 25 * @cos(5 * time_s);
+            // cow.transform.rotation[0] = time_s;
+            _ = cow;
+
+            cube_r.transform.translation = r_pos;
+            cube_g.transform.translation = g_pos;
+            cube_b.transform.translation = b_pos;
+
+            flat_scene = try scene.flatten();
+            _ = try gfx_loader.createLightsBuffer(scene, &flat_scene);
+            try gfx_loader.commit();
+        }
 
         section.sub(.update).end();
         section.sub(.render).begin();
@@ -497,9 +529,8 @@ pub fn main() !void {
         ui.endDraw();
 
         {
-            var items = RenderItems.init(&render_items);
-            defer items.deinit();
-            _ = try renderer.render(engine, scene, ui, &items);
+            var items = RenderItems.init(&flat_scene);
+            _ = try renderer.render(engine, scene, &flat_scene, ui, &items);
         }
 
         section.sub(.render).end();
@@ -509,5 +540,8 @@ pub fn main() !void {
             main_section.end();
             perf.updateStats(0, true);
         }
+
+        section.end();
+        main_section.pop();
     };
 }

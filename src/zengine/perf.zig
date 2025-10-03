@@ -13,7 +13,7 @@ const SwapWrapper = @import("containers.zig").SwapWrapper;
 const time = @import("time.zig");
 
 const log = std.log.scoped(.perf);
-pub const perf_sections = sections(@This(), &.{.updateStats});
+pub const perf_sections = sections(@This(), &.{ .updateStats, .test_section });
 pub const empty_section = TaggedSection("perf", "empty", "perf", .sub);
 
 const framerate_buf_count = 1 << 8;
@@ -24,6 +24,8 @@ const stats_update_interval = 200;
 
 const frametime_buf_count = 1 << 8;
 const frametime_mask = math.IntMask(frametime_buf_count);
+
+const stack_trace_count = 16;
 
 pub const Value = *Section;
 pub const KeyIndex = struct {
@@ -233,11 +235,23 @@ const Self = struct {
         }
     }
 
-    fn beginSection(self: *Self, comptime tag: []const u8, ptr: *Section) !void {
+    fn beginSection(self: *Self, comptime tag: []const u8, ptr: *Section, ret_addr: usize) !void {
+        if (ptr.first_address[0] == std.math.maxInt(usize)) {
+            ptr.first_address[0] = ret_addr;
+            ptr.stack_trace[0].instruction_addresses = &ptr.stack_trace_buf[0];
+            ptr.stack_trace[0].index = 0;
+            std.debug.captureStackTrace(ret_addr, &ptr.stack_trace[0]);
+        }
         _ = try self.list_pusher.push(.{ .key = tag, .value = ptr });
     }
 
-    fn endSection(self: *Self) !void {
+    fn endSection(self: *Self, ptr: *Section, ret_addr: usize) !void {
+        if (ptr.first_address[1] == std.math.maxInt(usize)) {
+            ptr.first_address[1] = ret_addr;
+            ptr.stack_trace[1].instruction_addresses = &ptr.stack_trace_buf[1];
+            ptr.stack_trace[1].index = 0;
+            std.debug.captureStackTrace(ret_addr, &ptr.stack_trace[1]);
+        }
         _ = self.list_pusher.pop();
     }
 };
@@ -260,10 +274,13 @@ const Section = struct {
         state: SectionState = .ended,
         section_type: SectionType,
     },
+    first_address: [2]usize = @splat(std.math.maxInt(usize)),
+    stack_trace: [2]std.builtin.StackTrace = undefined,
     buf: [frametime_buf_count]u32 = @splat(0),
     sample_avgs: [frame_stats_count]u32 = @splat(0),
     sample_maxes: [frame_stats_count]u32 = @splat(0),
     sample_mins: [frame_stats_count]u32 = @splat(0),
+    stack_trace_buf: [2][stack_trace_count]usize = undefined,
 
     fn init(
         tag: [:0]const u8,
@@ -669,16 +686,16 @@ fn TaggedSection(
         }
 
         pub fn push() void {
-            global_state.beginSection(tag, getPtr()) catch unreachable;
+            global_state.beginSection(tag, getPtr(), @returnAddress()) catch unreachable;
         }
 
         pub fn pop() void {
-            global_state.endSection() catch unreachable;
+            global_state.endSection(getPtr(), @returnAddress()) catch unreachable;
         }
 
         pub fn begin() void {
             const ptr = getPtr();
-            global_state.beginSection(tag, ptr) catch unreachable;
+            global_state.beginSection(tag, ptr, @returnAddress()) catch unreachable;
             ptr.begin();
         }
 
@@ -688,19 +705,25 @@ fn TaggedSection(
 
         pub fn end() void {
             const ptr = getPtr();
-            if (ptr.flags.state == .began) global_state.endSection() catch unreachable;
+            if (ptr.flags.state == .began) {
+                global_state.endSection(ptr, @returnAddress()) catch unreachable;
+            }
             ptr.end();
         }
 
         pub fn pause() void {
             const ptr = getPtr();
-            if (ptr.flags.state == .began_paused) global_state.endSection() catch unreachable;
+            if (ptr.flags.state == .began_paused) {
+                global_state.endSection(ptr, @returnAddress()) catch unreachable;
+            }
             ptr.pause();
         }
 
         pub fn unpause() void {
             const ptr = getPtr();
-            if (ptr.flags.state == .began_paused) global_state.beginSection(tag, ptr) catch unreachable;
+            if (ptr.flags.state == .began_paused) {
+                global_state.beginSection(tag, ptr, @returnAddress()) catch unreachable;
+            }
             ptr.unpause();
         }
 

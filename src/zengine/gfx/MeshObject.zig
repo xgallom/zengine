@@ -46,79 +46,58 @@ pub const face_vert_counts: std.EnumArray(FaceType, usize) = .init(.{
     .triangle = 3,
 });
 
-allocator: std.mem.Allocator,
 mesh_buf: *MeshBuffer = undefined,
 sections: Sections = .empty,
 groups: Groups = .empty,
 face_type: FaceType,
-has_active_section: bool = false,
-has_active_group: bool = false,
+has_active: packed struct {
+    section: bool = false,
+    group: bool = false,
+} = .{},
 
 const Self = @This();
 const Sections = std.ArrayList(Section);
 const Groups = std.ArrayList(Group);
 
-pub fn init(allocator: std.mem.Allocator, face_type: FaceType) Self {
-    return .{
-        .allocator = allocator,
-        .face_type = face_type,
-    };
+pub fn init(face_type: FaceType) Self {
+    return .{ .face_type = face_type };
 }
 
-pub fn deinit(self: *Self) void {
-    self.sections.deinit(self.allocator);
-    self.groups.deinit(self.allocator);
+pub fn deinit(self: *Self, gpa: std.mem.Allocator) void {
+    self.sections.deinit(gpa);
+    self.groups.deinit(gpa);
 }
 
-pub fn beginSection(self: *Self, offset: usize, material: ?[:0]const u8) !void {
+pub fn beginSection(self: *Self, gpa: std.mem.Allocator, offset: usize, material: ?[:0]const u8) !void {
     self.endSection(offset);
-    try self.sections.append(self.allocator, .{
+    try self.sections.append(gpa, .{
         .offset = offset,
         .material = material,
     });
-    self.has_active_section = true;
+    self.has_active.section = true;
 }
 
 pub fn endSection(self: *Self, offset: usize) void {
-    if (!self.has_active_section) return;
+    if (!self.has_active.section) return;
     assert(self.sections.items.len > 0);
     const section = &self.sections.items[self.sections.items.len - 1];
     section.len = offset - section.offset;
-    self.has_active_section = false;
+    self.has_active.section = false;
 }
 
-// fn splitSection(self: *Self, offset: usize) !usize {
-//     assert(self.sections.items.len > 0);
-//     assert(self.has_active_section);
-//
-//     const idx = self.sections.items.len - 1;
-//     const section = &self.sections.items[idx];
-//     if (section.offset == offset) {
-//         assert(section.len == 0);
-//         return idx;
-//     }
-//
-//     section.len = offset - section.offset;
-//     try self.sections.append(self.allocator, .{
-//         .offset = offset,
-//         .material = section.material,
-//     });
-//     return idx + 1;
-// }
-
-pub fn beginGroup(self: *Self, offset: usize, name: [:0]const u8) !void {
+pub fn beginGroup(self: *Self, gpa: std.mem.Allocator, offset: usize, name: [:0]const u8) !void {
     self.endGroup(offset);
-    try self.groups.append(self.allocator, .{
+    try self.groups.append(gpa, .{
         .offset = offset,
         .name = name,
     });
-    self.has_active_group = true;
+    self.has_active.group = true;
 }
 
 pub fn endGroup(self: *Self, offset: usize) void {
-    if (!self.has_active_group) return;
+    if (!self.has_active.group) return;
     assert(self.groups.items.len > 0);
     const group = &self.groups.items[self.groups.items.len - 1];
     group.len = offset - group.offset;
-    self.has_active_group = false;
+    self.has_active.group = false;
 }

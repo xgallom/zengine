@@ -203,7 +203,7 @@ pub fn KeyTree(comptime V: type, comptime options: struct {
         }
 
         fn destroyNode(self: *Self, node: *Node) void {
-            log.warn("destroy {X}", .{@intFromPtr(node)});
+            log.warn("destroy 0x{x}", .{@intFromPtr(node)});
             self.pool.destroy(@fieldParentPtr("target", node));
         }
 

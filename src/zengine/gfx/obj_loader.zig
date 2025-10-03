@@ -76,18 +76,19 @@ pub const Node = struct {
 };
 
 pub const ObjInfo = struct {
+    allocator: std.mem.Allocator,
     mesh_buf: MeshBuffer,
     mesh_objs: std.StringArrayHashMapUnmanaged(MeshObject),
     mtl_path: ?[:0]const u8,
 
-    pub fn deinit(self: *ObjInfo, allocator: std.mem.Allocator) void {
-        self.mesh_buf.freeCpuData();
-        for (self.mesh_objs.values()) |*object| object.deinit();
-        self.cleanup(allocator);
+    pub fn deinit(self: *ObjInfo) void {
+        self.mesh_buf.freeCPUBuffers(self.allocator);
+        for (self.mesh_objs.values()) |*object| object.deinit(self.allocator);
+        self.cleanup();
     }
 
-    pub fn cleanup(self: *ObjInfo, allocator: std.mem.Allocator) void {
-        self.mesh_objs.deinit(allocator);
+    pub fn cleanup(self: *ObjInfo) void {
+        self.mesh_objs.deinit(self.allocator);
     }
 };
 
@@ -370,11 +371,12 @@ const CreateInfoState = struct {
 
 fn createInfo(self: *const Self) !ObjInfo {
     var result: ObjInfo = .{
-        .mesh_buf = .init(self.allocator, .vertex),
+        .allocator = self.allocator,
+        .mesh_buf = .init(.vertex),
         .mesh_objs = .empty,
         .mtl_path = self.mtl_path,
     };
-    errdefer result.deinit(self.allocator);
+    errdefer result.deinit();
 
     var state: CreateInfoState = .init(self);
     defer state.deinit(self);
@@ -463,17 +465,17 @@ fn ProcessFaces(comptime config: struct {
             const oe = try result.mesh_objs.getOrPutValue(
                 self.allocator,
                 obj.name,
-                .init(self.allocator, config.face_type),
+                .init(config.face_type),
             );
             assert(!oe.found_existing);
             const mesh_obj = oe.value_ptr;
-            errdefer mesh_obj.deinit();
+            errdefer mesh_obj.deinit(self.allocator);
 
-            try mesh_obj.beginSection(state.vert_idx, state.material_active);
+            try mesh_obj.beginSection(self.allocator, state.vert_idx, state.material_active);
             defer {
                 mesh_obj.endSection(state.vert_idx);
                 mesh_obj.endGroup(state.vert_idx);
-                assert(!mesh_obj.has_active_section and !mesh_obj.has_active_group);
+                assert(!mesh_obj.has_active.section and !mesh_obj.has_active.group);
             }
 
             const faces = self.faces.items[faces_offset .. faces_offset + faces_len];
@@ -483,7 +485,12 @@ fn ProcessFaces(comptime config: struct {
             const vert_offset = state.vert_idx;
             const vert_count = face_count * face_vert_count;
 
-            try result.mesh_buf.ensureVerticesUnusedCapacity(math.Vertex, vert_count * AttrType.arr_len);
+            try result.mesh_buf.ensureUnusedCapacity(
+                self.allocator,
+                .vertex,
+                math.Vertex,
+                vert_count * AttrType.arr_len,
+            );
             try state.face_normals.ensureUnusedCapacity(self.allocator, vert_count);
             try state.face_angles.ensureUnusedCapacity(self.allocator, vert_count);
 
@@ -496,11 +503,11 @@ fn ProcessFaces(comptime config: struct {
                                 log.err("object node is inside of an object", .{});
                                 unreachable;
                             },
-                            .group => |name| try mesh_obj.beginGroup(state.vert_idx, name),
+                            .group => |name| try mesh_obj.beginGroup(self.allocator, state.vert_idx, name),
                             .smoothing => |smoothing| state.smoothing_groups_active.mask = smoothing,
                             .material => |material| {
                                 state.material_active = material;
-                                try mesh_obj.beginSection(state.vert_idx, state.material_active);
+                                try mesh_obj.beginSection(self.allocator, state.vert_idx, state.material_active);
                             },
                         }
                         state.node_n += 1;
@@ -530,8 +537,8 @@ fn ProcessFaces(comptime config: struct {
                         const vertices = getFaceVertices(state.vert_data, &face.data, &vert_normals[3], vert_n);
                         state.face_normals.appendAssumeCapacity(vert_normals[n]);
                         state.face_angles.appendAssumeCapacity(vert_normals[4][n]);
-                        result.mesh_buf.appendVerticesAssumeCapacity(math.Vertex, &vertices);
-                        result.mesh_buf.vert_count += 1;
+                        result.mesh_buf.appendAssumeCapacity(.vertex, math.Vertex, &vertices);
+                        result.mesh_buf.vert_counts.getPtr(.vertex).* += 1;
                         state.vert_idx += 1;
                     }
                 }
@@ -642,7 +649,7 @@ fn ProcessFaces(comptime config: struct {
 
 fn applySmoothing(self: *const Self, result: *const ObjInfo, state: *const CreateInfoState) void {
     _ = self;
-    const verts = result.mesh_buf.vertices();
+    const verts = result.mesh_buf.gpu_bufs.getPtrConst(.vertex).slice(math.Vertex);
     for (&state.smoothing_groups) |group| {
         var sg_iter = group.valueIterator();
         while (sg_iter.next()) |vert_list| {

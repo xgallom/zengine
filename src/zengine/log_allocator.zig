@@ -59,7 +59,7 @@ pub fn LogAllocator(
             const self: *Self = @ptrCast(@alignCast(ptr));
             const result = self.backing_allocator.rawResize(memory, alignment, new_len, ret_addr);
             if (comptime std.log.logEnabled(message_level, scope)) logFn(
-                "resize {X}[{} -> {}]@{} {}",
+                "resize 0x{x}[{} -> {}]@{} {}",
                 .{ @intFromPtr(memory.ptr), memory.len, new_len, alignment, result },
             );
             return result;
@@ -69,7 +69,7 @@ pub fn LogAllocator(
             const self: *Self = @ptrCast(@alignCast(ptr));
             const result = self.backing_allocator.rawRemap(memory, alignment, new_len, ret_addr);
             if (comptime std.log.logEnabled(message_level, scope)) logFn(
-                "remap {X}[{} -> {}]@{} {}",
+                "remap 0x{x}[{} -> {}]@{} {}",
                 .{ @intFromPtr(memory.ptr), memory.len, new_len, alignment, result != null },
             );
             return result;
@@ -79,7 +79,7 @@ pub fn LogAllocator(
             const self: *Self = @ptrCast(@alignCast(ptr));
             self.backing_allocator.rawFree(memory, alignment, ret_addr);
             if (comptime std.log.logEnabled(message_level, scope)) logFn(
-                "free {X}[{}]@{}",
+                "free 0x{x}[{}]@{}",
                 .{ @intFromPtr(memory.ptr), memory.len, alignment },
             );
         }

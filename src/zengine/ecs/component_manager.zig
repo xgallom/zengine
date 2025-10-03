@@ -48,7 +48,7 @@ fn AnyComponentManager(comptime C: type, comptime AL: type) type {
             // std.Thread.sleep(1_000_000_000);
             const cap = @atomicLoad(usize, &self.components.components.capacity, .seq_cst);
             const bit_len = @atomicLoad(usize, &self.component_flags.bit_length, .seq_cst);
-            log.debug("before {X} {X} {} {}", .{ std.Thread.getCurrentId(), @intFromPtr(self), cap, bit_len });
+            log.debug("before 0x{x} 0x{x} {} {}", .{ std.Thread.getCurrentId(), @intFromPtr(self), cap, bit_len });
 
             const entity = try self.components.push(value);
             log.debug("after {} {}", .{ self.components.cap(), self.components.len() });

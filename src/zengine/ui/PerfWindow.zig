@@ -7,6 +7,7 @@ const assert = std.debug.assert;
 
 const allocators = @import("../allocators.zig");
 const c = @import("../ext.zig").c;
+const str = @import("../str.zig");
 const global = @import("../global.zig");
 const perf = @import("../perf.zig");
 const time = @import("../time.zig");
@@ -30,7 +31,7 @@ filter: TreeFilter = .{},
 
 const Self = @This();
 pub const window_name = "Performance";
-var buf: [64]u8 = undefined;
+var buf: [128]u8 = undefined;
 
 pub fn init(allocator: std.mem.Allocator) Self {
     return .{
@@ -286,12 +287,13 @@ fn drawInspector(self: *Self, ui: *const UI, is_open: *bool) void {
                 c.igTableSetupColumn("name", c.ImGuiTableColumnFlags_WidthFixed, 120, 0);
                 c.igTableSetupColumn("value", c.ImGuiTableColumnFlags_WidthStretch, 0, 0);
 
-                self.drawTableRow("##avg", "Window average", item.window_avg);
-                self.drawTableRow("##sample_avg", "Sample average", item.sample_avg);
-                self.drawTableRow("##sample_min", "Sample min", item.sample_min);
-                self.drawTableRow("##sample_max", "Sample max", item.sample_max);
-                self.drawTableRow("##min", "Min", item.min);
-                self.drawTableRow("##max", "Max", item.max);
+                self.drawTableRowDuration("##avg", "Window average", item.window_avg);
+                self.drawTableRowDuration("##sample_avg", "Sample average", item.sample_avg);
+                self.drawTableRowDuration("##sample_min", "Sample min", item.sample_min);
+                self.drawTableRowDuration("##sample_max", "Sample max", item.sample_max);
+                self.drawTableRowDuration("##min", "Min", item.min);
+                self.drawTableRowDuration("##max", "Max", item.max);
+                self.drawStackTrace(item) catch {};
 
                 c.igPopID();
                 c.igEndTable();
@@ -302,7 +304,184 @@ fn drawInspector(self: *Self, ui: *const UI, is_open: *bool) void {
     c.igEndChild();
 }
 
-fn drawTableRow(_: *Self, id: [*:0]const u8, name: [*:0]const u8, value: u32) void {
+fn drawStackTrace(self: *Self, item: perf.Value) !void {
+    if (item.first_address[0] != std.math.maxInt(usize)) {
+        self.drawTableRow("##trace", "Stack trace", "");
+
+        const st0 = &item.stack_trace[0];
+        const st1 = &item.stack_trace[1];
+        const end = @min(st0.index, st0.instruction_addresses.len, st1.index, st1.instruction_addresses.len);
+        for (0..end) |n| {
+            const address0 = st0.instruction_addresses[n];
+            const address1 = st1.instruction_addresses[n];
+            try self.drawStackTraceItem(.{ address0, address1 });
+        }
+
+        if (st0.index > st0.instruction_addresses.len) {
+            const value = std.fmt.bufPrintZ(
+                &buf,
+                "{}",
+                .{st0.index - st0.instruction_addresses.len},
+            ) catch unreachable;
+            self.drawTableRow("##ip", "Remaining", value);
+        }
+    }
+}
+
+fn drawStackTraceItem(self: *Self, address: [2]usize) !void {
+    // TODO: compare end indexes and walk accordingly
+    const di = try std.debug.getSelfDebugInfo();
+    const module0 = di.getModuleForAddress(address[0]) catch |err| switch (err) {
+        error.MissingDebugInfo, error.InvalidDebugInfo => {
+            const value = std.fmt.bufPrintZ(&buf, "0x{x} - 0x{x}", .{ address[0], address[1] }) catch unreachable;
+            self.drawTableRow("##trace", "??? - ???", value.ptr);
+            return;
+        },
+        else => return err,
+    };
+    const module1 = di.getModuleForAddress(address[1]) catch |err| switch (err) {
+        error.MissingDebugInfo, error.InvalidDebugInfo => {
+            const value = std.fmt.bufPrintZ(&buf, "0x{x} - 0x{x}", .{ address[0], address[1] }) catch unreachable;
+            self.drawTableRow("##trace", "??? - ???", value.ptr);
+            return;
+        },
+        else => return err,
+    };
+
+    const si0 = module0.getSymbolAtAddress(di.allocator, address[0]) catch |err| switch (err) {
+        error.MissingDebugInfo, error.InvalidDebugInfo => {
+            const value = std.fmt.bufPrintZ(&buf, "0x{x} - 0x{x}", .{ address[0], address[1] }) catch unreachable;
+            self.drawTableRow("##trace", "??? - ???", value.ptr);
+            return;
+        },
+        else => return err,
+    };
+    const si1 = module1.getSymbolAtAddress(di.allocator, address[1]) catch |err| switch (err) {
+        error.MissingDebugInfo, error.InvalidDebugInfo => {
+            const value = std.fmt.bufPrintZ(&buf, "0x{x} - 0x{x}", .{ address[0], address[1] }) catch unreachable;
+            self.drawTableRow("##trace", "??? - ???", value.ptr);
+            return;
+        },
+        else => return err,
+    };
+    defer if (si0.source_location) |sl| di.allocator.free(sl.file_name);
+    defer if (si1.source_location) |sl| di.allocator.free(sl.file_name);
+
+    var name: [:0]const u8 = undefined;
+    var value: [:0]const u8 = undefined;
+
+    {
+        if (si0.source_location) |sl0| {
+            if (si1.source_location) |sl1| {
+                const file0 = std.fs.path.basename(sl0.file_name);
+                const file1 = std.fs.path.basename(sl1.file_name);
+                if (str.eql(file0, file1)) {
+                    if (sl0.line == sl1.line and sl0.column == sl1.column) {
+                        name = std.fmt.bufPrintZ(&buf, "{s}", .{file0}) catch unreachable;
+                        value = std.fmt.bufPrintZ(
+                            buf[name.len + 1 ..],
+                            "{}:{}",
+                            .{ sl0.line, sl0.column },
+                        ) catch unreachable;
+                        self.drawTableRow("##ip", name.ptr, value.ptr);
+                    } else {
+                        name = std.fmt.bufPrintZ(&buf, "{s}", .{file0}) catch unreachable;
+                        value = std.fmt.bufPrintZ(
+                            buf[name.len + 1 ..],
+                            "{}:{} - {}:{}",
+                            .{ sl0.line, sl0.column, sl1.line, sl1.column },
+                        ) catch unreachable;
+                        self.drawTableRow("##ip", name.ptr, value.ptr);
+                    }
+                } else {
+                    name = std.fmt.bufPrintZ(&buf, "{s}", .{file0}) catch unreachable;
+                    value = std.fmt.bufPrintZ(
+                        buf[name.len + 1 ..],
+                        "{}:{}",
+                        .{ sl0.line, sl0.column },
+                    ) catch unreachable;
+                    self.drawTableRow("##ip", name.ptr, value.ptr);
+                    name = std.fmt.bufPrintZ(&buf, "{s}", .{file1}) catch unreachable;
+                    value = std.fmt.bufPrintZ(
+                        buf[name.len + 1 ..],
+                        "{}:{}",
+                        .{ sl1.line, sl1.column },
+                    ) catch unreachable;
+                    self.drawTableRow("##ip", name.ptr, value.ptr);
+                }
+            } else {
+                name = std.fmt.bufPrintZ(&buf, "{s}", .{
+                    std.fs.path.basename(sl0.file_name),
+                }) catch unreachable;
+                value = std.fmt.bufPrintZ(
+                    buf[name.len + 1 ..],
+                    "{}:{} - ??:??",
+                    .{ sl0.line, sl0.column },
+                ) catch unreachable;
+                self.drawTableRow("##ip", name.ptr, value.ptr);
+            }
+        } else {
+            if (si1.source_location) |sl1| {
+                name = std.fmt.bufPrintZ(&buf, "{s}", .{
+                    std.fs.path.basename(sl1.file_name),
+                }) catch unreachable;
+                value = std.fmt.bufPrintZ(
+                    buf[name.len + 1 ..],
+                    "??:?? - {}:{}",
+                    .{ sl1.line, sl1.column },
+                ) catch unreachable;
+                self.drawTableRow("##ip", name.ptr, value.ptr);
+            } else {
+                name = std.fmt.bufPrintZ(&buf, "???", .{}) catch unreachable;
+                value = std.fmt.bufPrintZ(&buf, "??:?? - ??:??", .{}) catch unreachable;
+                self.drawTableRow("##ip", name.ptr, value.ptr);
+            }
+        }
+    }
+    {
+        if (str.eql(si0.compile_unit_name, si1.compile_unit_name)) {
+            if (str.eql(si0.name, si1.name)) {
+                name = std.fmt.bufPrintZ(&buf, "({s})", .{si0.compile_unit_name}) catch unreachable;
+                value = std.fmt.bufPrintZ(buf[name.len + 1 ..], "{s}", .{si0.name}) catch unreachable;
+                self.drawTableRow("##ip", name.ptr, value.ptr);
+            } else {
+                name = std.fmt.bufPrintZ(&buf, "({s})", .{si0.compile_unit_name}) catch unreachable;
+                value = std.fmt.bufPrintZ(buf[name.len + 1 ..], "{s}", .{si0.name}) catch unreachable;
+                self.drawTableRow("##ip", name.ptr, value.ptr);
+                value = std.fmt.bufPrintZ(buf[name.len + 1 ..], "{s}", .{si1.name}) catch unreachable;
+                self.drawTableRow("##ip", name.ptr, value.ptr);
+            }
+        } else {
+            name = std.fmt.bufPrintZ(&buf, "({s})", .{si0.compile_unit_name}) catch unreachable;
+            value = std.fmt.bufPrintZ(buf[name.len + 1 ..], "{s}", .{si0.name}) catch unreachable;
+            self.drawTableRow("##ip", name.ptr, value.ptr);
+            name = std.fmt.bufPrintZ(&buf, "({s})", .{si1.compile_unit_name}) catch unreachable;
+            value = std.fmt.bufPrintZ(buf[name.len + 1 ..], "{s}", .{si1.name}) catch unreachable;
+            self.drawTableRow("##ip", name.ptr, value.ptr);
+        }
+    }
+    {
+        if (address[0] == address[1]) {
+            value = std.fmt.bufPrintZ(&buf, "0x{x}", .{address[0]}) catch unreachable;
+            self.drawTableRow("##ip", "", value.ptr);
+        } else {
+            value = std.fmt.bufPrintZ(&buf, "0x{x} - 0x{x}", .{ address[0], address[1] }) catch unreachable;
+            self.drawTableRow("##ip", "", value.ptr);
+        }
+    }
+}
+
+fn drawTableRowDuration(
+    self: *Self,
+    id: [*:0]const u8,
+    name: [*:0]const u8,
+    value: u32,
+) void {
+    const text = std.fmt.bufPrintZ(&buf, "{D}", .{value}) catch unreachable;
+    self.drawTableRow(id, name, text.ptr);
+}
+
+fn drawTableRow(_: *Self, id: [*:0]const u8, name: [*:0]const u8, value: [*:0]const u8) void {
     c.igTableNextRow(0, 0);
     c.igPushID_Str(id);
 
@@ -312,8 +491,7 @@ fn drawTableRow(_: *Self, id: [*:0]const u8, name: [*:0]const u8, value: u32) vo
 
     _ = c.igTableNextColumn();
     c.igAlignTextToFramePadding();
-    const text = std.fmt.bufPrintZ(&buf, "{D}", .{value}) catch unreachable;
-    c.igTextUnformatted(text, null);
+    c.igTextUnformatted(value, null);
 
     c.igPopID();
 }

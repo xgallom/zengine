@@ -26,14 +26,14 @@ pub const Coords3 = types.Coords3;
 pub const Coords3f64 = types.Coords3f64;
 pub const Coords4 = types.Coords4;
 pub const Coords4f64 = types.Coords4f64;
+pub const Point = types.Point;
+pub const Pointu32 = types.Pointu32;
 pub const RGBu8 = types.RGBu8;
 pub const RGBAu8 = types.RGBAu8;
 pub const RGBf32 = types.RGBf32;
 pub const RGBAf32 = types.RGBAf32;
 pub const Vertex = types.Vertex;
 pub const Vertex4 = types.Vertex4;
-pub const Position = types.Position;
-pub const Displacement = types.Displacement;
 pub const Euler = types.Euler;
 pub const Quat = types.Quat;
 pub const Index = types.Index;
@@ -43,6 +43,8 @@ pub const LineFaceIndex = types.LineFaceIndex;
 pub const Color = types.Color;
 pub const Axis3 = types.Axis3;
 pub const Axis4 = types.Axis4;
+pub const TransformOp = types.TransformOp;
+pub const TransformOrder = types.TransformOrder;
 pub const EulerOrder = types.EulerOrder;
 pub const vectorNT = @import("math/vector.zig").vectorNT;
 
@@ -80,6 +82,8 @@ pub const matrix3x3f64 = matrixMxNT(3, 3, types.Scalar64);
 pub const matrix4x4 = matrixMxNT(4, 4, types.Scalar);
 pub const matrix4x4f64 = matrixMxNT(4, 4, types.Scalar64);
 
+pub const point = vector2T(i32);
+pub const pointu32 = vector2T(u32);
 pub const rgbu8 = vector3T(u8);
 pub const rgbau8 = vector4T(u8);
 pub const rgbf32 = vector3;
@@ -90,6 +94,10 @@ pub const quat = quatT(types.Scalar);
 
 pub fn percent(x: anytype) @TypeOf(x) {
     return x * 100;
+}
+
+pub fn elemSize(comptime T: type) comptime_int {
+    return @sizeOf(Elem(T));
 }
 
 pub fn elemLen(comptime T: type) comptime_int {

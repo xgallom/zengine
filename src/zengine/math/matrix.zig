@@ -355,6 +355,23 @@ pub fn matrixMxNT(comptime M: comptime_int, comptime N: comptime_int, comptime T
                 .{ scalar.zero, scalar.zero, scalar.zero, scalar.one },
             };
         }
+
+        pub fn transform(
+            operand: *Self,
+            translation: *const Vector3,
+            rotation: *const types.Euler,
+            scales: *const Vector3,
+            order: types.TransformOrder,
+            euler_order: types.EulerOrder,
+        ) void {
+            inline for (order.transforms()) |operation| {
+                switch (operation) {
+                    .translate => translateXYZ(operand, translation),
+                    .rotate => rotateEuler(operand, rotation, euler_order),
+                    .scale => scaleXYZ(operand, scales),
+                }
+            }
+        }
     };
 }
 

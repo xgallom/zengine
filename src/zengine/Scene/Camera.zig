@@ -1,5 +1,5 @@
 //!
-//! The zengine camera implementation
+//! The zengine scene camera implementation
 //!
 
 const std = @import("std");
@@ -11,7 +11,7 @@ const ui = @import("../ui.zig");
 
 const log = std.log.scoped(.scene_camera);
 
-kind: Kind = .perspective,
+type: Type = .perspective,
 position: math.Vertex = math.vertex.zero,
 direction: math.Vertex = .{ 1, 0, 0 },
 up: math.Vertex = global.cameraUp(),
@@ -20,7 +20,7 @@ orto_scale: f32 = 100,
 
 const Self = @This();
 
-pub const Kind = enum(u32) {
+pub const Type = enum(u32) {
     ortographic,
     perspective,
 };
@@ -49,8 +49,15 @@ pub fn coords(self: *const Self, result: *math.vector3.Coords) void {
     );
 }
 
-pub fn projection(self: *const Self, result: *math.Matrix4x4, width: f32, height: f32, near_plane: f32, far_plane: f32) void {
-    switch (self.kind) {
+pub fn projection(
+    self: *const Self,
+    result: *math.Matrix4x4,
+    width: f32,
+    height: f32,
+    near_plane: f32,
+    far_plane: f32,
+) void {
+    switch (self.type) {
         .ortographic => math.matrix4x4.ortographicScale(
             result,
             self.orto_scale,
