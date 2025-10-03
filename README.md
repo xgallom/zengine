@@ -27,6 +27,7 @@ git clone https://github.com/xgallom/zengine.git
 cd zengine
 zig build ext
 zig build zengine
+./zig-out/bin/zeng
 ```
 
 ## License
