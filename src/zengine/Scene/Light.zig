@@ -17,7 +17,7 @@ type: Type,
 
 pub const Self = @This();
 
-pub const Type = enum(u8) {
+pub const Type = enum(u32) {
     ambient,
     directional,
     point,
@@ -26,6 +26,9 @@ pub const Type = enum(u8) {
 pub const Source = struct {
     color: math.RGBu8 = math.rgbu8.zero,
     intensity: math.Scalar = 1,
+
+    pub const color_type = ui.property_editor.InputType.scalar;
+    pub const intensity_speed = 0.05;
 };
 
 pub fn ambient(src: Source) Self {
@@ -38,4 +41,8 @@ pub fn directional(src: Source) Self {
 
 pub fn point(src: Source) Self {
     return .{ .src = src, .type = .point };
+}
+
+pub fn propertyEditor(self: *Self) ui.PropertyEditor(Self) {
+    return .init(self);
 }

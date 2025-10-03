@@ -46,7 +46,7 @@ pub fn createGPUTexture(self: *Self, gpu_device: ?*c.SDL_GPUDevice) !void {
     try self.gpu_tex.createGPUTexture(gpu_device, &.{
         .type = .default,
         .format = .default,
-        .usage = .init(.{ .sampler = true }),
+        .usage = .initOne(.sampler),
         .size = .{ self.surf.width(), self.surf.height() },
     });
 }

@@ -20,6 +20,9 @@ scale: math.Vertex = math.vertex.one,
 
 const Self = @This();
 
+pub const rotation_speed = 0.05;
+pub const scale_speed = 0.1;
+
 pub fn transform(self: *const Self, result: *math.Matrix4x4) void {
     result.* = math.matrix4x4.identity;
     math.matrix4x4.transform(

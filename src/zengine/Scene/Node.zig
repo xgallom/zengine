@@ -19,7 +19,7 @@ transform: Transform = .{},
 const Self = @This();
 pub const Tree = TreeContainer(Self, .{});
 
-pub const Type = enum {
+pub const Type = enum(u32) {
     node,
     camera,
     light,
@@ -30,8 +30,8 @@ pub const Target = struct {
     key: [:0]const u8,
     type: Type,
 
-    pub fn node() Target {
-        return .{ .key = "", .type = .node };
+    pub fn node(key: [:0]const u8) Target {
+        return .{ .key = key, .type = .node };
     }
 
     pub fn camera(key: [:0]const u8) Target {
@@ -94,3 +94,7 @@ pub const ChildrenIterator = struct {
         return null;
     }
 };
+
+pub fn propertyEditor(self: *Self) ui.PropertyEditor(Self) {
+    return .init(self);
+}

@@ -1,5 +1,6 @@
 //!
 //! The zengine
+//! Copyright 2025 Milan Gallo
 //!
 
 const std = @import("std");

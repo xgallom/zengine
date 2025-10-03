@@ -95,7 +95,7 @@ pub fn map(self: *Self, gpu_device: *c.SDL_GPUDevice) !void {
     for (self.gpu_bufs.items) |gpu_buf| {
         const cpu_buf = gpu_buf.slice(u8);
         assert(gpu_buf.len != 0);
-        assert(cpu_buf.len == gpu_buf.len);
+        assert(cpu_buf.len <= gpu_buf.len);
         @memcpy(dest[0..cpu_buf.len], cpu_buf);
         dest += cpu_buf.len;
     }
@@ -120,6 +120,7 @@ pub fn upload(self: *Self, copy_pass: ?*c.SDL_GPUCopyPass) void {
 
     var tb_offset: u32 = 0;
     for (self.gpu_bufs.items) |gpu_buf| {
+        const len = gpu_buf.byteLen();
         assert(gpu_buf.state() != .cpu);
         c.SDL_UploadToGPUBuffer(copy_pass, &c.SDL_GPUTransferBufferLocation{
             .transfer_buffer = self.transfer_buffer,
@@ -127,9 +128,10 @@ pub fn upload(self: *Self, copy_pass: ?*c.SDL_GPUCopyPass) void {
         }, &c.SDL_GPUBufferRegion{
             .buffer = gpu_buf.gpu_buf,
             .offset = 0,
-            .size = gpu_buf.len,
+            .size = len,
         }, false);
-        tb_offset += gpu_buf.len;
+        tb_offset += len;
+        log.info("{}, {}", .{ gpu_buf.len, gpu_buf.cpu_buf.items.len });
     }
     for (self.surf_texes.items) |surf_tex| {
         assert(surf_tex.state() == .gpu);

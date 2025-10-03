@@ -1,3 +1,16 @@
+```zig
+//
+//      7 o---------o 8
+//       /|        /|
+//      / |       / |
+//   3 o---------o 4|
+//     |  o------|--o 6
+//     | / 5     | /
+//     |/        |/
+//   1 o---------o 2
+//
+```
+
 # Zengine
 
 A modern 3D game engine built in Zig using SDL3

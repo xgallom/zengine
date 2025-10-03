@@ -230,7 +230,7 @@ pub fn createLightsBuffer(self: *Self, scene: *const Scene, flat: *const Scene.F
     const old_buf = self.renderer.storage_bufs.getPtrOrNull(key);
     const lights_buf = old_buf orelse try self.renderer.createStorageBuffer(key);
     try self.flagModified(.storage_buffer, key);
-    lights_buf.freeCPUBuffer(gpa);
+    lights_buf.clearCPUBuffer();
 
     const lights = flat.getPtrConst(.light).slice();
     for (lights.items(.target)) |target| {
@@ -283,7 +283,7 @@ fn createGPUData(self: *Self) InitError!void {
     }
     for (self.modifs.getPtrConst(.storage_buffer).items) |key| {
         const buf = self.renderer.storage_bufs.getPtr(key);
-        try buf.createGPUBuffer(gpu_device, .init(.{ .graphics_storage_read = true }));
+        try buf.createGPUBuffer(gpu_device, .initOne(.graphics_storage_read));
     }
     for (self.modifs.getPtrConst(.surface_texture).items) |key| {
         const tex = self.surface_textures.getPtr(key);

@@ -62,6 +62,10 @@ pub fn appendSliceAssumeCapacity(self: *Self, comptime T: type, items_all: []con
     for (items_all) |items| self.appendAssumeCapacity(T, items);
 }
 
+pub fn clearCPUBuffer(self: *Self) void {
+    self.cpu_buf.clearRetainingCapacity();
+}
+
 pub fn freeCPUBuffer(self: *Self, gpa: std.mem.Allocator) void {
     self.cpu_buf.clearAndFree(gpa);
 }

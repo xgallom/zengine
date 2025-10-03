@@ -113,7 +113,7 @@ pub const TransformOp = enum {
     pub const len = 3;
 };
 
-pub const TransformOrder = enum {
+pub const TransformOrder = enum(u32) {
     srt, // scale, rotate, translate
     str, // scale, translate, rotate
     rst, // rotate, scale, translate
@@ -135,7 +135,7 @@ pub const TransformOrder = enum {
     }
 };
 
-pub const EulerOrder = enum {
+pub const EulerOrder = enum(u32) {
     xyz,
     xzy,
     yxz,

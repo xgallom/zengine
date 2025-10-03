@@ -102,7 +102,12 @@ pub fn createRootNode(self: *Self, target: Node.Target, transform: *const Transf
     }));
 }
 
-pub fn createChildNode(self: *Self, parent: *Node, target: Node.Target, transform: *const Transform) !*Node {
+pub fn createChildNode(
+    self: *Self,
+    parent: *Node,
+    target: Node.Target,
+    transform: *const Transform,
+) !*Node {
     return Node.selfNode(try parent.treeNode().insert(&self.nodes, .{
         .target = target,
         .transform = transform.*,
@@ -174,6 +179,7 @@ pub fn propertyEditorNode(
 ) !*ui.PropertyEditorWindow.Item {
     const root_id = @typeName(Self);
     const root_node = try editor.appendChildNode(parent, root_id, "Scene");
+
     {
         const node = try editor.appendChildNode(root_node, root_id ++ ".cameras", "Cameras");
         var iter = self.cameras.map.iterator();
@@ -192,5 +198,58 @@ pub fn propertyEditorNode(
             );
         }
     }
+    {
+        const node = try editor.appendChildNode(root_node, root_id ++ ".lights", "Lights");
+        var iter = self.lights.map.iterator();
+        var buf: [64]u8 = undefined;
+        while (iter.next()) |entry| {
+            const id = try std.fmt.bufPrint(
+                &buf,
+                "{s}#{s}",
+                .{ @typeName(Light), entry.key_ptr.* },
+            );
+            _ = try editor.appendChild(
+                node,
+                entry.value_ptr.*.propertyEditor(),
+                id,
+                entry.key_ptr.*,
+            );
+        }
+    }
+    {
+        const node = try editor.appendChildNode(root_node, root_id ++ ".nodes", "Nodes");
+        var iter = self.nodes.iterator();
+        while (iter.next()) |tree_node| {
+            try walkPropertyEditorNode(self, editor, node, Node.selfNode(tree_node));
+        }
+    }
     return root_node;
 }
+
+const walkPropertyEditorNode = struct {
+    var buf: [64]u8 = undefined;
+    var n: usize = 0;
+    fn walk(
+        self: *Self,
+        editor: *ui.PropertyEditorWindow,
+        parent: *ui.PropertyEditorWindow.Item,
+        node: *Node,
+    ) !void {
+        n += 1;
+        const id = try std.fmt.bufPrint(
+            &buf,
+            "{s}#node_{}",
+            .{ @typeName(Node), n },
+        );
+        const editor_node = try editor.appendChild(
+            parent,
+            node.propertyEditor(),
+            id,
+            node.target.key,
+        );
+        var iter = node.childrenIterator();
+        while (iter.next()) |child| {
+            try walk(self, editor, editor_node, child);
+        }
+    }
+}.walk;

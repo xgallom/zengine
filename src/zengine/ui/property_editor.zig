@@ -31,6 +31,7 @@ pub const InputType = struct {
     pub const checkbox: InputTypeEnum = .checkbox;
     pub const text: InputTypeEnum = .text;
     pub const combo: InputTypeEnum = .combo;
+    pub const scalar: InputTypeEnum = .{ .scalar = .drag };
     pub const drag: InputTypeEnum = .{ .scalar = .drag };
     pub const slider: InputTypeEnum = .{ .scalar = .slider };
     pub const fields: InputTypeEnum = .fields;
@@ -286,7 +287,7 @@ pub fn InputScalar(comptime C: type, comptime count: usize, comptime options: Op
         pub const min: C = options.min orelse default_min;
         pub const max: C = options.max orelse default_max;
         pub const speed: f32 = options.speed orelse default_speed;
-        pub const input_type: InputTypeEnum.Scalar = options.input_type orelse .drag;
+        pub const input_type: InputTypeEnum.Scalar = options.input_type orelse InputType.scalar.scalar;
 
         pub fn init(component: CPtr) Self {
             return .{ .component = component };
@@ -390,7 +391,7 @@ pub fn InputField(
                 .array => |field_info| {
                     const input_type = if (@hasDecl(C, field_type))
                         @field(C, field_type)
-                    else if (field_info.child == u8) InputType.text else InputType.drag;
+                    else if (field_info.child == u8) InputType.text else InputType.scalar;
 
                     if (input_type == .text and field_info.sentinel() != 0) {
                         @compileError("Only zero-terminated strings supported");
@@ -411,6 +412,9 @@ pub fn InputField(
                         else => @compileError("Unsupported array type"),
                     }
                 },
+                .@"struct" => InputFields(field.type, .{
+                    .name = if (@hasDecl(C, field_name)) @field(C, field_name) else field.name,
+                }).drawImpl(field_ptr, ui, is_open),
                 .@"enum" => InputCombo(field.type, .{
                     .name = if (@hasDecl(C, field_name)) @field(C, field_name) else field.name,
                 }).drawImpl(field_ptr, ui, is_open),

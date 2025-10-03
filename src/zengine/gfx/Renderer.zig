@@ -445,7 +445,7 @@ fn createStencilTexture(
     var stencil_texture = try GPUTexture.init(self.gpu_device, &.{
         .type = .type_2d,
         .format = stencil_format,
-        .usage = .init(.{ .depth_stencil_target = true }),
+        .usage = .initOne(.depth_stencil_target),
         .size = .{ @intCast(engine.window_size.x), @intCast(engine.window_size.y) },
     });
     if (stencil_texture.state() == .invalid) {

@@ -75,8 +75,8 @@ pub fn freeCPUBuffers(self: *Self, gpa: std.mem.Allocator) void {
 }
 
 pub fn createGPUBuffers(self: *Self, gpu_device: ?*c.SDL_GPUDevice) !void {
-    try self.gpu_bufs.getPtr(.vertex).createGPUBuffer(gpu_device, .init(.{ .vertex = true }));
-    if (self.type == .index) try self.gpu_bufs.getPtr(.index).createGPUBuffer(gpu_device, .init(.{ .index = true }));
+    try self.gpu_bufs.getPtr(.vertex).createGPUBuffer(gpu_device, .initOne(.vertex));
+    if (self.type == .index) try self.gpu_bufs.getPtr(.index).createGPUBuffer(gpu_device, .initOne(.index));
 }
 
 pub fn releaseGPUBuffers(self: *Self, gpu_device: ?*c.SDL_GPUDevice) void {

@@ -179,14 +179,14 @@ pub fn main() !void {
     _ = try scene.createRootNode(.light("Ambient"), &.{});
     const dir_light = try scene.createRootNode(.light("Directional M"), &.{});
 
-    const objects = try scene.createRootNode(.node(), &.{
+    const objects = try scene.createRootNode(.node("Objects"), &.{
         .order = .srt,
     });
-    const ground = try scene.createRootNode(.node(), &.{
+    const ground = try scene.createRootNode(.node("Ground"), &.{
         .translation = .{ 0, -450, 0 },
         .scale = .{ 250, 250, 250 },
     });
-    const lights = try scene.createRootNode(.node(), &.{});
+    const lights = try scene.createRootNode(.node("Lights"), &.{});
 
     const cat = try scene.createChildNode(objects, .object("Cat"), &.{
         .translation = .{ 200, 0, 0 },
@@ -202,7 +202,7 @@ pub fn main() !void {
     _ = try scene.createChildNode(ground, .object("Plane"), &.{});
     _ = try scene.createChildNode(ground, .object("Landscape"), &.{});
 
-    const cube_r = try scene.createChildNode(lights, .node(), &.{
+    const cube_r = try scene.createChildNode(lights, .node("Cube R"), &.{
         .translation = .{ 100, 0, 0 },
     });
     _ = try scene.createChildNode(cube_r, .object("Cube R"), &.{
@@ -210,7 +210,7 @@ pub fn main() !void {
     });
     _ = try scene.createChildNode(cube_r, .light("Diffuse R"), &.{});
 
-    const cube_g = try scene.createChildNode(lights, .node(), &.{
+    const cube_g = try scene.createChildNode(lights, .node("Cube G"), &.{
         .translation = .{ 0, 100, 0 },
     });
     _ = try scene.createChildNode(cube_g, .object("Cube G"), &.{
@@ -218,7 +218,7 @@ pub fn main() !void {
     });
     _ = try scene.createChildNode(cube_g, .light("Diffuse G"), &.{});
 
-    const cube_b = try scene.createChildNode(lights, .node(), &.{
+    const cube_b = try scene.createChildNode(lights, .node("Cube B"), &.{
         .translation = .{ -100, 0, 0 },
     });
     _ = try scene.createChildNode(cube_b, .object("Cube B"), &.{
