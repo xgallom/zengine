@@ -13,7 +13,7 @@ const SwapWrapper = @import("containers.zig").SwapWrapper;
 const time = @import("time.zig");
 
 const log = std.log.scoped(.perf);
-pub const perf_sections = sections(@This(), &.{ .updateStats, .test_section });
+pub const perf_sections = sections(@This(), &.{.updateStats});
 pub const empty_section = TaggedSection("perf", "empty", "perf", .sub);
 
 const framerate_buf_count = 1 << 8;
@@ -144,8 +144,8 @@ const Self = struct {
             @branchHint(.cold);
             self.framerate_min = std.math.maxInt(u16);
         }
-        const framerate_start_time = (now -| 1001) + 1;
 
+        const framerate_start_time = (now -| 1001) + 1;
         self.framerate = 1;
         for (self.framerate_buf) |item| {
             if (item >= framerate_start_time) self.framerate += 1;
@@ -164,10 +164,11 @@ const Self = struct {
         self.framerate_imm_clock.start(now_nano);
     }
 
-    fn updateStats(self: *Self, now: u64, comptime force_update: bool) void {
-        if (comptime !force_update) {
+    fn updateStats(self: *Self, now: u64, force_update: bool) void {
+        if (!force_update) {
             if (!self.update_stats_timer.updated(now)) return;
         } else {
+            @branchHint(.cold);
             self.update_stats_timer.set(now);
         }
 
@@ -236,7 +237,7 @@ const Self = struct {
     }
 
     fn beginSection(self: *Self, comptime tag: []const u8, ptr: *Section, ret_addr: usize) !void {
-        if (ptr.first_address[0] == std.math.maxInt(usize)) {
+        if (ptr.first_address[0] != ret_addr) {
             ptr.first_address[0] = ret_addr;
             ptr.stack_trace[0].instruction_addresses = &ptr.stack_trace_buf[0];
             ptr.stack_trace[0].index = 0;
@@ -246,7 +247,7 @@ const Self = struct {
     }
 
     fn endSection(self: *Self, ptr: *Section, ret_addr: usize) !void {
-        if (ptr.first_address[1] == std.math.maxInt(usize)) {
+        if (ptr.first_address[1] != ret_addr) {
             ptr.first_address[1] = ret_addr;
             ptr.stack_trace[1].instruction_addresses = &ptr.stack_trace_buf[1];
             ptr.stack_trace[1].index = 0;
@@ -435,7 +436,7 @@ pub fn reset() void {
     global_state.reset();
 }
 
-pub fn updateStats(now: u64, comptime force_update: bool) void {
+pub fn updateStats(now: u64, force_update: bool) void {
     assert(is_init);
     assert(is_constructed);
 

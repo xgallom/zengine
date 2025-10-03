@@ -249,7 +249,6 @@ pub fn init(engine: *const Engine) InitError!*Self {
     _ = try self.createPipeline("full", &graphics_pipeline_create_info);
 
     sections.sub(.init).end();
-    perf.perf_sections.sub(.test_section).end();
     return self;
 }
 

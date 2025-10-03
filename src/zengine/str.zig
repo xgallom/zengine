@@ -9,6 +9,14 @@ pub const ScalarIterator = std.mem.SplitIterator(u8, .scalar);
 const vec_len = std.simd.suggestVectorLength(u8);
 const V = if (vec_len) |len| @Vector(len, u8) else u8;
 
+pub fn commonStart(label: []const u8, needle: []const u8) usize {
+    const end = @min(label.len, needle.len);
+    for (0..end, label[0..end], needle[0..end]) |n, a, b| {
+        if (a != b) return n;
+    }
+    return end;
+}
+
 pub inline fn eql(a: []const u8, b: []const u8) bool {
     return std.mem.eql(u8, a, b);
 }

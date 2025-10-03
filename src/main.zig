@@ -104,7 +104,6 @@ pub fn main() !void {
 
     main_section.begin();
     sections.sub(.init).begin();
-    perf.perf_sections.sub(.test_section).begin();
 
     try engine.initWindow();
 
@@ -153,8 +152,8 @@ pub fn main() !void {
             .intensity = 0.05,
         }));
         _ = try scene.createLight("Directional M", .directional(.{
-            .color = .{ 255, 32, 255 },
-            .intensity = 0.25,
+            .color = .{ 127, 127, 127 },
+            .intensity = 0.1,
         }));
         _ = try scene.createLight("Diffuse R", .point(.{
             .color = .{ 255, 32, 64 },

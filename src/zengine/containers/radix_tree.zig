@@ -5,6 +5,8 @@
 const std = @import("std");
 const assert = std.debug.assert;
 
+const str = @import("../str.zig");
+
 const log = std.log.scoped(.radix_tree);
 
 /// Radix tree data structure
@@ -98,7 +100,7 @@ pub fn RadixTree(comptime V: type, comptime options: std.heap.MemoryPoolOptions)
                     const edge: *Edge = @fieldParentPtr("edge_node", edge_node.?);
                     if (edge.label.len == 0) continue;
 
-                    const common = commonStart(edge.label, needle);
+                    const common = str.commonStart(edge.label, needle);
                     log.debug("common {s} ( {s} & {s} )", .{ edge.label[0..common], edge.label, needle });
 
                     if (common >= edge.label.len) {
@@ -135,7 +137,7 @@ pub fn RadixTree(comptime V: type, comptime options: std.heap.MemoryPoolOptions)
                     const edge: *Edge = @fieldParentPtr("edge_node", edge_node.?);
                     if (edge.label.len == 0) continue;
 
-                    const common = commonStart(edge.label, needle);
+                    const common = str.commonStart(edge.label, needle);
                     log.debug("common {s} ( {s} & {s} )", .{ edge.label[0..common], edge.label, needle });
 
                     if (common >= edge.label.len) {
@@ -172,7 +174,7 @@ pub fn RadixTree(comptime V: type, comptime options: std.heap.MemoryPoolOptions)
                     const edge: *Edge = @fieldParentPtr("edge_node", edge_node.?);
                     if (edge.label.len == 0) continue;
 
-                    const common = commonStart(edge.label, needle);
+                    const common = str.commonStart(edge.label, needle);
                     log.debug("common {s} ( {s} & {s} )", .{ edge.label[0..common], edge.label, needle });
 
                     if (common >= edge.label.len) {
@@ -214,7 +216,7 @@ pub fn RadixTree(comptime V: type, comptime options: std.heap.MemoryPoolOptions)
                 while (edge_node != null) : (edge_node = edge_node.?.next) {
                     const edge: *Edge = @fieldParentPtr("edge_node", edge_node.?);
 
-                    const common = commonStart(edge.label, needle);
+                    const common = str.commonStart(edge.label, needle);
                     if (common == 0) continue;
 
                     const base_label = edge.label[0..common];
@@ -256,7 +258,7 @@ pub fn RadixTree(comptime V: type, comptime options: std.heap.MemoryPoolOptions)
                 while (edge_node != null) : (edge_node = edge_node.?.next) {
                     const edge: *Edge = @fieldParentPtr("edge_node", edge_node.?);
 
-                    const common = commonStart(edge.label, needle);
+                    const common = str.commonStart(edge.label, needle);
                     if (common == 0) continue;
 
                     if (common >= needle.len) {
@@ -341,14 +343,6 @@ pub fn RadixTree(comptime V: type, comptime options: std.heap.MemoryPoolOptions)
 
         fn destroyEdge(self: *Self, edge: *Edge) void {
             self.pool.destroy(@ptrCast(edge));
-        }
-
-        fn commonStart(label: []const u8, needle: []const u8) usize {
-            const end = @min(label.len, needle.len);
-            for (0..end, label[0..end], needle[0..end]) |n, a, b| {
-                if (a != b) return n;
-            }
-            return end;
         }
     };
 }

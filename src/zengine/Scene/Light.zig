@@ -23,6 +23,11 @@ pub const Type = enum(u8) {
     point,
 };
 
+pub const Source = struct {
+    color: math.RGBu8 = math.rgbu8.zero,
+    intensity: math.Scalar = 1,
+};
+
 pub fn ambient(src: Source) Self {
     return .{ .src = src, .type = .ambient };
 }
@@ -34,8 +39,3 @@ pub fn directional(src: Source) Self {
 pub fn point(src: Source) Self {
     return .{ .src = src, .type = .point };
 }
-
-pub const Source = struct {
-    color: math.RGBu8 = math.rgbu8.zero,
-    intensity: math.Scalar = 1,
-};
