@@ -19,7 +19,7 @@ items: std.DoublyLinkedList = .{},
 active_item: ?*const Item = null,
 max_depth: u32 = 0,
 is_open: bool = true,
-filter: TreeFilter = .{},
+filter: TreeFilter = .{ .initial_open_depth = 2 },
 
 const Self = @This();
 pub const window_name = "Property Editor";
@@ -207,7 +207,7 @@ fn drawTreeNode(
     if (item.children.first == null) tree_flags |= c.ImGuiTreeNodeFlags_Leaf |
         c.ImGuiTreeNodeFlags_Bullet;
 
-    self.filter.toggleOpen(filt_res);
+    self.filter.toggleOpen(filt_res, item.depth);
     const node_open = c.igTreeNodeEx_StrStr("##node", tree_flags, "%s", &item.name);
     if (c.igIsItemFocused()) self.active_item = item;
     if (node_open) {
@@ -221,7 +221,10 @@ fn drawTreeNode(
     c.igPopID();
 }
 
-const Filter = TreeFilter.Filter(*const Item, keyTree, walkTree, null);
+const Filter = TreeFilter.Filter(*const Item, .{
+    .keyFn = keyTree,
+    .walkFn = walkTree,
+});
 
 fn keyTree(item: *const Item) ?[*:0]const u8 {
     return @ptrCast(&item.name);

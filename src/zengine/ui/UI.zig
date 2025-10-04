@@ -6,6 +6,7 @@ const std = @import("std");
 const assert = std.debug.assert;
 
 const allocators = @import("../allocators.zig");
+const cache = @import("cache.zig");
 const Engine = @import("../Engine.zig");
 const c = @import("../ext.zig").c;
 const gfx = @import("../gfx.zig");
@@ -16,7 +17,7 @@ const AllocsWindpw = @import("AllocsWindow.zig");
 const PerfWindow = @import("PerfWindow.zig");
 const PropertyEditorWindow = @import("PropertyEditorWindow.zig");
 
-const log = std.log.scoped(.ui_UI);
+const log = std.log.scoped(.ui);
 pub const sections = perf.sections(@This(), &.{ .init, .draw });
 
 const Self = @This();
@@ -28,12 +29,16 @@ init_docking: bool = true,
 
 pub const Element = struct {
     ptr: ?*anyopaque,
-    drawFn: *const fn (ptr: ?*anyopaque, ui: *const Self, is_open: *bool) void,
+    drawFn: *const DrawFn,
+
+    pub const DrawFn = fn (ptr: ?*anyopaque, ui: *const Self, is_open: *bool) void;
 
     pub fn draw(e: Element, ui: *const Self, is_open: *bool) void {
         e.drawFn(e.ptr, ui, is_open);
     }
 };
+
+var ref_count: std.atomic.Value(usize) = .init(0);
 
 pub fn init(engine: *Engine, renderer: *gfx.Renderer) gfx.Renderer.InitError!*Self {
     try sections.register();
@@ -69,10 +74,12 @@ pub fn init(engine: *Engine, renderer: *gfx.Renderer) gfx.Renderer.InitError!*Se
 
     const result = try allocators.global().create(Self);
     result.* = .{};
+    cache.init();
     return result;
 }
 
 pub fn deinit(self: *Self) void {
+    cache.deinit();
     c.ImGui_ImplSDLGPU3_Shutdown();
     c.ImGui_ImplSDL3_Shutdown();
     c.ImPlot_DestroyContext(null);

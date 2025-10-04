@@ -72,7 +72,7 @@ pub fn createDefaultCamera(self: *Self) !void {
     // var camera_position: math.Vector3 = .{ -1438.067, 2358.586, 2820.102 };
     var camera_direction: math.Vector3 = undefined;
 
-    math.vector3.scale(&camera_position, 15);
+    math.vector3.scale(&camera_position, 50);
     math.vector3.lookAt(&camera_direction, &camera_position, &math.vector3.zero);
 
     _ = try self.createCamera("default", &.{

@@ -131,7 +131,6 @@ pub fn upload(self: *Self, copy_pass: ?*c.SDL_GPUCopyPass) void {
             .size = len,
         }, false);
         tb_offset += len;
-        log.info("{}, {}", .{ gpu_buf.len, gpu_buf.cpu_buf.items.len });
     }
     for (self.surf_texes.items) |surf_tex| {
         assert(surf_tex.state() == .gpu);

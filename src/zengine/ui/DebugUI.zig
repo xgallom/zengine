@@ -11,7 +11,7 @@ const global = @import("../global.zig");
 const perf = @import("../perf.zig");
 const UI = @import("UI.zig");
 
-const log = std.log.scoped(.ui_perf_window);
+const log = std.log.scoped(.ui_debug_ui);
 
 is_open: bool = false,
 

@@ -4,6 +4,7 @@
 
 const std = @import("std");
 
+pub const cache = @import("ui/cache.zig");
 pub const AllocsWindow = @import("ui/AllocsWindow.zig");
 pub const DebugUI = @import("ui/DebugUI.zig");
 pub const PerfWindow = @import("ui/PerfWindow.zig");

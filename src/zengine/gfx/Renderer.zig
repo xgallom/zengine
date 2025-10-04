@@ -81,6 +81,26 @@ pub const Item = struct {
     }
 };
 
+pub const Items = struct {
+    items: Scene.FlatList.Slice,
+    idx: usize = 0,
+
+    pub fn init(flat: *const Scene.Flattened) Items {
+        return .{ .items = flat.getPtrConst(.object).slice() };
+    }
+
+    pub fn next(self: *Items) ?Item {
+        if (self.idx < self.items.len) {
+            defer self.idx += 1;
+            return .{
+                .object = self.items.items(.target)[self.idx],
+                .transform = &self.items.items(.transform)[self.idx],
+            };
+        }
+        return null;
+    }
+};
+
 pub fn init(engine: *const Engine) InitError!*Self {
     defer allocators.scratchFree();
 
@@ -820,6 +840,48 @@ pub fn propertyEditorNode(
     const root_id = @typeName(Self);
     const root_node = try editor.appendChildNode(parent, root_id, "Renderer");
     {
+        const node = try editor.appendChildNode(root_node, root_id ++ ".mesh_objs", "Mesh Objects");
+        var iter = self.mesh_objs.map.iterator();
+        var buf: [64]u8 = undefined;
+        while (iter.next()) |entry| {
+            const id = try std.fmt.bufPrint(&buf, "{s}#{s}", .{ @typeName(MeshObject), entry.key_ptr.* });
+            _ = try editor.appendChild(
+                node,
+                entry.value_ptr.*.propertyEditor(),
+                id,
+                entry.key_ptr.*,
+            );
+        }
+    }
+    {
+        const node = try editor.appendChildNode(root_node, root_id ++ ".mesh_bufs", "Mesh Buffers");
+        var iter = self.mesh_bufs.map.iterator();
+        var buf: [64]u8 = undefined;
+        while (iter.next()) |entry| {
+            const id = try std.fmt.bufPrint(&buf, "{s}#{s}", .{ @typeName(MeshBuffer), entry.key_ptr.* });
+            _ = try editor.appendChild(
+                node,
+                entry.value_ptr.*.propertyEditor(),
+                id,
+                entry.key_ptr.*,
+            );
+        }
+    }
+    {
+        const node = try editor.appendChildNode(root_node, root_id ++ ".storage_bufs", "Storage Buffers");
+        var iter = self.storage_bufs.map.iterator();
+        var buf: [64]u8 = undefined;
+        while (iter.next()) |entry| {
+            const id = try std.fmt.bufPrint(&buf, "{s}#{s}", .{ @typeName(GPUBuffer), entry.key_ptr.* });
+            _ = try editor.appendChild(
+                node,
+                ui_mod.property_editor.PropertyEditorNull,
+                id,
+                entry.key_ptr.*,
+            );
+        }
+    }
+    {
         const node = try editor.appendChildNode(root_node, root_id ++ ".materials", "Materials");
         var iter = self.materials.map.iterator();
         var buf: [64]u8 = undefined;
@@ -833,19 +895,33 @@ pub fn propertyEditorNode(
             );
         }
     }
-    // {
-    //     const node = try editor.appendChildNode(root_node, root_id ++ ".cameras", "Cameras");
-    //     var iter = self.cameras.map.iterator();
-    //     var buf: [64]u8 = undefined;
-    //     while (iter.next()) |entry| {
-    //         const id = try std.fmt.bufPrint(&buf, "{s}#{s}", .{ @typeName(Camera), entry.key_ptr.* });
-    //         _ = try editor.appendChild(
-    //             node,
-    //             entry.value_ptr.*.propertyEditor(),
-    //             id,
-    //             entry.key_ptr.*,
-    //         );
-    //     }
-    // }
+    {
+        const node = try editor.appendChildNode(root_node, root_id ++ ".textures", "Textures");
+        var iter = self.textures.map.iterator();
+        var buf: [64]u8 = undefined;
+        while (iter.next()) |entry| {
+            const id = try std.fmt.bufPrint(&buf, "{s}#{s}", .{ @typeName(GPUTexture), entry.key_ptr.* });
+            _ = try editor.appendChild(
+                node,
+                ui_mod.property_editor.PropertyEditorNull,
+                id,
+                entry.key_ptr.*,
+            );
+        }
+    }
+    {
+        const node = try editor.appendChildNode(root_node, root_id ++ ".samplers", "Samplers");
+        var iter = self.samplers.map.iterator();
+        var buf: [64]u8 = undefined;
+        while (iter.next()) |entry| {
+            const id = try std.fmt.bufPrint(&buf, "{s}#{s}", .{ @typeName(c.SDL_GPUSampler), entry.key_ptr.* });
+            _ = try editor.appendChild(
+                node,
+                ui_mod.property_editor.PropertyEditorNull,
+                id,
+                entry.key_ptr.*,
+            );
+        }
+    }
     return root_node;
 }

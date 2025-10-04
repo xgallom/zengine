@@ -14,7 +14,7 @@ const KeyMap = @import("../containers.zig").KeyMap;
 
 const log = std.log.scoped(.gfx_object);
 
-pub const FaceType = enum(u8) {
+pub const FaceType = enum {
     invalid,
     point,
     line,
@@ -59,6 +59,8 @@ const Self = @This();
 const Sections = std.ArrayList(Section);
 const Groups = std.ArrayList(Group);
 
+pub const exclude_properties: ui.property_editor.PropertyList = &.{ .mesh_buf, .sections, .groups };
+
 pub fn init(face_type: FaceType) Self {
     return .{ .face_type = face_type };
 }
@@ -100,4 +102,8 @@ pub fn endGroup(self: *Self, offset: usize) void {
     const group = &self.groups.items[self.groups.items.len - 1];
     group.len = offset - group.offset;
     self.has_active.group = false;
+}
+
+pub fn propertyEditor(self: *Self) ui.PropertyEditor(Self) {
+    return .init(self);
 }

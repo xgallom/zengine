@@ -10,7 +10,7 @@ const c = @import("../ext.zig").c;
 const global = @import("../global.zig");
 const UI = @import("UI.zig");
 
-const log = std.log.scoped(.ui_property_editor_window);
+const log = std.log.scoped(.ui_tree_filter);
 // pub const sections = perf.sections(@This(), &.{ .init, .draw });
 
 pub const Result = enum {
@@ -23,8 +23,10 @@ pub const Result = enum {
 
 filter: c.ImGuiTextFilter = .{},
 toggle_state: bool = false,
-buf: [256]u8 = @splat(0),
+buf: [256:0]u8 = @splat(0),
 text: [:0]const u8 = "",
+min_len: usize = 3,
+initial_open_depth: usize = 0,
 
 const Self = @This();
 
@@ -46,12 +48,7 @@ pub fn draw(self: *Self, _: *const UI, _: *bool) void {
 }
 
 fn prepare(self: *Self) void {
-    for (&self.buf, 0..) |ch, n| {
-        if (ch == 0) {
-            self.text = self.buf[0..n :0];
-            return;
-        }
-    }
+    self.text = std.mem.sliceTo(&self.buf, 0);
 }
 
 fn callback(data: [*c]c.ImGuiInputTextCallbackData) callconv(.c) c_int {
@@ -67,7 +64,11 @@ pub fn element(self: *Self) UI.Element {
     };
 }
 
-pub fn toggleOpen(self: *Self, res: Result) void {
+pub fn toggleOpen(self: *Self, res: Result, depth: ?usize) void {
+    if (self.text.len < self.min_len) {
+        if (depth) |d| c.igSetNextItemOpen(d < self.initial_open_depth, c.ImGuiCond_Appearing);
+        return;
+    }
     switch (res) {
         .sub_passed, .passed => c.igSetNextItemOpen(true, c.ImGuiCond_Appearing),
         else => c.igSetNextItemOpen(false, c.ImGuiCond_Appearing),
@@ -96,11 +97,14 @@ pub const TestFn = fn (filter: *Self, key: [*:0]const u8) bool;
 
 pub fn Filter(
     comptime T: type,
-    comptime keyFn: KeyFn(T),
-    comptime walkFn: WalkFn(T),
-    comptime testFn: ?TestFn,
+    comptime config: struct {
+        keyFn: KeyFn(T),
+        walkFn: WalkFn(T),
+        testFn: ?TestFn = null,
+        min_width: usize = 3,
+    },
 ) type {
-    const testKey = comptime if (testFn) |testKey| testKey else defaultTestFn;
+    const testKey = comptime if (config.testFn) |testKey| testKey else defaultTestFn;
     return struct {
         pub fn apply(filter: *Self, item: T, parent_res: Result) Result {
             return switch (parent_res) {
@@ -116,11 +120,11 @@ pub fn Filter(
         }
 
         pub fn applyWalk(filter: *Self, item: T) Result {
-            if (keyFn(item)) |key| {
+            if (config.keyFn(item)) |key| {
                 if (testKey(filter, key)) return .passed;
             }
 
-            return walkFn(filter, item);
+            return config.walkFn(filter, item);
         }
     };
 }

@@ -20,7 +20,7 @@ orto_scale: f32 = 100,
 
 const Self = @This();
 
-pub const Type = enum(u32) {
+pub const Type = enum {
     ortographic,
     perspective,
 };

@@ -50,36 +50,7 @@ pub const zengine_options: zengine.Options = .{
     },
 };
 
-const RenderItems = struct {
-    items: Scene.FlatList.Slice,
-    idx: usize = 0,
-
-    const Self = @This();
-
-    pub fn init(flat: *const Scene.Flattened) Self {
-        return .{ .items = flat.getPtrConst(.object).slice() };
-    }
-
-    pub fn next(self: *Self) ?gfx.Renderer.Item {
-        if (self.idx < self.items.len) {
-            defer self.idx += 1;
-            return .{
-                .object = self.items.items(.target)[self.idx],
-                .transform = &self.items.items(.transform)[self.idx],
-            };
-        }
-        return null;
-    }
-};
-
 pub fn main() !void {
-    for ([_]f32{ -1, -0.7, -0.5, -0.3, 0, 0.2, 0.5, 0.8, 1 }) |x| {
-        log.info("acos({}) = {}rad = {}deg", .{
-            x,
-            std.math.acos(x),
-            std.math.radiansToDegrees(std.math.acos(x)),
-        });
-    }
     // memory limit 1GB, SDL allocations are not tracked
     try allocators.init(1_000_000_000);
     defer allocators.deinit();
@@ -115,7 +86,6 @@ pub fn main() !void {
 
     const ui = try UI.init(engine, renderer);
     defer ui.deinit();
-    log.info("window size: {}", .{engine.window_size});
 
     var task_list = try scheduler.TaskScheduler.init(allocators.gpa());
     defer task_list.deinit();
@@ -151,23 +121,24 @@ pub fn main() !void {
             .color = .{ 255, 255, 255 },
             .intensity = 0.05,
         }));
-        _ = try scene.createLight("Directional M", .directional(.{
+        _ = try scene.createLight("Directional Magenta", .directional(.{
             .color = .{ 127, 127, 127 },
             .intensity = 0.1,
         }));
-        _ = try scene.createLight("Diffuse R", .point(.{
+        _ = try scene.createLight("Diffuse Red", .point(.{
             .color = .{ 255, 32, 64 },
             .intensity = 2e4,
         }));
-        _ = try scene.createLight("Diffuse G", .point(.{
+        _ = try scene.createLight("Diffuse Green", .point(.{
             .color = .{ 32, 255, 64 },
             .intensity = 8e3,
         }));
-        _ = try scene.createLight("Diffuse B", .point(.{
+        _ = try scene.createLight("Diffuse Blue", .point(.{
             .color = .{ 64, 32, 255 },
             .intensity = 2e4,
         }));
 
+        _ = try gfx_loader.createLightsBuffer(scene, null);
         try gfx_loader.commit();
     }
 
@@ -177,7 +148,7 @@ pub fn main() !void {
     const pi = std.math.pi;
 
     _ = try scene.createRootNode(.light("Ambient"), &.{});
-    const dir_light = try scene.createRootNode(.light("Directional M"), &.{});
+    const dir_light = try scene.createRootNode(.light("Directional Magenta"), &.{});
 
     const objects = try scene.createRootNode(.node("Objects"), &.{
         .order = .srt,
@@ -202,29 +173,29 @@ pub fn main() !void {
     _ = try scene.createChildNode(ground, .object("Plane"), &.{});
     _ = try scene.createChildNode(ground, .object("Landscape"), &.{});
 
-    const cube_r = try scene.createChildNode(lights, .node("Cube R"), &.{
+    const cube_r = try scene.createChildNode(lights, .node("Red"), &.{
         .translation = .{ 100, 0, 0 },
     });
-    _ = try scene.createChildNode(cube_r, .object("Cube R"), &.{
+    _ = try scene.createChildNode(cube_r, .object("Cube Red"), &.{
         .scale = .{ 3, 3, 3 },
     });
-    _ = try scene.createChildNode(cube_r, .light("Diffuse R"), &.{});
+    _ = try scene.createChildNode(cube_r, .light("Diffuse Red"), &.{});
 
-    const cube_g = try scene.createChildNode(lights, .node("Cube G"), &.{
+    const cube_g = try scene.createChildNode(lights, .node("Green"), &.{
         .translation = .{ 0, 100, 0 },
     });
-    _ = try scene.createChildNode(cube_g, .object("Cube G"), &.{
+    _ = try scene.createChildNode(cube_g, .object("Cube Green"), &.{
         .scale = .{ 3, 3, 3 },
     });
-    _ = try scene.createChildNode(cube_g, .light("Diffuse G"), &.{});
+    _ = try scene.createChildNode(cube_g, .light("Diffuse Green"), &.{});
 
-    const cube_b = try scene.createChildNode(lights, .node("Cube B"), &.{
+    const cube_b = try scene.createChildNode(lights, .node("Blue"), &.{
         .translation = .{ -100, 0, 0 },
     });
-    _ = try scene.createChildNode(cube_b, .object("Cube B"), &.{
+    _ = try scene.createChildNode(cube_b, .object("Cube Blue"), &.{
         .scale = .{ 3, 3, 3 },
     });
-    _ = try scene.createChildNode(cube_b, .light("Diffuse B"), &.{});
+    _ = try scene.createChildNode(cube_b, .light("Diffuse Blue"), &.{});
 
     // const cube = try render_items.push(.{
     //     .object = "Cube",
@@ -234,7 +205,7 @@ pub fn main() !void {
     // });
     //
     // const smooth_cube = try render_items.push(.{
-    //     .object = "Smooth Cube",
+    //     .object = "Cube Smooth",
     //     .position = .{ -65, 0, 0 },
     //     .rotation = math.vertex.zero,
     //     .scale = .{ 3, 3, 3 },
@@ -528,7 +499,7 @@ pub fn main() !void {
         ui.endDraw();
 
         {
-            var items = RenderItems.init(&flat_scene);
+            var items: gfx.Renderer.Items = .init(&flat_scene);
             _ = try renderer.render(engine, scene, &flat_scene, ui, &items);
         }
 

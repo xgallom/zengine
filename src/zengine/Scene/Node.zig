@@ -19,7 +19,7 @@ transform: Transform = .{},
 const Self = @This();
 pub const Tree = TreeContainer(Self, .{});
 
-pub const Type = enum(u32) {
+pub const Type = enum {
     node,
     camera,
     light,

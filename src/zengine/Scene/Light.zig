@@ -17,7 +17,7 @@ type: Type,
 
 pub const Self = @This();
 
-pub const Type = enum(u32) {
+pub const Type = enum {
     ambient,
     directional,
     point,

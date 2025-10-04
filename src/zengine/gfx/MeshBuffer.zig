@@ -7,6 +7,7 @@ const assert = std.debug.assert;
 
 const c = @import("../ext.zig").c;
 const math = @import("../math.zig");
+const ui = @import("../ui.zig");
 const GPUBuffer = @import("GPUBuffer.zig");
 
 const log = std.log.scoped(.gfx_mesh_buffer);
@@ -18,6 +19,8 @@ type: Type,
 const Self = @This();
 pub const VertElem = math.Scalar;
 pub const IndexElem = math.Index;
+
+pub const exclude_properties: ui.property_editor.PropertyList = &.{.gpu_bufs};
 
 pub const Type = enum {
     vertex,
@@ -82,4 +85,8 @@ pub fn createGPUBuffers(self: *Self, gpu_device: ?*c.SDL_GPUDevice) !void {
 pub fn releaseGPUBuffers(self: *Self, gpu_device: ?*c.SDL_GPUDevice) void {
     self.gpu_bufs.getPtr(.vertex).releaseGPUBuffer(gpu_device);
     if (self.type == .index) self.gpu_bufs.getPtr(.index).releaseGPUBuffer(gpu_device);
+}
+
+pub fn propertyEditor(self: *Self) ui.PropertyEditor(Self) {
+    return .init(self);
 }

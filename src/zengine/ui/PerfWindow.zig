@@ -27,7 +27,7 @@ tab_bar: packed struct {
     module_tree: bool = true,
     call_graph: bool = false,
 } = .{},
-filter: TreeFilter = .{},
+filter: TreeFilter = .{ .min_len = 0 },
 
 const Self = @This();
 pub const window_name = "Performance";
@@ -598,7 +598,7 @@ fn drawModuleTreeNode(
     if (item.target.edges.first == null) tree_flags |= c.ImGuiTreeNodeFlags_Leaf |
         c.ImGuiTreeNodeFlags_Bullet;
 
-    self.filter.toggleOpen(filt_res);
+    self.filter.toggleOpen(filt_res, item.target.depth);
     const node_open = c.igTreeNodeEx_StrStr("##node", tree_flags, "%s", label.ptr);
 
     if (item.target.value) |value| {
@@ -642,7 +642,7 @@ fn drawCallGraphNode(
     if (item.edges.first == null) tree_flags |= c.ImGuiTreeNodeFlags_Leaf |
         c.ImGuiTreeNodeFlags_Bullet;
 
-    self.filter.toggleOpen(filt_res);
+    self.filter.toggleOpen(filt_res, item.depth);
     const node_open = c.igTreeNodeEx_StrStr("##node", tree_flags, "%s", label.ptr);
     if (c.igIsItemFocused()) self.active_item = item.value.value;
     if (node_open) {
@@ -655,12 +655,10 @@ fn drawCallGraphNode(
     c.igPopID();
 }
 
-const ModuleTreeFilter = TreeFilter.Filter(
-    *const perf.SectionsTree.Edge,
-    keyModuleTree,
-    walkModuleTree,
-    null,
-);
+const ModuleTreeFilter = TreeFilter.Filter(*const perf.SectionsTree.Edge, .{
+    .keyFn = keyModuleTree,
+    .walkFn = walkModuleTree,
+});
 
 fn keyModuleTree(item: *const perf.SectionsTree.Edge) ?[*:0]const u8 {
     if (item.target.value) |value| return @ptrCast(value.value.name);
@@ -676,12 +674,10 @@ fn walkModuleTree(filter: *TreeFilter, item: *const perf.SectionsTree.Edge) Tree
     return .not_found;
 }
 
-const CallGraphFilter = TreeFilter.Filter(
-    *const perf.SectionsListTree.Edge,
-    keyCallGraph,
-    walkCallGraph,
-    null,
-);
+const CallGraphFilter = TreeFilter.Filter(*const perf.SectionsListTree.Edge, .{
+    .keyFn = keyCallGraph,
+    .walkFn = walkCallGraph,
+});
 
 fn keyCallGraph(item: *const perf.SectionsListTree.Edge) ?[*:0]const u8 {
     return @ptrCast(item.value.value.name);

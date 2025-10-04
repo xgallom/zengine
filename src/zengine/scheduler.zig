@@ -35,7 +35,7 @@ pub fn Promise(comptime T: type) type {
         pub fn tryGet(self: *Self) PromiseError!T {
             switch (self.state.load(.acquire)) {
                 .waiting => return PromiseError.NotReady,
-                .resolved => self.state.store(.read, .unordered),
+                .resolved => self.state.store(.read, .monotonic),
                 .read => {},
             }
             return self.payload;
@@ -48,8 +48,9 @@ pub fn Promise(comptime T: type) type {
         }
 
         pub fn set(self: *Self, value: T) void {
+            assert(self.state.load(.monotonic) == .waiting);
             self.payload = value;
-            self.state.store(.resolved, .release);
+            assert(self.state.cmpxchgStrong(.waiting, .resolved, .release, .monotonic) == .waiting);
         }
     };
 }

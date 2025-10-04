@@ -224,15 +224,17 @@ pub fn createDefaultTexture(self: *Self) !*SurfaceTexture {
     return tex;
 }
 
-pub fn createLightsBuffer(self: *Self, scene: *const Scene, flat: *const Scene.Flattened) !*GPUBuffer {
+pub fn createLightsBuffer(self: *Self, scene: *const Scene, flat: ?*const Scene.Flattened) !*GPUBuffer {
     const key = "lights";
     const gpa = self.renderer.allocator;
     const old_buf = self.renderer.storage_bufs.getPtrOrNull(key);
     const lights_buf = old_buf orelse try self.renderer.createStorageBuffer(key);
-    try self.flagModified(.storage_buffer, key);
     lights_buf.clearCPUBuffer();
 
-    const lights = flat.getPtrConst(.light).slice();
+    if (flat == null) return lights_buf;
+
+    try self.flagModified(.storage_buffer, key);
+    const lights = flat.?.getPtrConst(.light).slice();
     for (lights.items(.target)) |target| {
         const light = scene.lights.getPtr(target);
         if (light.type == .ambient) {
