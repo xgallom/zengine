@@ -302,31 +302,27 @@ pub fn deinit(self: *Self, engine: *const Engine) void {
 }
 
 fn stencilFormat(self: *const Self) GPUTexture.Format {
-    if (c.SDL_GPUTextureSupportsFormat(
+    if (GPUTexture.supportsFormat(
         self.gpu_device,
-        c.SDL_GPU_TEXTUREFORMAT_D24_UNORM_S8_UINT,
-        c.SDL_GPU_TEXTURETYPE_2D,
-        c.SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET,
-    )) {
-        return .d24_unorm_s8_u;
-    } else if (c.SDL_GPUTextureSupportsFormat(
+        .D24_unorm_S8_u,
+        .@"2D",
+        .initOne(.depth_stencil_target),
+    )) return .D24_unorm_S8_u;
+    if (GPUTexture.supportsFormat(
         self.gpu_device,
-        c.SDL_GPU_TEXTUREFORMAT_D32_FLOAT_S8_UINT,
-        c.SDL_GPU_TEXTURETYPE_2D,
-        c.SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET,
-    )) {
-        return .d32_f_s8_u;
-    } else {
-        return .d32_f;
-    }
+        .D32_f_S8_u,
+        .@"2D",
+        .initOne(.depth_stencil_target),
+    )) return .D32_f_S8_u;
+    return .D32_f;
 }
 
-fn swapchainFormat(self: *const Self, engine: *const Engine) c.SDL_GPUTextureFormat {
-    return c.SDL_GetGPUSwapchainTextureFormat(self.gpu_device, engine.window);
+fn swapchainFormat(self: *const Self, engine: *const Engine) GPUTexture.Format {
+    return @enumFromInt(c.SDL_GetGPUSwapchainTextureFormat(self.gpu_device, engine.window));
 }
 
 fn setPresentMode(self: *Self, engine: *const Engine) InitError!void {
-    var present_mode: c.SDL_GPUPresentMode = c.SDL_GPU_PRESENTMODE_VSYNC;
+    var present_mode: PresentMode = .vsync;
     if (c.SDL_WindowSupportsGPUPresentMode(
         self.gpu_device,
         engine.window,
@@ -925,3 +921,16 @@ pub fn propertyEditorNode(
     }
     return root_node;
 }
+
+pub const PresentMode = enum(c.SDL_GPUPresentMode) {
+    vsync = c.SDL_GPU_PRESENTMODE_VSYNC,
+    immediate = c.SDL_GPU_PRESENTMODE_IMMEDIATE,
+    mailbox = c.SDL_GPU_PRESENTMODE_MAILBOX,
+};
+
+pub const SwapchainComposition = enum(c.SDL_GPUSwapchainComposition) {
+    SDR = c.SDL_GPU_SWAPCHAINCOMPOSITION_SDR,
+    SDR_linear = c.SDL_GPU_SWAPCHAINCOMPOSITION_SDR_LINEAR,
+    HDR_extended_linear = c.SDL_GPU_SWAPCHAINCOMPOSITION_HDR_EXTENDED_LINEAR,
+    HDR10_ST2084 = c.SDL_GPU_SWAPCHAINCOMPOSITION_HDR10_ST2084,
+};

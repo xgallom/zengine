@@ -9,6 +9,7 @@ const allocators = @import("../allocators.zig");
 const c = @import("../ext.zig").c;
 const UI = @import("UI.zig");
 const cache = @import("cache.zig");
+const StdType = std.builtin.Type;
 
 const log = std.log.scoped(.ui_property_editor);
 // pub const sections = perf.sections(@This(), &.{ .init, .draw });
@@ -109,7 +110,7 @@ pub const PropertyEditorNull = struct {
     }
 };
 
-pub fn InputField(comptime C: type, comptime field: std.builtin.Type.StructField) type {
+pub fn InputField(comptime C: type, comptime field: StdType.StructField) type {
     comptime assert(@hasField(C, field.name));
     const field_name = field.name ++ "_name";
     const field_min = field.name ++ "_min";
@@ -147,7 +148,7 @@ pub fn InputField(comptime C: type, comptime field: std.builtin.Type.StructField
             is_open: *bool,
         ) void {
             switch (@typeInfo(StripOptional(field.type))) {
-                .bool => InputCheckbox(.{ .name = name }).drawImpl(field_ptr, ui, is_open),
+                .bool => _ = InputCheckbox(.{ .name = name }).drawImpl(field_ptr, ui, is_open),
                 .int, .float => InputScalar(field.type, 1, .{
                     .name = name,
                     .min = field_resolver.optional(field_min),
@@ -187,13 +188,16 @@ pub fn InputField(comptime C: type, comptime field: std.builtin.Type.StructField
                         else => @compileError("Unsupported array type"),
                     }
                 },
-                .@"struct" => {
-                    const input = InputFields(field.type, .{ .name = name }).init(field_ptr);
-                    input.draw(ui, is_open);
-                },
-                .@"enum" => {
-                    const input = InputCombo(field.type, .{ .name = name }).init(field_ptr);
-                    input.draw(ui, is_open);
+                .@"struct" => InputFields(field.type, .{ .name = name }).init(field_ptr).draw(ui, is_open),
+                .@"enum" => |field_info| switch (field_info.is_exhaustive) {
+                    false => InputScalar(field_info.tag_type, 1, .{
+                        .name = name,
+                        .min = field_resolver.optional(field_min),
+                        .max = field_resolver.optional(field_max),
+                        .speed = 1,
+                        .input_type = .drag,
+                    }).drawImpl(@ptrCast(field_ptr), ui, is_open),
+                    true => _ = InputCombo(field.type, .{ .name = name }).init(field_ptr).draw(ui, is_open),
                 },
                 inline else => |field_info| {
                     @compileLog(field_info);
@@ -257,18 +261,31 @@ pub fn InputFields(comptime C: type, comptime options: Options.InputFields) type
         },
         .@"packed" => struct {
             component: *C,
-            buf: [fields.len]bool = undefined,
+            unpacked: @Type(.{ .@"struct" = .{
+                .layout = .auto,
+                .fields = unpacked_fields,
+                .decls = type_info.decls,
+                .is_tuple = type_info.is_tuple,
+            } }) = undefined,
 
             pub const Self = @This();
             pub const name = options.name;
             pub const fields = type_info.fields;
+            pub const unpacked_fields = unpackFields(fields);
 
             pub fn init(component: *C) UI.Element {
-                const result = cache.getOrPut(Self, @intFromPtr(component), .{ .component = component });
+                const result = cache.getOrPut(Self, @intFromPtr(component), .{
+                    .component = component,
+                    .unpacked = undefined,
+                });
+                log.info("packed: {} {}", .{
+                    @intFromPtr(component),
+                    @intFromPtr(result.value.item),
+                });
 
-                fields: inline for (fields, 0..) |field, n| {
+                fields: inline for (fields) |field| {
                     comptime if (exclude_properties.contains(field.name)) continue :fields;
-                    result.value.item.buf[n] = @field(component, field.name);
+                    @field(result.value.item.unpacked, field.name) = @field(component, field.name);
                 }
 
                 return result.value.element;
@@ -282,18 +299,20 @@ pub fn InputFields(comptime C: type, comptime options: Options.InputFields) type
                     }).draw(ui, is_open);
                 }
 
-                fields: inline for (fields, 0..) |field, n| {
+                fields: inline for (unpacked_fields) |field| {
                     comptime if (exclude_properties.contains(field.name)) continue :fields;
 
-                    const field_name = field.name ++ "_name";
                     const target_ptr = &@field(self.component, field.name);
-                    const field_ptr = &self.buf[n];
-                    const value_changed = switch (@typeInfo(field.type)) {
-                        .bool => InputCheckbox(.{
-                            .name = field_resolver.default(field_name, field.name),
-                        }).drawImpl(field_ptr, ui, is_open),
-                        else => @compileError("Only bools supported in packed structs"),
-                    };
+                    const field_ptr = &@field(self.unpacked, field.name);
+                    // TODO: Value changed
+                    const Input = InputField(C, field);
+                    if (comptime isOptional(field.type)) {
+                        if (field_ptr.* == null) {
+                            InputNull(.{ .name = name }).draw(ui, is_open);
+                            return;
+                        } else Input.drawFieldImpl(@ptrCast(field_ptr), ui, is_open);
+                    } else Input.drawFieldImpl(field_ptr, ui, is_open);
+                    const value_changed = target_ptr.* != field_ptr.*;
                     if (value_changed) target_ptr.* = field_ptr.*;
                 }
             }
@@ -502,6 +521,10 @@ pub fn InputCombo(comptime C: type, comptime options: Options.InputCombo) type {
 
         pub fn init(component: *C) UI.Element {
             const result = cache.getOrPut(Self, @intFromPtr(component), .{ .component = component });
+            log.info("combo: {} {}", .{
+                @intFromPtr(component),
+                @intFromPtr(result.value.item),
+            });
             if (!result.found_existing or component.* != Indexer.keyForIndex(@intCast(result.value.item.value))) {
                 result.value.item.value = @intCast(Indexer.indexOf(component.*));
             }
@@ -642,6 +665,20 @@ fn FieldResolver(comptime C: type) type {
             comptime return .init(if (@hasDecl(C, field_name)) @field(C, field_name) else &.{});
         }
     };
+}
+
+fn unpackFields(comptime fields: []const StdType.StructField) []const StdType.StructField {
+    comptime {
+        var result: []const StdType.StructField = &[_]StdType.StructField{};
+        for (fields) |field| result = result ++ &[_]StdType.StructField{.{
+            .name = field.name,
+            .type = field.type,
+            .default_value_ptr = field.default_value_ptr,
+            .is_comptime = field.is_comptime,
+            .alignment = @alignOf(field.type),
+        }};
+        return result;
+    }
 }
 
 fn isOptional(comptime T: type) bool {

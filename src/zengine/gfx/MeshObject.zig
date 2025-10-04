@@ -22,6 +22,19 @@ pub const FaceType = enum {
     pub const arr_len = 3;
 };
 
+pub const TestExhaustive = enum(u4) {
+    value,
+    value1,
+    value2,
+    value4 = 4,
+};
+
+pub const TestNonExhaustive = enum(u4) {
+    value,
+    value14 = 14,
+    _,
+};
+
 pub const Section = struct {
     offset: usize,
     len: usize = 0,
@@ -53,6 +66,8 @@ face_type: FaceType,
 has_active: packed struct {
     section: bool = false,
     group: bool = false,
+    exhaustive: TestExhaustive = .value2,
+    non_exhaustive: TestNonExhaustive = .value14,
 } = .{},
 
 const Self = @This();
@@ -66,6 +81,7 @@ pub fn init(face_type: FaceType) Self {
 }
 
 pub fn deinit(self: *Self, gpa: std.mem.Allocator) void {
+    log.info("{any}", .{self.has_active});
     self.sections.deinit(gpa);
     self.groups.deinit(gpa);
 }
