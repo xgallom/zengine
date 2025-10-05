@@ -46,17 +46,8 @@ pub const SectionsListTree = containers.Tree(KeyIndex, .{
 });
 pub const SectionsList = SwapWrapper(SectionsListTree, .{});
 
-const SectionType = enum(u2) {
-    root,
-    call,
-    sub,
-};
-
-const SectionState = enum(u2) {
-    began,
-    began_paused,
-    ended,
-};
+const SectionType = enum(u2) { root, call, sub };
+const SectionState = enum(u2) { began, began_paused, ended };
 
 const Self = struct {
     active_list: SectionsListTree,
@@ -398,15 +389,15 @@ pub fn commitGraph() !void {
 
     global_state.sections.lockPointers();
     var iter = global_state.sections.iterator();
-    while (iter.next()) |i| try switch (i.value_ptr.*.flags.section_type) {
+    while (iter.next()) |i| _ = try switch (i.value_ptr.*.flags.section_type) {
         .root => global_state.tree.insertWithOrder(
             i.key_ptr.*,
-            .{ .key = i.key_ptr.*, .value = i.value_ptr.* },
+            &.{ .key = i.key_ptr.*, .value = i.value_ptr.* },
             .ordered,
         ),
         .call, .sub => global_state.tree.insertWithOrder(
             i.key_ptr.*,
-            .{ .key = i.key_ptr.*, .value = i.value_ptr.* },
+            &.{ .key = i.key_ptr.*, .value = i.value_ptr.* },
             .insert_last,
         ),
     };

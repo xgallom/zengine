@@ -16,22 +16,31 @@ const log = std.log.scoped(.gfx_surface_texture);
 ptr: ?*c.SDL_Surface = null,
 
 const Self = @This();
-
-pub const State = enum {
-    invalid,
-    valid,
-};
-
 pub const invalid: Self = .{};
 
-pub fn init(size: math.Pointu32, pixel_format: PixelFormat) !Self {
-    var self: Self = .invalid;
-    try self.createSurface(size, pixel_format);
-    return self;
+pub fn init(size: math.Point_u32, pixel_format: PixelFormat) !Self {
+    return fromOwnedSurface(try create(size, pixel_format));
 }
 
 pub fn deinit(self: *Self) void {
-    if (self.ptr != null) self.destroySurface();
+    if (self.ptr != null) destroy(self.toOwnedSurface());
+}
+
+pub fn create(size: math.Point_u32, pixel_format: PixelFormat) !*c.SDL_Surface {
+    const ptr = c.SDL_CreateSurface(
+        @intCast(size[0]),
+        @intCast(size[1]),
+        @intFromEnum(pixel_format),
+    );
+    if (ptr == null) {
+        log.err("failed creating surface: {s}", .{c.SDL_GetError()});
+        return error.SurfaceFailed;
+    }
+    return ptr.?;
+}
+
+pub fn destroy(ptr: *c.SDL_Surface) void {
+    c.SDL_DestroySurface(ptr);
 }
 
 pub inline fn width(self: Self) u32 {
@@ -66,45 +75,28 @@ pub fn slice(self: Self, comptime T: type) []T {
 }
 
 pub fn convert(self: *Self, pixel_format: PixelFormat) !void {
+    assert(self.ptr != null);
     const new_surf = c.SDL_ConvertSurface(self.ptr, @intFromEnum(pixel_format));
     if (new_surf == null) {
         log.err("failed converting surface format: {s}", .{c.SDL_GetError()});
         return error.ConvertFailed;
     }
-    self.destroySurface();
+    destroy(self.toOwnedSurface());
     self.ptr = new_surf;
 }
 
-pub fn fromOwnedSurface(ptr: ?*c.SDL_Surface) Self {
+pub fn fromOwnedSurface(ptr: *c.SDL_Surface) Self {
     return .{ .ptr = ptr };
 }
 
-pub fn toOwnedSurface(self: *Self) ?*c.SDL_GPUTexture {
-    defer self.ptr = null;
-    return self.ptr;
-}
-
-pub fn createSurface(self: *Self, size: math.Pointu32, pixel_format: PixelFormat) !void {
-    assert(self.ptr == null);
-    self.ptr = c.SDL_CreateSurface(
-        @intCast(size[0]),
-        @intCast(size[1]),
-        @intFromEnum(pixel_format),
-    );
-    if (self.ptr == null) {
-        log.err("failed creating surface: {s}", .{c.SDL_GetError()});
-        return error.SurfaceFailed;
-    }
-}
-
-pub fn destroySurface(self: *Self) void {
+pub fn toOwnedSurface(self: *Self) *c.SDL_Surface {
     assert(self.ptr != null);
-    c.SDL_DestroySurface(self.ptr);
-    self.ptr = null;
+    defer self.ptr = null;
+    return self.ptr.?;
 }
 
-pub inline fn state(self: Self) State {
-    return if (self.ptr != null) .valid else .invalid;
+pub inline fn isValid(self: Self) bool {
+    return self.ptr != null;
 }
 
 pub const PixelFormat = enum(c.SDL_PixelFormat) {

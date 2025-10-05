@@ -24,7 +24,7 @@ pub const Type = enum {
 };
 
 pub const Source = struct {
-    color: math.RGBu8 = math.rgbu8.zero,
+    color: math.RGBu8 = math.rgb_u8.zero,
     intensity: math.Scalar = 1,
 
     pub const color_type = ui.property_editor.InputType.scalar;

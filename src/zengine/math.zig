@@ -26,20 +26,25 @@ pub const Coords3 = types.Coords3;
 pub const Coords3f64 = types.Coords3f64;
 pub const Coords4 = types.Coords4;
 pub const Coords4f64 = types.Coords4f64;
-pub const Point = types.Point;
-pub const Pointu32 = types.Pointu32;
+pub const Point_i32 = types.Point_i32;
+pub const Point_u32 = types.Point_u32;
+pub const Point_f32 = types.Point_f32;
+pub const Point_f64 = types.Point_f64;
 pub const RGBu8 = types.RGBu8;
-pub const RGBAu8 = types.RGBAu8;
 pub const RGBf32 = types.RGBf32;
+pub const RGBf64 = types.RGBf64;
+pub const RGBAu8 = types.RGBAu8;
 pub const RGBAf32 = types.RGBAf32;
+pub const RGBAf64 = types.RGBAf64;
 pub const Vertex = types.Vertex;
 pub const Vertex4 = types.Vertex4;
+pub const TexCoord = types.TexCoord;
 pub const Euler = types.Euler;
 pub const Quat = types.Quat;
 pub const Index = types.Index;
-pub const QuadFaceIndex = types.QuadFaceIndex;
-pub const FaceIndex = types.FaceIndex;
 pub const LineFaceIndex = types.LineFaceIndex;
+pub const FaceIndex = types.FaceIndex;
+pub const QuadFaceIndex = types.QuadFaceIndex;
 pub const Color = types.Color;
 pub const Axis3 = types.Axis3;
 pub const Axis4 = types.Axis4;
@@ -47,8 +52,6 @@ pub const TransformOp = types.TransformOp;
 pub const TransformOrder = types.TransformOrder;
 pub const EulerOrder = types.EulerOrder;
 pub const vectorNT = @import("math/vector.zig").vectorNT;
-
-pub const invalid_index = std.math.maxInt(Index);
 
 pub fn vector2T(comptime T: type) type {
     return vectorNT(2, T);
@@ -82,15 +85,30 @@ pub const matrix3x3f64 = matrixMxNT(3, 3, types.Scalar64);
 pub const matrix4x4 = matrixMxNT(4, 4, types.Scalar);
 pub const matrix4x4f64 = matrixMxNT(4, 4, types.Scalar64);
 
-pub const point = vector2T(i32);
-pub const pointu32 = vector2T(u32);
-pub const rgbu8 = vector3T(u8);
-pub const rgbau8 = vector4T(u8);
-pub const rgbf32 = vector3;
-pub const rgbaf32 = vector4;
-pub const vertex = vector3;
-pub const euler = vector3;
-pub const quat = quatT(types.Scalar);
+pub const point_i32 = vector2T(i32);
+pub const point_u32 = vector2T(u32);
+pub const point_f32 = vector2T(f32);
+pub const point_f64 = vector2T(f64);
+
+pub const rgb_u8 = vector3T(u8);
+pub const rgb_f32 = vector3T(f32);
+pub const rgb_f64 = vector3T(f64);
+
+pub const rgba_u8 = vector4T(u8);
+pub const rgba_f32 = vector4T(f32);
+pub const rgba_f64 = vector4T(f64);
+
+pub const vertex = vector3T(f32);
+pub const vertex4 = vector4T(f32);
+pub const euler = vector3T(f32);
+pub const quat = quatT(f32);
+
+pub const index = scalarT(Index);
+pub const line_face_index = vector2T(Index);
+pub const face_index = vector3T(Index);
+pub const quad_face_index = vector4T(Index);
+
+pub const invalid_index = std.math.maxInt(Index);
 
 pub fn percent(x: anytype) @TypeOf(x) {
     return x * 100;

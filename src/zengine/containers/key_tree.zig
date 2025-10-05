@@ -19,6 +19,7 @@ pub fn KeyTree(comptime V: type, comptime options: struct {
     insertion_order: InsertionOrder = .ordered,
     separator: u8 = '.',
     has_depth: bool = false,
+    is_big: bool = @sizeOf(V) >= 16,
 }) type {
     return struct {
         pool: Pool,
@@ -26,6 +27,7 @@ pub fn KeyTree(comptime V: type, comptime options: struct {
 
         pub const Self = @This();
         pub const Value = V;
+        const ValIn = if (options.is_big) *const V else V;
 
         const Pool = std.heap.MemoryPoolExtra(Edge, options.pool_options);
 
@@ -112,11 +114,11 @@ pub fn KeyTree(comptime V: type, comptime options: struct {
         }
 
         /// Inserts new value into the tree
-        pub fn insert(self: *Self, key: []const u8, value: Value) !void {
+        pub fn insert(self: *Self, key: []const u8, value: ValIn) !*Value {
             return self.insertWithOrder(key, value, options.insertion_order);
         }
 
-        pub fn insertWithOrder(self: *Self, key: []const u8, value: Value, comptime order: InsertionOrder) !void {
+        pub fn insertWithOrder(self: *Self, key: []const u8, value: ValIn, comptime order: InsertionOrder) !*Value {
             var walk = self.root;
             var iter = std.mem.splitScalar(u8, key, options.separator);
 
@@ -142,7 +144,8 @@ pub fn KeyTree(comptime V: type, comptime options: struct {
                 walk = child;
             }
 
-            walk.value = value;
+            walk.value = if (options.is_big) value.* else value;
+            return &walk.value.?;
         }
 
         fn addNode(self: *Self, parent: *Node, label: [:0]const u8, comptime order: InsertionOrder) !*Node {
@@ -165,7 +168,12 @@ pub fn KeyTree(comptime V: type, comptime options: struct {
             }
 
             var current = head.*.?;
-            while (current.next != null and orderEdges(@fieldParentPtr("edge_node", current.next.?), edge).compare(.lt)) : (current = current.next.?) {}
+            while (current.next != null and
+                orderEdges(
+                    @fieldParentPtr("edge_node", current.next.?),
+                    edge,
+                ).compare(.lt)) : (current = current.next.?)
+            {}
 
             edge_node.next = current.next;
             current.next = edge_node;
@@ -184,13 +192,13 @@ pub fn KeyTree(comptime V: type, comptime options: struct {
             return std.mem.order(u8, lhs.label, rhs.label);
         }
 
-        fn createEdge(self: *Self, label: [:0]const u8, value: ?Value) !*Edge {
+        fn createEdge(self: *Self, label: [:0]const u8, value: ?ValIn) !*Edge {
             const edge = try self.pool.create();
             edge.* = .{
                 .edge_node = .{},
                 .label = label,
                 .target = .{
-                    .value = value,
+                    .value = if (comptime options.is_big) (if (value) |v| v.* else null) else value,
                     .edges = .{},
                 },
             };
@@ -209,6 +217,35 @@ pub fn KeyTree(comptime V: type, comptime options: struct {
 
         fn destroyEdge(self: *Self, edge: *Edge) void {
             self.pool.destroy(edge);
+        }
+
+        pub fn iterate(
+            self: *const Self,
+            comptime C: type,
+            comptime callback: fn (self: *const Self, edge: *Edge, ctx: C) void,
+            ctx: C,
+        ) void {
+            var iter: Iterator(C, callback) = .{ .self = self, .ctx = ctx };
+            iter.run(@fieldParentPtr("target", self.root));
+        }
+
+        pub fn Iterator(
+            comptime C: type,
+            comptime callback: fn (self: *const Self, edge: *Edge, ctx: C) void,
+        ) type {
+            return struct {
+                self: *const Self,
+                ctx: C,
+                pub fn run(i: *const @This(), edge: *Edge) void {
+                    callback(i.self, edge, i.ctx);
+                    if (edge.target.edges.first) |edge_node| {
+                        i.run(@fieldParentPtr("edge_node", edge_node));
+                    }
+                    if (edge.edge_node.next) |edge_node| {
+                        i.run(@fieldParentPtr("edge_node", edge_node));
+                    }
+                }
+            };
         }
     };
 }

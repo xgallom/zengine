@@ -81,7 +81,6 @@ pub fn init(face_type: FaceType) Self {
 }
 
 pub fn deinit(self: *Self, gpa: std.mem.Allocator) void {
-    log.info("{any}", .{self.has_active});
     self.sections.deinit(gpa);
     self.groups.deinit(gpa);
 }

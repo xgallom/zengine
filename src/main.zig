@@ -52,10 +52,10 @@ pub const zengine_options: zengine.Options = .{
 
 pub fn main() !void {
     // memory limit 1GB, SDL allocations are not tracked
-    try allocators.init(1_000_000_000);
+    allocators.init(1_000_000_000);
     defer allocators.deinit();
 
-    const engine = try Engine.init();
+    const engine = try Engine.create();
     defer engine.deinit();
 
     try perf.init();
@@ -76,15 +76,15 @@ pub fn main() !void {
     main_section.begin();
     sections.sub(.init).begin();
 
-    try engine.initWindow();
+    try engine.initMainWindow();
 
-    const renderer = try gfx.Renderer.init(engine);
+    const renderer = try gfx.Renderer.create(engine);
     defer renderer.deinit(engine);
 
-    const scene = try Scene.init();
+    const scene = try Scene.create();
     defer scene.deinit();
 
-    const ui = try UI.init(engine, renderer);
+    const ui = try UI.create(engine, renderer);
     defer ui.deinit();
 
     var task_list = try scheduler.TaskScheduler.init(allocators.gpa());
@@ -107,6 +107,7 @@ pub fn main() !void {
         errdefer gfx_loader.cancel();
 
         _ = try gfx_loader.loadMesh(scene, "Cat", "cat.obj");
+        _ = try gfx_loader.loadMesh(scene, "Black Cat", "black_cat.obj");
         _ = try gfx_loader.loadMesh(scene, "Cow", "cow_nonormals.obj");
         _ = try gfx_loader.loadMesh(scene, "Mountain", "mountain.obj");
         _ = try gfx_loader.loadMesh(scene, "Cube", "cube.obj");
@@ -161,6 +162,11 @@ pub fn main() !void {
 
     const cat = try scene.createChildNode(objects, .object("Cat"), &.{
         .translation = .{ 200, 0, 0 },
+        .rotation = .{ -pi / 2.0, 0, 0 },
+    });
+
+    _ = try scene.createRootNode(.object("Black Cat"), &.{
+        .translation = .{ 100, 0, 0 },
         .rotation = .{ -pi / 2.0, 0, 0 },
     });
 
@@ -336,10 +342,9 @@ pub fn main() !void {
                     }
                 },
                 c.SDL_EVENT_MOUSE_MOTION => {
-                    engine.mouse_pos = .{
-                        .x = sdl_event.motion.x,
-                        .y = sdl_event.motion.y,
-                    };
+                    const props = try engine.main_win.properties();
+                    _ = try props.f32.put("mouse_x", sdl_event.motion.x);
+                    _ = try props.f32.put("mouse_y", sdl_event.motion.y);
                 },
                 else => {},
             }
@@ -456,6 +461,7 @@ pub fn main() !void {
             math.vertex.rotateDirectionScale(&dir, &axis, 20 * delta);
             math.vertex.normalize(&dir);
             math.vertex.translateScale(&g_pos, &dir, 20 * delta);
+            math.vertex.clamp(&g_pos, &.{ -100, -100, -100 }, &.{ 100, 100, 100 });
 
             const r_pos = .{ x, y + 55, z };
             const b_pos = .{ -x, -y + 55, -z };

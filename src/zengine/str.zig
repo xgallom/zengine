@@ -34,12 +34,14 @@ pub inline fn trim(str: []const u8) []const u8 {
 }
 
 // Duplicate a string slice aligned to 1-byte boundary
-pub fn dupe(str: []const u8) ![]const u8 {
+// Allocates in default string arena
+pub fn dupe(str: []const u8) ![]u8 {
     return allocators.string().dupe(u8, str);
 }
 
 // Duplicate a string slice aligned as a vector optimal for target platform
 // This is used for iterators and searching
+// Allocates in default string arena
 pub fn dupeV(str: []const u8) ![]const u8 {
     const ptr = allocators.string().rawAlloc(
         str.len,
@@ -51,13 +53,15 @@ pub fn dupeV(str: []const u8) ![]const u8 {
 }
 
 // Duplicate a string slice with a terminating 0 aligned to 1-byte boundary
-pub fn dupeZ(str: []const u8) ![:0]const u8 {
+// Allocates in default string arena
+pub fn dupeZ(str: []const u8) ![:0]u8 {
     return allocators.string().dupeZ(u8, str);
 }
 
 // Duplicate a string slice with a terminating 0 aligned as a vector optimal for target platform
 // This is used for iterators and searching
-pub fn dupeVZ(str: []const u8) ![:0]const u8 {
+// Allocates in default string arena
+pub fn dupeVZ(str: []const u8) ![:0]u8 {
     const ptr = allocators.string().rawAlloc(
         str.len + 1,
         std.mem.Alignment.of(V),
@@ -66,4 +70,10 @@ pub fn dupeVZ(str: []const u8) ![:0]const u8 {
     @memcpy(ptr[0..str.len], str);
     ptr[str.len] = 0;
     return ptr[0..str.len :0];
+}
+
+// Frees a string allocated with dupe
+// Since this is backed by an arena, only last allocated string will be actually freed
+pub fn free(str: anytype) void {
+    allocators.string().free(str);
 }

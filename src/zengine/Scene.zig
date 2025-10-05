@@ -35,8 +35,17 @@ const Objects = PtrKeyMap(Object);
 pub const FlatList = std.MultiArrayList(Node.Flat);
 pub const Flattened = std.EnumArray(Node.Type, FlatList);
 
-pub fn init() !*Self {
-    return createSelf(allocators.gpa());
+pub fn create() !*Self {
+    const allocator = allocators.gpa();
+    const self = try allocators.global().create(Self);
+    self.* = .{
+        .allocator = allocator,
+        .cameras = try .init(allocator, 128),
+        .lights = try .init(allocator, 128),
+        .objects = try .init(allocator, 128),
+        .nodes = try .init(allocator, 128),
+    };
+    return self;
 }
 
 pub fn deinit(self: *Self) void {
@@ -55,22 +64,10 @@ pub fn lightCounts(self: *const Self, flat: *const Flattened) std.EnumArray(Ligh
     return result;
 }
 
-fn createSelf(allocator: std.mem.Allocator) !*Self {
-    const self = try allocators.global().create(Self);
-    self.* = .{
-        .allocator = allocator,
-        .cameras = try .init(allocator, 128),
-        .lights = try .init(allocator, 128),
-        .objects = try .init(allocator, 128),
-        .nodes = try .init(allocator, 128),
-    };
-    return self;
-}
-
 pub fn createDefaultCamera(self: *Self) !void {
-    var camera_position: math.Vector3 = .{ 4, 8, 10 };
-    // var camera_position: math.Vector3 = .{ -1438.067, 2358.586, 2820.102 };
-    var camera_direction: math.Vector3 = undefined;
+    var camera_position: math.Vertex = .{ 4, 8, 10 };
+    // var camera_position: math.Vertex = .{ -1438.067, 2358.586, 2820.102 };
+    var camera_direction: math.Vertex = undefined;
 
     math.vector3.scale(&camera_position, 50);
     math.vector3.lookAt(&camera_direction, &camera_position, &math.vector3.zero);

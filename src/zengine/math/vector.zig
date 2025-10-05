@@ -248,6 +248,10 @@ pub fn vectorNT(comptime N: comptime_int, comptime T: type) type {
             for (0..len) |n| result.* = @mulAdd(Scalar, lhs[n], rhs[n], result.*);
         }
 
+        pub fn clamp(self: *Self, min: *const Self, max: *const Self) void {
+            for (0..len) |n| self[n] = @max(@min(self[n], max[n]), min[n]);
+        }
+
         pub fn translateScale(direction: *Self, translation: *const Self, multiplier: Scalar) void {
             mulAdd(direction, translation, multiplier);
         }

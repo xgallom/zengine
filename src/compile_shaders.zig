@@ -160,7 +160,7 @@ const GraphicsMetadataJSON = struct {
 };
 
 pub fn main() !void {
-    try allocators.init(1_000_000);
+    allocators.init(1_000_000);
     defer allocators.deinit();
 
     try zengine.perf.init();

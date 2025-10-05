@@ -40,7 +40,7 @@ pub const Element = struct {
 
 var ref_count: std.atomic.Value(usize) = .init(0);
 
-pub fn init(engine: *Engine, renderer: *gfx.Renderer) gfx.Renderer.InitError!*Self {
+pub fn create(engine: *Engine, renderer: *gfx.Renderer) gfx.Renderer.InitError!*Self {
     try sections.register();
 
     const section = sections.sub(.init);
@@ -64,10 +64,10 @@ pub fn init(engine: *Engine, renderer: *gfx.Renderer) gfx.Renderer.InitError!*Se
     io.*.ConfigDpiScaleFonts = true;
     io.*.ConfigDpiScaleViewports = true;
 
-    _ = c.ImGui_ImplSDL3_InitForSDLGPU(engine.window);
+    _ = c.ImGui_ImplSDL3_InitForSDLGPU(engine.main_win.ptr);
     var init_info: c.ImGui_ImplSDLGPU3_InitInfo = .{
         .Device = renderer.gpu_device,
-        .ColorTargetFormat = c.SDL_GetGPUSwapchainTextureFormat(renderer.gpu_device, engine.window),
+        .ColorTargetFormat = @intFromEnum(renderer.swapchainFormat(engine)),
         .MSAASamples = c.SDL_GPU_SAMPLECOUNT_1,
     };
     _ = c.ImGui_ImplSDLGPU3_Init(&init_info);

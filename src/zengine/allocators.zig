@@ -25,6 +25,7 @@ pub const ArenaKey = enum {
     perf,
     string,
     ui,
+    properties,
 };
 
 const Self = struct {
@@ -80,7 +81,7 @@ const Self = struct {
 var is_init = false;
 var global_state: Self = undefined;
 
-pub fn init(memory_limit: usize) !void {
+pub fn init(memory_limit: usize) void {
     assert(!is_init);
     global_state.init(sdl_allocator.raw, memory_limit);
     is_init = true;

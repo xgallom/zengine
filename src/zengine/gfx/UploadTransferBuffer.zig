@@ -7,32 +7,25 @@ const assert = std.debug.assert;
 
 const c = @import("../ext.zig").c;
 const math = @import("../math.zig");
-const GPUBuffer = @import("GPUBuffer.zig");
+const MeshBuffer = @import("MeshBuffer.zig");
 const SurfaceTexture = @import("SurfaceTexture.zig");
 
 const log = std.log.scoped(.gfx_gpu_transfer_buffer);
 
-gpu_bufs: GPUBuffers = .empty,
+mesh_bufs: MeshBuffers = .empty,
 surf_texes: SurfaceTextures = .empty,
 transfer_buffer: ?*c.SDL_GPUTransferBuffer = null,
 len: u32 = 0,
 state: State = .invalid,
 
 const Self = @This();
-pub const GPUBuffers = std.ArrayList(*const GPUBuffer);
+pub const MeshBuffers = std.ArrayList(*const MeshBuffer);
 pub const SurfaceTextures = std.ArrayList(*const SurfaceTexture);
-
-pub const State = enum {
-    invalid,
-    upload,
-    mapped,
-    uploaded,
-};
-
+pub const State = enum { invalid, upload, mapped, uploaded };
 pub const empty: Self = .{};
 
 pub fn deinit(self: *Self, gpa: std.mem.Allocator, gpu_device: *c.SDL_GPUDevice) void {
-    self.gpu_bufs.deinit(gpa);
+    self.mesh_bufs.deinit(gpa);
     self.surf_texes.deinit(gpa);
 
     if (self.state == .invalid) {
@@ -52,7 +45,10 @@ pub fn createGPUTransferBuffer(self: *Self, gpu_device: ?*c.SDL_GPUDevice) !void
     assert(self.transfer_buffer == null);
     assert(self.len == 0);
 
-    for (self.gpu_bufs.items) |gpu_buf| self.len += gpu_buf.byteLen();
+    for (self.mesh_bufs.items) |gpu_buf| {
+        self.len += gpu_buf.byteLen(.vertex);
+        self.len += gpu_buf.byteLen(.index);
+    }
     for (self.surf_texes.items) |surf_tex| self.len += surf_tex.surf.byteLen();
 
     self.transfer_buffer = c.SDL_CreateGPUTransferBuffer(gpu_device, &c.SDL_GPUTransferBufferCreateInfo{
@@ -92,12 +88,19 @@ pub fn map(self: *Self, gpu_device: *c.SDL_GPUDevice) !void {
 
     const start: [*]u8 = @ptrCast(@alignCast(tb_ptr));
     var dest = start;
-    for (self.gpu_bufs.items) |gpu_buf| {
-        const cpu_buf = gpu_buf.slice(u8);
-        assert(gpu_buf.len != 0);
-        assert(cpu_buf.len <= gpu_buf.len);
-        @memcpy(dest[0..cpu_buf.len], cpu_buf);
-        dest += cpu_buf.len;
+    for (self.mesh_bufs.items) |mesh_buf| {
+        // TODO: Make not shitty
+        const vert_buf = std.mem.sliceAsBytes(mesh_buf.slice(.vertex));
+        const idx_buf = std.mem.sliceAsBytes(mesh_buf.slice(.index));
+        assert(mesh_buf.gpu_bufs.getPtrConst(.vertex).size != 0);
+        // assert(cpu_buf.len <= gpu_buf.len);
+        // assert(cpu_buf.len <= gpu_buf.len);
+        @memcpy(dest[0..vert_buf.len], vert_buf);
+        dest += vert_buf.len;
+        if (idx_buf.len == 0) continue;
+        assert(mesh_buf.gpu_bufs.getPtrConst(.index).size != 0);
+        @memcpy(dest[0..idx_buf.len], idx_buf);
+        dest += idx_buf.len;
     }
     for (self.surf_texes.items) |surf_tex| {
         const cpu_buf = surf_tex.surf.slice(u8);
@@ -119,21 +122,32 @@ pub fn upload(self: *Self, copy_pass: ?*c.SDL_GPUCopyPass) void {
     }
 
     var tb_offset: u32 = 0;
-    for (self.gpu_bufs.items) |gpu_buf| {
-        const len = gpu_buf.byteLen();
-        assert(gpu_buf.state() != .cpu);
+    for (self.mesh_bufs.items) |mesh_buf| {
+        const len = mesh_buf.byteLens();
+        // assert(gpu_buf.state() != .cpu);
         c.SDL_UploadToGPUBuffer(copy_pass, &c.SDL_GPUTransferBufferLocation{
             .transfer_buffer = self.transfer_buffer,
             .offset = tb_offset,
         }, &c.SDL_GPUBufferRegion{
-            .buffer = gpu_buf.gpu_buf,
+            .buffer = mesh_buf.gpu_bufs.getPtrConst(.vertex).ptr,
             .offset = 0,
-            .size = len,
+            .size = len.get(.vertex),
         }, false);
-        tb_offset += len;
+        tb_offset += len.get(.vertex);
+        if (len.get(.index) == 0) continue;
+        c.SDL_UploadToGPUBuffer(copy_pass, &c.SDL_GPUTransferBufferLocation{
+            .transfer_buffer = self.transfer_buffer,
+            .offset = tb_offset,
+        }, &c.SDL_GPUBufferRegion{
+            .buffer = mesh_buf.gpu_bufs.getPtrConst(.index).ptr,
+            .offset = 0,
+            .size = len.get(.index),
+        }, false);
+        tb_offset += len.get(.index);
     }
     for (self.surf_texes.items) |surf_tex| {
-        assert(surf_tex.state() == .gpu);
+        const is_valid = surf_tex.isValid();
+        assert(is_valid.surf and is_valid.gpu_tex);
         c.SDL_UploadToGPUTexture(copy_pass, &c.SDL_GPUTextureTransferInfo{
             .transfer_buffer = self.transfer_buffer,
             .offset = tb_offset,

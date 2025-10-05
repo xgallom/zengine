@@ -42,6 +42,9 @@ pub fn scalarT(comptime T: type) type {
             pub const one: Self = 1;
             pub const neg_one: Self = -1;
 
+            pub const min_val = -std.math.inf(Self);
+            pub const max_val = std.math.inf(Self);
+
             pub fn init(value: Scalar) Self {
                 return value;
             }
@@ -70,6 +73,9 @@ pub fn scalarT(comptime T: type) type {
             pub const zero: Self = 0;
             pub const one: Self = 1;
             pub const neg_one: Self = -1;
+
+            pub const min_val = std.math.minInt(Self);
+            pub const max_val = std.math.maxInt(Self);
 
             pub fn init(value: Scalar) Self {
                 return value;

@@ -51,7 +51,6 @@ pub fn Coords4T(comptime T: type) type {
 
 pub const Vector2 = VectorNT(2, Scalar);
 pub const Vector2f64 = VectorNT(2, Scalar64);
-pub const Vector3i32 = VectorNT(3, i32);
 pub const Vector3 = VectorNT(3, Scalar);
 pub const Vector3f64 = VectorNT(3, Scalar64);
 pub const Vector4 = VectorNT(4, Scalar);
@@ -67,17 +66,24 @@ pub const Coords3f64 = CoordsNT(3, Scalar64);
 pub const Coords4 = CoordsNT(4, Scalar);
 pub const Coords4f64 = CoordsNT(4, Scalar64);
 
-pub const Point = Vector2T(i32);
-pub const Pointu32 = Vector2T(u32);
+pub const Point_i32 = Vector2T(i32);
+pub const Point_u32 = Vector2T(u32);
+pub const Point_f32 = Vector2T(f32);
+pub const Point_f64 = Vector2T(f64);
+
 pub const RGBu8 = Vector3T(u8);
+pub const RGBf32 = Vector3T(f32);
+pub const RGBf64 = Vector3T(f64);
+
 pub const RGBAu8 = Vector4T(u8);
-pub const RGBf32 = Vector3;
-pub const RGBAf32 = Vector4;
-pub const Vertex = Vector3;
-pub const Vertex4 = Vector4;
-pub const TexCoord = Vector2;
-pub const Euler = Vector3;
-pub const Quat = Vector4;
+pub const RGBAf32 = Vector4T(f32);
+pub const RGBAf64 = Vector4T(f64);
+
+pub const Vertex = Vector3T(f32);
+pub const Vertex4 = Vector4T(f32);
+pub const TexCoord = Vector2T(f32);
+pub const Euler = Vector3T(f32);
+pub const Quat = Vector4T(f32);
 
 pub const Index = u32;
 pub const LineFaceIndex = Vector2T(Index);

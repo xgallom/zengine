@@ -31,5 +31,5 @@ pub fn toMeshObject(self: *Self) *MeshObject {
 }
 
 pub fn groups(self: *Self) []const MeshObject.Group {
-    return self.toMeshObject().groups();
+    return self.toMeshObject().groups.items;
 }

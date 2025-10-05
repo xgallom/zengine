@@ -146,7 +146,7 @@ pub inline fn spaces(count: usize) []const u8 {
     return global_state.spaces_buf[0..count];
 }
 
-pub inline fn up() math.Vector3 {
+pub inline fn up() math.Vertex {
     return .{ 0, 1, 0 };
 }
 

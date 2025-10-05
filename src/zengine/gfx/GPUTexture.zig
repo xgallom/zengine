@@ -15,23 +15,17 @@ const log = std.log.scoped(.gfx_ptrture);
 ptr: ?*c.SDL_GPUTexture = null,
 
 const Self = @This();
-
-pub const State = enum {
-    invalid,
-    valid,
-};
+pub const invalid: Self = .{};
 
 pub const CreateInfo = struct {
     type: Type = .default,
     format: Format = .default,
-    usage: UsageFlags,
-    size: math.Pointu32,
+    usage: UsageFlags = .initEmpty(),
+    size: math.Point_u32,
     layer_count_or_depth: u32 = 1,
     num_levels: u32 = 1,
-    sample_count: c.SDL_GPUSampleCount = c.SDL_GPU_SAMPLECOUNT_1,
+    sample_count: SampleCount = .default,
 };
-
-pub const invalid: Self = .{};
 
 pub fn supportsFormat(
     gpu_device: ?*c.SDL_GPUDevice,
@@ -48,13 +42,33 @@ pub fn supportsFormat(
 }
 
 pub fn init(gpu_device: ?*c.SDL_GPUDevice, info: *const CreateInfo) !Self {
-    var self: Self = .invalid;
-    try self.create(gpu_device, info);
-    return self;
+    return fromOwnedGPUTexture(try create(gpu_device, info));
 }
 
 pub fn deinit(self: *Self, gpu_device: ?*c.SDL_GPUDevice) void {
-    if (self.ptr != null) self.releaseGPUTexture(gpu_device);
+    if (self.ptr != null) release(gpu_device, self.toOwnedGPUTexture());
+}
+
+fn create(gpu_device: ?*c.SDL_GPUDevice, info: *const CreateInfo) !*c.SDL_GPUTexture {
+    const ptr = c.SDL_CreateGPUTexture(gpu_device, &c.SDL_GPUTextureCreateInfo{
+        .type = @intFromEnum(info.type),
+        .format = @intFromEnum(info.format),
+        .usage = info.usage.bits.mask,
+        .width = info.size[0],
+        .height = info.size[1],
+        .layer_count_or_depth = info.layer_count_or_depth,
+        .num_levels = info.num_levels,
+        .sample_count = @intFromEnum(info.sample_count),
+    });
+    if (ptr == null) {
+        log.err("failed creating gpu texture: {s}", .{c.SDL_GetError()});
+        return error.TextureFailed;
+    }
+    return ptr.?;
+}
+
+fn release(gpu_device: ?*c.SDL_GPUDevice, ptr: *c.SDL_GPUTexture) void {
+    c.SDL_ReleaseGPUTexture(gpu_device, ptr);
 }
 
 pub fn fromOwnedGPUTexture(ptr: *c.SDL_GPUTexture) Self {
@@ -67,32 +81,8 @@ pub fn toOwnedGPUTexture(self: *Self) *c.SDL_GPUTexture {
     return self.ptr.?;
 }
 
-pub fn create(self: *Self, gpu_device: ?*c.SDL_GPUDevice, info: *const CreateInfo) !void {
-    assert(self.ptr == null);
-    self.ptr = c.SDL_CreateGPUTexture(gpu_device, &c.SDL_GPUTextureCreateInfo{
-        .type = @intFromEnum(info.type),
-        .format = @intFromEnum(info.format),
-        .usage = info.usage.bits.mask,
-        .width = info.size[0],
-        .height = info.size[1],
-        .layer_count_or_depth = info.layer_count_or_depth,
-        .num_levels = info.num_levels,
-        .sample_count = info.sample_count,
-    });
-    if (self.ptr == null) {
-        log.err("failed creating gpu texture: {s}", .{c.SDL_GetError()});
-        return error.TextureFailed;
-    }
-}
-
-pub fn release(self: *Self, gpu_device: ?*c.SDL_GPUDevice) void {
-    assert(self.ptr != null);
-    c.SDL_ReleaseGPUTexture(gpu_device, self.ptr);
-    self.ptr = null;
-}
-
-pub inline fn state(self: Self) State {
-    return if (self.ptr != null) .valid else .invalid;
+pub inline fn isValid(self: Self) bool {
+    return self.ptr != null;
 }
 
 pub const Type = enum(c.SDL_GPUTextureType) {
@@ -229,5 +219,5 @@ pub const Format = enum(c.SDL_GPUTextureFormat) {
     ASTC_10x10_f = c.SDL_GPU_TEXTUREFORMAT_ASTC_10x10_FLOAT,
     ASTC_12x10_f = c.SDL_GPU_TEXTUREFORMAT_ASTC_12x10_FLOAT,
     ASTC_12x12_f = c.SDL_GPU_TEXTUREFORMAT_ASTC_12x12_FLOAT,
-    pub const default = .r8g8b8a8_unorm;
+    pub const default = .R8G8B8A8_unorm;
 };

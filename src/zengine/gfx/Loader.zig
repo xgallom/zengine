@@ -57,7 +57,7 @@ pub fn deinit(self: *Self) void {
     const gpu_device = self.renderer.gpu_device;
 
     for (self.renderer.mesh_bufs.map.values()) |mesh_buf| mesh_buf.freeCPUBuffers(gpa);
-    for (self.renderer.storage_bufs.map.values()) |buf| buf.freeCPUBuffer(gpa);
+    for (self.renderer.storage_bufs.map.values()) |buf| buf.freeCPUBuffers(gpa);
     for (self.surface_textures.map.values()) |tex| tex.deinit(gpu_device);
     self.surface_textures.deinit();
 
@@ -224,12 +224,12 @@ pub fn createDefaultTexture(self: *Self) !*SurfaceTexture {
     return tex;
 }
 
-pub fn createLightsBuffer(self: *Self, scene: *const Scene, flat: ?*const Scene.Flattened) !*GPUBuffer {
+pub fn createLightsBuffer(self: *Self, scene: *const Scene, flat: ?*const Scene.Flattened) !*MeshBuffer {
     const key = "lights";
     const gpa = self.renderer.allocator;
     const old_buf = self.renderer.storage_bufs.getPtrOrNull(key);
     const lights_buf = old_buf orelse try self.renderer.createStorageBuffer(key);
-    lights_buf.clearCPUBuffer();
+    lights_buf.clearCPUBuffers();
 
     if (flat == null) return lights_buf;
 
@@ -239,38 +239,38 @@ pub fn createLightsBuffer(self: *Self, scene: *const Scene, flat: ?*const Scene.
         const light = scene.lights.getPtr(target);
         if (light.type == .ambient) {
             log.debug("ambient: {any}", .{light.src});
-            var color = math.rgbu8.to(math.Scalar, &light.src.color);
-            math.rgbf32.scaleRecip(&color, 255);
-            try lights_buf.append(gpa, math.RGBf32, &.{color});
-            try lights_buf.append(gpa, f32, &.{light.src.intensity});
+            var color = math.rgb_u8.to(math.Scalar, &light.src.color);
+            math.rgb_f32.scaleRecip(&color, 255);
+            try lights_buf.append(gpa, .vertex, math.RGBf32, &.{color});
+            try lights_buf.append(gpa, .vertex, f32, &.{light.src.intensity});
         }
     }
     for (lights.items(.target), lights.items(.transform)) |target, *tr| {
         const light = scene.lights.getPtr(target);
         if (light.type == .directional) {
-            var color = math.rgbu8.to(math.Scalar, &light.src.color);
+            var color = math.rgb_u8.to(math.Scalar, &light.src.color);
             const direction = math.vector4.ntr_fwd;
             var tr_direction: math.Vector4 = undefined;
-            math.rgbf32.scaleRecip(&color, 255);
+            math.rgb_f32.scaleRecip(&color, 255);
             math.matrix4x4.apply(&tr_direction, tr, &direction);
             log.debug("directional: {any} {any}", .{ light.src, tr_direction });
-            try lights_buf.append(gpa, math.Vector4, &.{tr_direction});
-            try lights_buf.append(gpa, math.RGBf32, &.{color});
-            try lights_buf.append(gpa, f32, &.{light.src.intensity});
+            try lights_buf.append(gpa, .vertex, math.Vector4, &.{tr_direction});
+            try lights_buf.append(gpa, .vertex, math.RGBf32, &.{color});
+            try lights_buf.append(gpa, .vertex, f32, &.{light.src.intensity});
         }
     }
     for (lights.items(.target), lights.items(.transform)) |target, *tr| {
         const light = scene.lights.getPtr(target);
         if (light.type == .point) {
-            var color = math.rgbu8.to(math.Scalar, &light.src.color);
+            var color = math.rgb_u8.to(math.Scalar, &light.src.color);
             const pos = math.vector4.tr_zero;
             var tr_pos: math.Vector4 = undefined;
-            math.rgbf32.scaleRecip(&color, 255);
+            math.rgb_f32.scaleRecip(&color, 255);
             math.matrix4x4.apply(&tr_pos, tr, &pos);
             log.debug("point: {any} {any}", .{ light.src, tr_pos });
-            try lights_buf.append(gpa, math.Vector4, &.{tr_pos});
-            try lights_buf.append(gpa, math.RGBf32, &.{color});
-            try lights_buf.append(gpa, f32, &.{light.src.intensity});
+            try lights_buf.append(gpa, .vertex, math.Vector4, &.{tr_pos});
+            try lights_buf.append(gpa, .vertex, math.RGBf32, &.{color});
+            try lights_buf.append(gpa, .vertex, f32, &.{light.src.intensity});
         }
     }
 
@@ -281,11 +281,11 @@ fn createGPUData(self: *Self) InitError!void {
     const gpu_device = self.renderer.gpu_device;
     for (self.modifs.getPtrConst(.mesh_buffer).items) |key| {
         const mesh = self.renderer.mesh_bufs.getPtr(key);
-        try mesh.createGPUBuffers(gpu_device);
+        try mesh.createGPUBuffers(gpu_device, null);
     }
     for (self.modifs.getPtrConst(.storage_buffer).items) |key| {
         const buf = self.renderer.storage_bufs.getPtr(key);
-        try buf.createGPUBuffer(gpu_device, .initOne(.graphics_storage_read));
+        try buf.createGPUBuffers(gpu_device, .initOne(.graphics_storage_read));
     }
     for (self.modifs.getPtrConst(.surface_texture).items) |key| {
         const tex = self.surface_textures.getPtr(key);
@@ -300,18 +300,17 @@ fn uploadTransferBuffers(self: *Self) InitError!void {
     var tb: UploadTransferBuffer = .empty;
     defer tb.deinit(gpa, gpu_device);
 
-    try tb.gpu_bufs.ensureUnusedCapacity(gpa, self.modifs.getPtrConst(.mesh_buffer).items.len * 2);
-    try tb.gpu_bufs.ensureUnusedCapacity(gpa, self.modifs.getPtrConst(.storage_buffer).items.len);
+    try tb.mesh_bufs.ensureUnusedCapacity(gpa, self.modifs.getPtrConst(.mesh_buffer).items.len);
+    try tb.mesh_bufs.ensureUnusedCapacity(gpa, self.modifs.getPtrConst(.storage_buffer).items.len);
     try tb.surf_texes.ensureUnusedCapacity(gpa, self.modifs.getPtrConst(.surface_texture).items.len);
 
     for (self.modifs.getPtrConst(.mesh_buffer).items) |key| {
-        const mesh = self.renderer.mesh_bufs.getPtr(key);
-        tb.gpu_bufs.appendAssumeCapacity(mesh.gpu_bufs.getPtrConst(.vertex));
-        if (mesh.type == .index) tb.gpu_bufs.appendAssumeCapacity(mesh.gpu_bufs.getPtrConst(.index));
+        const buf = self.renderer.mesh_bufs.getPtr(key);
+        tb.mesh_bufs.appendAssumeCapacity(buf);
     }
     for (self.modifs.getPtrConst(.storage_buffer).items) |key| {
         const buf = self.renderer.storage_bufs.getPtr(key);
-        tb.gpu_bufs.appendAssumeCapacity(buf);
+        tb.mesh_bufs.appendAssumeCapacity(buf);
     }
     for (self.modifs.getPtrConst(.surface_texture).items) |key| {
         const surf_tex = self.surface_textures.getPtr(key);

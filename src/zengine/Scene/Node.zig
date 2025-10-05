@@ -20,7 +20,7 @@ const Self = @This();
 pub const Tree = TreeContainer(Self, .{});
 
 pub const Type = enum {
-    node,
+    empty,
     camera,
     light,
     object,
@@ -31,7 +31,7 @@ pub const Target = struct {
     type: Type,
 
     pub fn node(key: [:0]const u8) Target {
-        return .{ .key = key, .type = .node };
+        return .{ .key = key, .type = .empty };
     }
 
     pub fn camera(key: [:0]const u8) Target {

@@ -1,6 +1,5 @@
 //!
 //! The zengine
-//! Copyright 2025 Milan Gallo
 //!
 
 const std = @import("std");
@@ -23,6 +22,7 @@ pub const scheduler = @import("scheduler.zig");
 pub const sdl_allocator = @import("sdl_allocator.zig");
 pub const time = @import("time.zig");
 pub const ui = @import("ui.zig");
+pub const Window = @import("Window.zig");
 
 test {
     std.testing.refAllDecls(@This());

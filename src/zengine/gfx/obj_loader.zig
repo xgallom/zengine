@@ -15,8 +15,6 @@ const gfx_options = @import("../options.zig").gfx_options;
 const log = std.log.scoped(.gfx_obj_loader);
 
 // TODO: Implement disjoint mesh smoothing
-const enable_normal_smoothing = gfx_options.enable_normal_smoothing;
-const smoothing_angle_limit = std.math.degreesToRadians(gfx_options.normal_smoothing_angle_limit);
 
 const VertData = [AttrType.arr_len]math.Vertex;
 const IndexData = [AttrType.arr_len]math.Index;
@@ -418,7 +416,7 @@ fn createInfo(self: *const Self) !ObjInfo {
     //     }
     // }
 
-    if (comptime enable_normal_smoothing) self.applySmoothing(&result, &state);
+    if (comptime gfx_options.enable_normal_smoothing) self.applySmoothing(&result, &state);
 
     return result;
 }
@@ -649,7 +647,8 @@ fn ProcessFaces(comptime config: struct {
 
 fn applySmoothing(self: *const Self, result: *const ObjInfo, state: *const CreateInfoState) void {
     _ = self;
-    const verts = result.mesh_buf.gpu_bufs.getPtrConst(.vertex).slice(math.Vertex);
+    const smoothing_angle_limit = comptime std.math.degreesToRadians(gfx_options.normal_smoothing_angle_limit);
+    const verts = result.mesh_buf.cpu_bufs.getPtrConst(.vertex).slice(math.Vertex);
     for (&state.smoothing_groups) |group| {
         var sg_iter = group.valueIterator();
         while (sg_iter.next()) |vert_list| {

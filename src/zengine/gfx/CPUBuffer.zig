@@ -11,19 +11,14 @@ const Tree = @import("../containers.zig").Tree;
 
 const log = std.log.scoped(.gfx_gpu_buffer);
 
-buf: ArrayList,
+buf: ArrayList = .empty,
 
 const Self = @This();
 pub const ArrayList = std.array_list.Aligned(u8, alignment);
-
-pub const State = enum {
-    empty,
-    valid,
-};
+pub const State = enum { empty, valid };
 pub const StateFlags = std.EnumSet(State);
-
 pub const empty: Self = .{};
-pub const alignment: std.mem.Alignment = .max(.of(math.Vector4), .of(math.batch.Batch));
+pub const alignment: std.mem.Alignment = .max(.of(math.Vertex4), .of(math.batch.Batch));
 
 pub fn deinit(self: *Self, gpa: std.mem.Allocator) void {
     self.free(gpa);
@@ -66,7 +61,7 @@ pub fn free(self: *Self, gpa: std.mem.Allocator) void {
     self.buf.clearAndFree(gpa);
 }
 
-pub inline fn state(self: *const Self) StateFlags {
+pub inline fn state(self: *const Self) State {
     return if (self.byteLen() > 0) .valid else .empty;
 }
 

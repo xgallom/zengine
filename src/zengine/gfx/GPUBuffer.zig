@@ -12,31 +12,27 @@ const Tree = @import("../containers.zig").Tree;
 const log = std.log.scoped(.gfx_gpu_buffer);
 
 ptr: ?*c.SDL_GPUBuffer = null,
+size: u32 = 0,
 
 const Self = @This();
-
-pub const State = enum {
-    invalid,
-    valid,
-};
+pub const State = enum { invalid, empty, valid };
+pub const invalid: Self = .{};
 
 pub const CreateInfo = struct {
     usage: UsageFlags,
     size: u32,
 };
 
-pub const invalid: Self = .{};
-
 pub fn deinit(self: *Self, gpu_device: ?*c.SDL_GPUDevice) void {
     if (self.ptr != null) self.release(gpu_device);
 }
 
 pub inline fn byteLen(self: *const Self) u32 {
-    return self.len;
+    return self.size;
 }
 
 pub fn create(self: *Self, gpu_device: ?*c.SDL_GPUDevice, info: *const CreateInfo) !void {
-    if (self.ptr != null) self.release();
+    if (self.ptr != null) self.release(gpu_device);
     self.size = info.size;
     self.ptr = c.SDL_CreateGPUBuffer(gpu_device, &c.SDL_GPUBufferCreateInfo{
         .usage = info.usage.bits.mask,
@@ -52,12 +48,12 @@ pub fn release(self: *Self, gpu_device: ?*c.SDL_GPUDevice) void {
     assert(self.ptr != null);
     c.SDL_ReleaseGPUBuffer(gpu_device, self.ptr);
     self.ptr = null;
-    self.len = 0;
+    self.size = 0;
 }
 
 pub inline fn state(self: *const Self) State {
     if (self.ptr == null) return .invalid;
-    if (self.len == 0) return .empty;
+    if (self.size == 0) return .empty;
     return .valid;
 }
 

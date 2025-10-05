@@ -15,7 +15,7 @@ type: Type = .perspective,
 position: math.Vertex = math.vertex.zero,
 direction: math.Vertex = .{ 1, 0, 0 },
 up: math.Vertex = global.cameraUp(),
-fov: f32 = 45,
+fov: f32 = 90,
 orto_scale: f32 = 100,
 
 const Self = @This();

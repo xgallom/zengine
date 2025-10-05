@@ -278,10 +278,6 @@ pub fn InputFields(comptime C: type, comptime options: Options.InputFields) type
                     .component = component,
                     .unpacked = undefined,
                 });
-                log.info("packed: {} {}", .{
-                    @intFromPtr(component),
-                    @intFromPtr(result.value.item),
-                });
 
                 fields: inline for (fields) |field| {
                     comptime if (exclude_properties.contains(field.name)) continue :fields;
@@ -521,10 +517,6 @@ pub fn InputCombo(comptime C: type, comptime options: Options.InputCombo) type {
 
         pub fn init(component: *C) UI.Element {
             const result = cache.getOrPut(Self, @intFromPtr(component), .{ .component = component });
-            log.info("combo: {} {}", .{
-                @intFromPtr(component),
-                @intFromPtr(result.value.item),
-            });
             if (!result.found_existing or component.* != Indexer.keyForIndex(@intCast(result.value.item.value))) {
                 result.value.item.value = @intCast(Indexer.indexOf(component.*));
             }

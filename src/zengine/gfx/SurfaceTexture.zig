@@ -18,14 +18,7 @@ surf: Surface = .invalid,
 gpu_tex: GPUTexture = .invalid,
 
 const Self = @This();
-
-pub const State = enum {
-    invalid,
-    cpu,
-    gpu,
-    gpu_only,
-};
-
+pub const IsValid = packed struct { surf: bool, gpu_tex: bool };
 pub const invalid: Self = .{};
 
 pub fn init(surf: Surface) Self {
@@ -42,8 +35,8 @@ pub fn toOwnedGPUTexture(self: *Self) *c.SDL_GPUTexture {
 }
 
 pub fn createGPUTexture(self: *Self, gpu_device: ?*c.SDL_GPUDevice) !void {
-    assert(self.surf.state() == .valid);
-    try self.gpu_tex.createGPUTexture(gpu_device, &.{
+    assert(self.surf.isValid());
+    self.gpu_tex = try .init(gpu_device, &.{
         .type = .default,
         .format = .default,
         .usage = .initOne(.sampler),
@@ -55,7 +48,9 @@ pub fn releaseGPUTexture(self: *Self, gpu_device: ?*c.SDL_GPUDevice) void {
     self.gpu_tex.releaseGPUTexture(gpu_device);
 }
 
-pub inline fn state(self: Self) State {
-    if (self.surf.state() == .valid) return if (self.gpu_tex.state() == .valid) .gpu else .cpu;
-    return if (self.gpu_tex.state() == .valid) .gpu_only else .invalid;
+pub inline fn isValid(self: Self) IsValid {
+    return .{
+        .surf = self.surf.isValid(),
+        .gpu_tex = self.gpu_tex.isValid(),
+    };
 }
