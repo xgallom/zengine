@@ -1,5 +1,5 @@
 //!
-//! The zengine texture implementation
+//! The zengine gpu texture implementation
 //!
 
 const std = @import("std");
@@ -9,8 +9,11 @@ const c = @import("../ext.zig").c;
 const global = @import("../global.zig");
 const math = @import("../math.zig");
 const ui = @import("../ui.zig");
+const Error = @import("Error.zig").Error;
+const GPUDevice = @import("GPUDevice.zig");
+const types = @import("types.zig");
 
-const log = std.log.scoped(.gfx_ptrture);
+const log = std.log.scoped(.gfx_gpu_texture);
 
 ptr: ?*c.SDL_GPUTexture = null,
 
@@ -24,33 +27,28 @@ pub const CreateInfo = struct {
     size: math.Point_u32,
     layer_count_or_depth: u32 = 1,
     num_levels: u32 = 1,
-    sample_count: SampleCount = .default,
+    sample_count: types.SampleCount = .default,
 };
 
-pub fn supportsFormat(
-    gpu_device: ?*c.SDL_GPUDevice,
-    format: Format,
-    tex_type: Type,
-    usage: UsageFlags,
-) bool {
+pub fn supportsFormat(gpu_device: GPUDevice, format: Format, tex_type: Type, usage: UsageFlags) bool {
     return c.SDL_GPUTextureSupportsFormat(
-        gpu_device,
+        gpu_device.ptr,
         @intFromEnum(format),
         @intFromEnum(tex_type),
         usage.bits.mask,
     );
 }
 
-pub fn init(gpu_device: ?*c.SDL_GPUDevice, info: *const CreateInfo) !Self {
+pub fn init(gpu_device: GPUDevice, info: *const CreateInfo) !Self {
     return fromOwnedGPUTexture(try create(gpu_device, info));
 }
 
-pub fn deinit(self: *Self, gpu_device: ?*c.SDL_GPUDevice) void {
+pub fn deinit(self: *Self, gpu_device: GPUDevice) void {
     if (self.ptr != null) release(gpu_device, self.toOwnedGPUTexture());
 }
 
-fn create(gpu_device: ?*c.SDL_GPUDevice, info: *const CreateInfo) !*c.SDL_GPUTexture {
-    const ptr = c.SDL_CreateGPUTexture(gpu_device, &c.SDL_GPUTextureCreateInfo{
+pub fn create(gpu_device: GPUDevice, info: *const CreateInfo) !*c.SDL_GPUTexture {
+    const ptr = c.SDL_CreateGPUTexture(gpu_device.ptr, &c.SDL_GPUTextureCreateInfo{
         .type = @intFromEnum(info.type),
         .format = @intFromEnum(info.format),
         .usage = info.usage.bits.mask,
@@ -62,13 +60,13 @@ fn create(gpu_device: ?*c.SDL_GPUDevice, info: *const CreateInfo) !*c.SDL_GPUTex
     });
     if (ptr == null) {
         log.err("failed creating gpu texture: {s}", .{c.SDL_GetError()});
-        return error.TextureFailed;
+        return Error.TextureFailed;
     }
     return ptr.?;
 }
 
-fn release(gpu_device: ?*c.SDL_GPUDevice, ptr: *c.SDL_GPUTexture) void {
-    c.SDL_ReleaseGPUTexture(gpu_device, ptr);
+pub fn release(gpu_device: GPUDevice, ptr: *c.SDL_GPUTexture) void {
+    c.SDL_ReleaseGPUTexture(gpu_device.ptr, ptr);
 }
 
 pub fn fromOwnedGPUTexture(ptr: *c.SDL_GPUTexture) Self {
@@ -104,14 +102,6 @@ pub const Usage = enum(c.SDL_GPUTextureUsageFlags) {
     compute_storage_read_write = c.SDL_GPU_TEXTUREUSAGE_COMPUTE_STORAGE_SIMULTANEOUS_READ_WRITE,
 };
 pub const UsageFlags = std.EnumSet(Usage);
-
-pub const SampleCount = enum(c.SDL_GPUSampleCount) {
-    @"1" = c.SDL_GPU_SAMPLECOUNT_1,
-    @"2" = c.SDL_GPU_SAMPLECOUNT_2,
-    @"4" = c.SDL_GPU_SAMPLECOUNT_4,
-    @"8" = c.SDL_GPU_SAMPLECOUNT_8,
-    pub const default = .@"1";
-};
 
 pub const Format = enum(c.SDL_GPUTextureFormat) {
     invalid = c.SDL_GPU_TEXTUREFORMAT_INVALID,

@@ -32,6 +32,16 @@ pub fn deinit(self: *Self) void {
     if (self.ptr != null) destroy(self.toOwnedWindow());
 }
 
+pub fn fromOwnedWindow(ptr: *c.SDL_Window) Self {
+    return .{ .ptr = ptr };
+}
+
+pub fn toOwnedWindow(self: *Self) *c.SDL_Window {
+    assert(self.ptr != null);
+    defer self.ptr = null;
+    return self.ptr.?;
+}
+
 pub fn create(info: *const CreateInfo) !*c.SDL_Window {
     const ptr = c.SDL_CreateWindow(
         info.title.ptr,
@@ -68,16 +78,6 @@ pub fn logicalSize(self: Self) math.Point_u32 {
         std.process.exit(1);
     }
     return result;
-}
-
-pub fn fromOwnedWindow(ptr: *c.SDL_Window) Self {
-    return .{ .ptr = ptr };
-}
-
-pub fn toOwnedWindow(self: *Self) *c.SDL_Window {
-    assert(self.ptr != null);
-    defer self.ptr = null;
-    return self.ptr.?;
 }
 
 pub inline fn isValid(self: Self) bool {

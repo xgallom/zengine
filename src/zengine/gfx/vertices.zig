@@ -15,7 +15,6 @@ len: usize,
 
 const Self = @This();
 const ArrayList = std.ArrayList(batch.Batch);
-
 const dims = math.vertex.len;
 
 pub fn init(allocator: std.mem.Allocator, w: math.Scalar) !Self {

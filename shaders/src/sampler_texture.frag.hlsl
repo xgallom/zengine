@@ -5,11 +5,7 @@
 #define MTL_HAS_BUMP_MAP    (1 << 2)
 #define MTL_HAS_FILTER      (1 << 3)
 
-#define LGH_CNT_AMBIENT     0
-#define LGH_CNT_DIRECTIONAL 1
-#define LGH_CNT_POINT       2
-
-cbuffer UniformBuffer : register(b0, space3) {
+cbuffer Material : register(b0, space3) {
     float3 mtl_clr_ambient;
     float3 mtl_clr_diffuse;
     float3 mtl_clr_specular;
@@ -23,8 +19,13 @@ cbuffer UniformBuffer : register(b0, space3) {
     uint  mtl_config;
 
     float3 camera_pos;
-    uint4  lgh_counts;
 };
+
+cbuffer LightsBufferMeta : register(b1, space3) {
+    uint  lgh_cnt_ambient;
+    uint lgh_cnt_directional;
+    uint lgh_cnt_point;
+}
 
 struct LightAmbient {
     float3 clr;
@@ -48,8 +49,8 @@ struct LightPoint {
 
 struct Input {
     float2 tex_coord : TEXCOORD0;
-    float3 normal    : TEXCOORD1;
-    float3 world_pos : TEXCOORD2;
+    float3 normal    : TEXCOORD2;
+    float3 world_pos : TEXCOORD3;
 };
 
 Texture2D<float4> TextureMap : register(t0, space2);
@@ -80,18 +81,18 @@ float4 main(Input input) : SV_Target0 {
     float3 diffuse_light = float3(0, 0, 0);
     float3 specular_light = float3(0, 0, 0);
 
-    for (uint n = 0; n < lgh_counts[LGH_CNT_AMBIENT]; ++n) {
+    for (uint n = 0; n < lgh_cnt_ambient; ++n) {
         const LightAmbient light = lightAmbient();
         ambient_light += light.clr * light.pwr;
     }
 
-    for (uint n = 0; n < lgh_counts[LGH_CNT_DIRECTIONAL]; ++n) {
+    for (uint n = 0; n < lgh_cnt_directional; ++n) {
         const LightDirectional light = lightDirectional(normal, world_pos, camera_refl);
         diffuse_light += light.pwr_diffuse * light.clr;
         specular_light += light.pwr_specular * light.clr;
     }
 
-    for (uint n = 0; n < lgh_counts[LGH_CNT_POINT]; ++n) {
+    for (uint n = 0; n < lgh_cnt_point; ++n) {
         const LightPoint light = lightPoint(normal, world_pos, camera_refl);
         diffuse_light += light.pwr_diffuse * light.clr;
         specular_light += light.pwr_specular * light.clr;
@@ -99,8 +100,8 @@ float4 main(Input input) : SV_Target0 {
 
     float3 ambient_tex = float3(1, 1, 1);
     float3 diffuse_tex = float3(1, 1, 1);
-    if (mtl_config & MTL_HAS_TEXTURE) ambient_tex = TextureMap.Sample(SamplerTexture, tex_uv).xyz;
-    if (mtl_config & MTL_HAS_DIFFUSE_MAP) diffuse_tex = DiffuseMap.Sample(SamplerDiffuse, tex_uv).xyz;
+    [branch] if (mtl_config & MTL_HAS_TEXTURE) ambient_tex = TextureMap.Sample(SamplerTexture, tex_uv).xyz;
+    [branch] if (mtl_config & MTL_HAS_DIFFUSE_MAP) diffuse_tex = DiffuseMap.Sample(SamplerDiffuse, tex_uv).xyz;
 
     const float3 ambient = ambient_light * mtl_clr_ambient * ambient_tex;
     const float3 diffuse = diffuse_light * mtl_clr_diffuse * diffuse_tex;
@@ -108,7 +109,7 @@ float4 main(Input input) : SV_Target0 {
     const float3 emissive = mtl_clr_emissive;
 
     float3 color = ambient + diffuse + specular + emissive;
-    if (mtl_config & MTL_HAS_FILTER) color *= mtl_clr_filter;
+    [branch] if (mtl_config & MTL_HAS_FILTER) color *= mtl_clr_filter;
     return float4(color, mtl_alpha);
 }
 
@@ -118,7 +119,7 @@ float3 bumpMap(
     in float3 world_pos
 ) {
     const float3 vn = normalize(normal);
-    if (!(mtl_config & MTL_HAS_BUMP_MAP)) return vn;
+    [branch] if (!(mtl_config & MTL_HAS_BUMP_MAP)) return vn;
 
     const float2 tex_uv = tex_coord;
     const float3 wp = world_pos;

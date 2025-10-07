@@ -25,8 +25,8 @@ Zengine currently supports only target macos, builds of SDL for other platforms 
 ```bash
 git clone https://github.com/xgallom/zengine.git
 cd zengine
-zig build ext
-zig build zengine
+zig build ext -Doptimize=ReleaseFast
+zig build zengine -Doptimize=ReleaseFast
 ./zig-out/bin/zeng
 ```
 

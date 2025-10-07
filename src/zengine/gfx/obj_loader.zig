@@ -7,15 +7,60 @@ const assert = std.debug.assert;
 
 const allocators = @import("../allocators.zig");
 const math = @import("../math.zig");
-const MeshBuffer = @import("MeshBuffer.zig");
-const MeshObject = @import("MeshObject.zig");
-const str = @import("../str.zig");
 const gfx_options = @import("../options.zig").gfx_options;
+const str = @import("../str.zig");
+const CPUBuffer = @import("CPUBuffer.zig");
+const MeshObject = @import("MeshObject.zig");
 
 const log = std.log.scoped(.gfx_obj_loader);
 
 // TODO: Implement disjoint mesh smoothing
 
+const ObjFaceType = enum(u8) {
+    invalid,
+    point,
+    line,
+    triangle,
+    quad,
+    const arr_min = 3;
+    const arr_len = 4;
+};
+
+const AttrType = enum {
+    position,
+    tex_coord,
+    normal,
+    const arr_min = 1;
+    const arr_len = 3;
+};
+
+const smoothing_groups_len = 32;
+
+const face_vert_orders: std.EnumArray(ObjFaceType, []const []const u8) = .init(.{
+    .invalid = &.{},
+    .point = &.{&.{0}},
+    .line = &.{&.{ 0, 1 }},
+    .triangle = &.{&.{ 0, 1, 2 }},
+    .quad = &.{ &.{ 0, 1, 2 }, &.{ 0, 2, 3 } },
+});
+
+const face_types_from_obj: std.EnumArray(ObjFaceType, MeshObject.FaceType) = .init(.{
+    .invalid = .invalid,
+    .point = .invalid,
+    // TODO: Implement line
+    .line = .invalid,
+    .triangle = .triangle,
+    .quad = .triangle,
+});
+
+allocator: std.mem.Allocator,
+attr_verts: AttrVerts,
+faces: Faces,
+nodes: Nodes,
+mtl_path: ?[:0]const u8 = null,
+obj_idx: usize = 0,
+
+const Self = @This();
 const VertData = [AttrType.arr_len]math.Vertex;
 const IndexData = [AttrType.arr_len]math.Index;
 const FaceData = [ObjFaceType.arr_len]IndexData;
@@ -23,12 +68,8 @@ const FaceNormals = [MeshObject.FaceType.arr_len + 2]math.Vertex;
 const Verts = std.ArrayList(math.Vertex);
 const Faces = std.ArrayList(Face);
 const Nodes = std.ArrayList(Node);
-const AttrVerts = AttrArray(Verts);
+const AttrVerts = std.EnumArray(AttrType, Verts);
 const AttrsPresent = std.EnumSet(AttrType);
-
-fn AttrArray(comptime T: type) type {
-    return std.EnumArray(AttrType, T);
-}
 
 const Face = struct {
     face_type: ObjFaceType = .invalid,
@@ -73,70 +114,24 @@ pub const Node = struct {
     };
 };
 
-pub const ObjInfo = struct {
+pub const ObjResult = struct {
     allocator: std.mem.Allocator,
-    mesh_buf: MeshBuffer,
+    mesh_buf: CPUBuffer,
     mesh_objs: std.StringArrayHashMapUnmanaged(MeshObject),
     mtl_path: ?[:0]const u8,
 
-    pub fn deinit(self: *ObjInfo) void {
-        self.mesh_buf.freeCPUBuffers(self.allocator);
+    pub fn deinit(self: *ObjResult) void {
+        self.mesh_buf.free(self.allocator);
         for (self.mesh_objs.values()) |*object| object.deinit(self.allocator);
         self.cleanup();
     }
 
-    pub fn cleanup(self: *ObjInfo) void {
+    pub fn cleanup(self: *ObjResult) void {
         self.mesh_objs.deinit(self.allocator);
     }
 };
 
-const ObjFaceType = enum(u8) {
-    invalid,
-    point,
-    line,
-    triangle,
-    quad,
-    const arr_min = 3;
-    const arr_len = 4;
-};
-
-const AttrType = enum(u8) {
-    vertex,
-    tex_coord,
-    normal,
-    const arr_min = 1;
-    const arr_len = 3;
-};
-
-const smoothing_groups_len = 32;
-
-const face_vert_orders: std.EnumArray(ObjFaceType, []const []const u8) = .init(.{
-    .invalid = &.{},
-    .point = &.{&.{0}},
-    .line = &.{&.{ 0, 1 }},
-    .triangle = &.{&.{ 0, 1, 2 }},
-    .quad = &.{ &.{ 0, 1, 2 }, &.{ 0, 2, 3 } },
-});
-
-const face_types_from_obj: std.EnumArray(ObjFaceType, MeshObject.FaceType) = .init(.{
-    .invalid = .invalid,
-    .point = .invalid,
-    // TODO: Implement line
-    .line = .invalid,
-    .triangle = .triangle,
-    .quad = .triangle,
-});
-
-allocator: std.mem.Allocator,
-attr_verts: AttrVerts,
-faces: Faces,
-nodes: Nodes,
-mtl_path: ?[:0]const u8 = null,
-obj_idx: usize = 0,
-
-const Self = @This();
-
-pub fn loadFile(allocator: std.mem.Allocator, path: []const u8) !ObjInfo {
+pub fn loadFile(allocator: std.mem.Allocator, path: []const u8) !ObjResult {
     var file = try std.fs.openFileAbsolute(path, .{});
     defer file.close();
 
@@ -161,14 +156,14 @@ pub fn loadFile(allocator: std.mem.Allocator, path: []const u8) !ObjInfo {
 
     const obj_node = self.activeObjectNode();
     obj_node.len = self.faces.items.len - obj_node.offset;
-    return self.createInfo();
+    return self.createResult();
 }
 
 fn init(allocator: std.mem.Allocator) !Self {
     return .{
         .allocator = allocator,
         .attr_verts = .init(.{
-            .vertex = try .initCapacity(allocator, 128),
+            .position = try .initCapacity(allocator, 128),
             .tex_coord = try .initCapacity(allocator, 128),
             .normal = try .initCapacity(allocator, 128),
         }),
@@ -199,7 +194,7 @@ fn parseLine(self: *Self, line: []const u8) !void {
     if (iter.next()) |cmd| {
         if (str.eql(cmd, "v")) {
             const vertex = try parseVertex(&iter);
-            try self.attr_verts.getPtr(.vertex).append(self.allocator, vertex);
+            try self.attr_verts.getPtr(.position).append(self.allocator, vertex);
         } else if (str.eql(cmd, "vt")) {
             const vertex = try parseVertex(&iter);
             try self.attr_verts.getPtr(.tex_coord).append(self.allocator, vertex);
@@ -332,13 +327,13 @@ fn parseSmoothing(iter: *str.ScalarIterator) !u32 {
     return error.NotEnoughArguments;
 }
 
-const CreateInfoState = struct {
+const CreateResultState = struct {
     vert_idx: usize = 0,
     node_n: usize = 0,
     face_n: usize = 0,
     material_active: ?[:0]const u8 = null,
     smoothing_groups_active: std.bit_set.IntegerBitSet(smoothing_groups_len) = .initEmpty(),
-    vert_data: AttrArray([]const math.Vertex),
+    vert_data: std.EnumArray(AttrType, []const math.Vertex),
     face_normals: std.ArrayList(math.Vertex) = .empty,
     face_angles: std.ArrayList(math.Scalar) = .empty,
     smoothing_groups: [smoothing_groups_len]std.AutoHashMapUnmanaged(
@@ -346,17 +341,17 @@ const CreateInfoState = struct {
         std.ArrayList(usize),
     ) = @splat(.empty),
 
-    fn init(self: *const Self) CreateInfoState {
+    fn init(self: *const Self) CreateResultState {
         return .{
             .vert_data = .init(.{
-                .vertex = self.attr_verts.getPtrConst(.vertex).items,
+                .position = self.attr_verts.getPtrConst(.position).items,
                 .tex_coord = self.attr_verts.getPtrConst(.tex_coord).items,
                 .normal = self.attr_verts.getPtrConst(.normal).items,
             }),
         };
     }
 
-    fn deinit(state: *CreateInfoState, self: *const Self) void {
+    fn deinit(state: *CreateResultState, self: *const Self) void {
         state.face_normals.deinit(self.allocator);
         state.face_angles.deinit(self.allocator);
         for (&state.smoothing_groups) |*group| {
@@ -367,16 +362,16 @@ const CreateInfoState = struct {
     }
 };
 
-fn createInfo(self: *const Self) !ObjInfo {
-    var result: ObjInfo = .{
+fn createResult(self: *const Self) !ObjResult {
+    var result: ObjResult = .{
         .allocator = self.allocator,
-        .mesh_buf = .init(.vertex),
+        .mesh_buf = .empty,
         .mesh_objs = .empty,
         .mtl_path = self.mtl_path,
     };
     errdefer result.deinit();
 
-    var state: CreateInfoState = .init(self);
+    var state: CreateResultState = .init(self);
     defer state.deinit(self);
 
     var node_offset: usize = 0;
@@ -421,10 +416,10 @@ fn createInfo(self: *const Self) !ObjInfo {
     return result;
 }
 
-fn processFaces(self: *const Self, result: *ObjInfo, state: *CreateInfoState, obj_node: Node) !void {
+fn processFaces(self: *const Self, result: *ObjResult, state: *CreateResultState, obj_node: Node) !void {
     const obj = obj_node.meta.object;
     assert(obj.face_type != .invalid);
-    assert(obj.attrs_present.contains(.vertex));
+    assert(obj.attrs_present.contains(.position));
     return switch (obj.attrs_present.contains(.tex_coord)) {
         inline else => |has_tex_coord| switch (obj.attrs_present.contains(.normal)) {
             inline else => |has_normal| switch (face_types_from_obj.get(obj.face_type)) {
@@ -454,8 +449,8 @@ fn ProcessFaces(comptime config: struct {
     return struct {
         fn processFaces(
             self: *const Self,
-            result: *ObjInfo,
-            state: *CreateInfoState,
+            result: *ObjResult,
+            state: *CreateResultState,
             faces_offset: usize,
             faces_len: usize,
             obj: Node.Meta.Object,
@@ -483,12 +478,7 @@ fn ProcessFaces(comptime config: struct {
             const vert_offset = state.vert_idx;
             const vert_count = face_count * face_vert_count;
 
-            try result.mesh_buf.ensureUnusedCapacity(
-                self.allocator,
-                .vertex,
-                math.Vertex,
-                vert_count * AttrType.arr_len,
-            );
+            try result.mesh_buf.ensureUnusedCapacity(self.allocator, math.Vertex, vert_count * AttrType.arr_len);
             try state.face_normals.ensureUnusedCapacity(self.allocator, vert_count);
             try state.face_angles.ensureUnusedCapacity(self.allocator, vert_count);
 
@@ -514,15 +504,14 @@ fn ProcessFaces(comptime config: struct {
 
                 for (vert_orders) |vert_order| {
                     const vert_normals = computeFaceNormals(
-                        state.vert_data.get(.vertex),
+                        state.vert_data.get(.position),
                         &face.data,
                         vert_order,
                     );
 
                     for (vert_order, 0..) |vert_n, n| {
                         if (comptime canComputeNormals()) {
-                            const idx_n = getFaceIndex(&face.data, vert_n, .vertex);
-
+                            const idx_n = getFaceIndex(&face.data, vert_n, .position);
                             var iter = state.smoothing_groups_active.iterator(.{});
                             while (iter.next()) |sg| {
                                 const group = &state.smoothing_groups[sg];
@@ -535,8 +524,7 @@ fn ProcessFaces(comptime config: struct {
                         const vertices = getFaceVertices(state.vert_data, &face.data, &vert_normals[3], vert_n);
                         state.face_normals.appendAssumeCapacity(vert_normals[n]);
                         state.face_angles.appendAssumeCapacity(vert_normals[4][n]);
-                        result.mesh_buf.appendAssumeCapacity(.vertex, math.Vertex, &vertices);
-                        result.mesh_buf.vert_counts.getPtr(.vertex).* += 1;
+                        result.mesh_buf.appendAssumeCapacity([AttrType.arr_len]math.Vertex, 1, &vertices);
                         state.vert_idx += 1;
                     }
                 }
@@ -582,9 +570,9 @@ fn ProcessFaces(comptime config: struct {
                 var normals: FaceNormals = undefined;
 
                 const v = [3]*const math.Vertex{
-                    getFaceVertex(verts, face, vert_order[0], .vertex),
-                    getFaceVertex(verts, face, vert_order[1], .vertex),
-                    getFaceVertex(verts, face, vert_order[2], .vertex),
+                    getFaceVertex(verts, face, vert_order[0], .position),
+                    getFaceVertex(verts, face, vert_order[1], .position),
+                    getFaceVertex(verts, face, vert_order[2], .position),
                 };
 
                 var lhs = v[1].*;
@@ -625,13 +613,13 @@ fn ProcessFaces(comptime config: struct {
         }
 
         inline fn getFaceVertices(
-            vert_data: AttrArray([]const math.Vertex),
+            vert_data: std.EnumArray(AttrType, []const math.Vertex),
             face: *const FaceData,
             normal: *const math.Vertex,
             vert_n: u8,
         ) VertData {
             return .{
-                getFaceVertex(vert_data.get(.vertex), face, vert_n, .vertex).*,
+                getFaceVertex(vert_data.get(.position), face, vert_n, .position).*,
                 if (comptime config.has_tex_coord)
                     getFaceVertex(vert_data.get(.tex_coord), face, vert_n, .tex_coord).*
                 else
@@ -645,10 +633,10 @@ fn ProcessFaces(comptime config: struct {
     };
 }
 
-fn applySmoothing(self: *const Self, result: *const ObjInfo, state: *const CreateInfoState) void {
+fn applySmoothing(self: *const Self, result: *const ObjResult, state: *const CreateResultState) void {
     _ = self;
     const smoothing_angle_limit = comptime std.math.degreesToRadians(gfx_options.normal_smoothing_angle_limit);
-    const verts = result.mesh_buf.cpu_bufs.getPtrConst(.vertex).slice(math.Vertex);
+    const verts = result.mesh_buf.slice(math.Vertex);
     for (&state.smoothing_groups) |group| {
         var sg_iter = group.valueIterator();
         while (sg_iter.next()) |vert_list| {

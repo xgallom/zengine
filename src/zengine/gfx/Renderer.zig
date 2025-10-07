@@ -17,19 +17,23 @@ const gfx_options = @import("../options.zig").gfx_options;
 const perf = @import("../perf.zig");
 const Scene = @import("../Scene.zig");
 const ui_mod = @import("../ui.zig");
+const Error = @import("Error.zig").Error;
 const GPUBuffer = @import("GPUBuffer.zig");
+const GPUDevice = @import("GPUDevice.zig");
+const GPUGraphicsPipeline = @import("GPUGraphicsPipeline.zig");
 const GPUSampler = @import("GPUSampler.zig");
 const GPUTexture = @import("GPUTexture.zig");
 const MaterialInfo = @import("MaterialInfo.zig");
 const MeshBuffer = @import("MeshBuffer.zig");
 const MeshObject = @import("MeshObject.zig");
-const shader = @import("shader.zig");
+const shader_loader = @import("shader_loader.zig");
+const types = @import("types.zig");
 
 const log = std.log.scoped(.gfx_renderer);
 pub const sections = perf.sections(@This(), &.{ .init, .render });
 
 allocator: std.mem.Allocator,
-gpu_device: *c.SDL_GPUDevice,
+gpu_device: GPUDevice,
 pipelines: Pipelines,
 mesh_objs: MeshObjects,
 mesh_bufs: MeshBuffers,
@@ -47,27 +51,6 @@ const StorageBuffers = KeyMap(MeshBuffer, .{});
 const MaterialInfos = KeyMap(MaterialInfo, .{});
 const Textures = PtrKeyMap(c.SDL_GPUTexture);
 const Samplers = PtrKeyMap(c.SDL_GPUSampler);
-
-pub const InitError = error{
-    GPUFailed,
-    ShaderFailed,
-    WindowFailed,
-    PipelineFailed,
-    BufferFailed,
-    MaterialFailed,
-    SurfaceFailed,
-    TextureFailed,
-    SamplerFailed,
-    CommandBufferFailed,
-    CopyPassFailed,
-    RenderPassFailed,
-    OutOfMemory,
-};
-
-pub const DrawError = error{
-    DrawFailed,
-    OutOfMemory,
-};
 
 pub const Item = struct {
     object: [:0]const u8,
@@ -100,7 +83,7 @@ pub const Items = struct {
     }
 };
 
-pub fn create(engine: *const Engine) InitError!*Self {
+pub fn create(engine: *const Engine) !*Self {
     defer allocators.scratchFree();
 
     try sections.register();
@@ -113,7 +96,7 @@ pub fn create(engine: *const Engine) InitError!*Self {
     const self = try createSelf(allocators.gpa(), engine);
     errdefer self.deinit(engine);
 
-    if (!c.SDL_SetGPUAllowedFramesInFlight(self.gpu_device, 3)) {
+    if (!self.gpu_device.setAllowedFramesInFlight(3)) {
         log.warn("failed to enable triple-buffering", .{});
     }
     try self.setPresentMode(engine);
@@ -131,158 +114,157 @@ pub fn create(engine: *const Engine) InitError!*Self {
         .address_mode_w = .clamp_to_edge,
     });
 
-    const vertex_shader = shader.open(.{
+    var triangle_vert = shader_loader.loadFile(&.{
         .allocator = self.allocator,
         .gpu_device = self.gpu_device,
         .shader_path = "triangle_vert.vert",
         .stage = .vertex,
     }) catch |err| {
         log.err("failed creating vertex shader: {t}", .{err});
-        return InitError.ShaderFailed;
+        return Error.ShaderFailed;
     };
-    defer shader.release(self.gpu_device, vertex_shader);
+    defer triangle_vert.deinit(self.gpu_device);
 
-    const full_vertex_shader = shader.open(.{
+    var full_vert = shader_loader.loadFile(&.{
         .allocator = self.allocator,
         .gpu_device = self.gpu_device,
         .shader_path = "full.vert",
         .stage = .vertex,
     }) catch |err| {
         log.err("failed creating full vertex shader: {t}", .{err});
-        return InitError.ShaderFailed;
+        return Error.ShaderFailed;
     };
-    defer shader.release(self.gpu_device, full_vertex_shader);
+    defer full_vert.deinit(self.gpu_device);
 
-    const fragment_shader = shader.open(.{
+    var sampler_texture_frag = shader_loader.loadFile(&.{
         .allocator = self.allocator,
         .gpu_device = self.gpu_device,
         .shader_path = "sampler_texture.frag",
         .stage = .fragment,
     }) catch |err| {
         log.err("failed creating fragment shader: {t}", .{err});
-        return InitError.ShaderFailed;
+        return Error.ShaderFailed;
     };
-    defer shader.release(self.gpu_device, fragment_shader);
+    defer sampler_texture_frag.deinit(self.gpu_device);
 
-    const origin_fragment_shader = shader.open(.{
+    var rgb_color_frag = shader_loader.loadFile(&.{
         .allocator = self.allocator,
         .gpu_device = self.gpu_device,
         .shader_path = "rgb_color.frag",
         .stage = .fragment,
     }) catch |err| {
         log.err("failed creating origin fragment shader: {t}", .{err});
-        return InitError.ShaderFailed;
+        return Error.ShaderFailed;
     };
-    defer shader.release(self.gpu_device, origin_fragment_shader);
+    defer rgb_color_frag.deinit(self.gpu_device);
 
-    const full_fragment_shader = shader.open(.{
+    var full_frag = shader_loader.loadFile(&.{
         .allocator = self.allocator,
         .gpu_device = self.gpu_device,
         .shader_path = "full.frag",
         .stage = .fragment,
     }) catch |err| {
         log.err("failed creating full fragment shader: {t}", .{err});
-        return InitError.ShaderFailed;
+        return Error.ShaderFailed;
     };
-    defer shader.release(self.gpu_device, full_fragment_shader);
+    defer full_frag.deinit(self.gpu_device);
 
-    var graphics_pipeline_create_info = c.SDL_GPUGraphicsPipelineCreateInfo{
-        .vertex_shader = vertex_shader,
-        .fragment_shader = fragment_shader,
+    var pipeline_create_info: GPUGraphicsPipeline.CreateInfo = .{
+        .vertex_shader = triangle_vert,
+        .fragment_shader = sampler_texture_frag,
         .vertex_input_state = .{
-            .vertex_buffer_descriptions = &[_]c.SDL_GPUVertexBufferDescription{
+            .vertex_buffer_descriptions = &.{
                 .{
                     .slot = 0,
                     .pitch = 3 * @sizeOf(math.Vertex),
-                    .input_rate = c.SDL_GPU_VERTEXINPUTRATE_VERTEX,
+                    .input_rate = .vertex,
                     .instance_step_rate = 0,
                 },
             },
-            .num_vertex_buffers = 1,
-            .vertex_attributes = &[_]c.SDL_GPUVertexAttribute{
+            .vertex_attributes = &.{
                 .{
                     .location = 0,
                     .buffer_slot = 0,
-                    .format = c.SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3,
+                    .format = .f32_3,
                     .offset = 0,
                 },
                 .{
                     .location = 1,
                     .buffer_slot = 0,
-                    .format = c.SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3,
+                    .format = .f32_3,
                     .offset = @sizeOf(math.Vertex),
                 },
                 .{
                     .location = 2,
                     .buffer_slot = 0,
-                    .format = c.SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3,
+                    .format = .f32_3,
                     .offset = 2 * @sizeOf(math.Vertex),
                 },
             },
-            .num_vertex_attributes = 3,
         },
-        .primitive_type = c.SDL_GPU_PRIMITIVETYPE_TRIANGLELIST,
+        .primitive_type = .triangle_list,
         .rasterizer_state = .{
-            .fill_mode = c.SDL_GPU_FILLMODE_FILL,
-            .cull_mode = c.SDL_GPU_CULLMODE_NONE,
-            .front_face = c.SDL_GPU_FRONTFACE_CLOCKWISE,
+            .fill_mode = .fill,
+            .cull_mode = .none,
+            .front_face = .clockwise,
             .enable_depth_clip = true,
         },
         .depth_stencil_state = .{
-            .compare_op = c.SDL_GPU_COMPAREOP_LESS,
+            .compare_op = .less,
             .compare_mask = 0xFF,
             .write_mask = 0xFF,
             .enable_depth_test = true,
             .enable_depth_write = true,
         },
         .target_info = .{
-            .color_target_descriptions = &c.SDL_GPUColorTargetDescription{
-                .format = @intFromEnum(swapchain_format),
-                .blend_state = .{
-                    .src_color_blendfactor = c.SDL_GPU_BLENDFACTOR_SRC_ALPHA,
-                    .dst_color_blendfactor = c.SDL_GPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA,
-                    .color_blend_op = c.SDL_GPU_BLENDOP_ADD,
-                    .alpha_blend_op = c.SDL_GPU_BLENDOP_MAX,
-                    .color_write_mask = 0x00,
-                    .src_alpha_blendfactor = c.SDL_GPU_BLENDFACTOR_ONE,
-                    .dst_alpha_blendfactor = c.SDL_GPU_BLENDFACTOR_ONE,
-                    .enable_blend = true,
-                    .enable_color_write_mask = false,
+            .color_target_descriptions = &.{
+                .{
+                    .format = swapchain_format,
+                    .blend_state = .{
+                        .src_color_blendfactor = .src_alpha,
+                        .dst_color_blendfactor = .one_minus_src_alpha,
+                        .color_blend_op = .add,
+                        .alpha_blend_op = .max,
+                        .color_write_mask = 0x00,
+                        .src_alpha_blendfactor = .one,
+                        .dst_alpha_blendfactor = .one,
+                        .enable_blend = true,
+                        .enable_color_write_mask = false,
+                    },
                 },
             },
-            .num_color_targets = 1,
             .has_depth_stencil_target = true,
-            .depth_stencil_format = @intFromEnum(stencil_format),
+            .depth_stencil_format = stencil_format,
         },
     };
 
-    _ = try self.createPipeline("default", &graphics_pipeline_create_info);
+    _ = try self.createGraphicsPipeline("default", &pipeline_create_info);
 
-    graphics_pipeline_create_info.fragment_shader = origin_fragment_shader;
-    graphics_pipeline_create_info.primitive_type = c.SDL_GPU_PRIMITIVETYPE_LINELIST;
-    graphics_pipeline_create_info.rasterizer_state.fill_mode = c.SDL_GPU_FILLMODE_LINE;
+    pipeline_create_info.fragment_shader = rgb_color_frag;
+    pipeline_create_info.primitive_type = .line_list;
+    pipeline_create_info.rasterizer_state.fill_mode = .line;
 
-    _ = try self.createPipeline("origin", &graphics_pipeline_create_info);
+    _ = try self.createGraphicsPipeline("origin", &pipeline_create_info);
 
-    graphics_pipeline_create_info.vertex_shader = full_vertex_shader;
-    graphics_pipeline_create_info.fragment_shader = full_fragment_shader;
-    graphics_pipeline_create_info.vertex_input_state = std.mem.zeroes(c.SDL_GPUVertexInputState);
-    graphics_pipeline_create_info.primitive_type = c.SDL_GPU_PRIMITIVETYPE_TRIANGLELIST;
-    graphics_pipeline_create_info.rasterizer_state.fill_mode = c.SDL_GPU_FILLMODE_FILL;
+    pipeline_create_info.vertex_shader = full_vert;
+    pipeline_create_info.fragment_shader = full_frag;
+    pipeline_create_info.vertex_input_state = .{};
+    pipeline_create_info.primitive_type = .triangle_list;
+    pipeline_create_info.rasterizer_state.fill_mode = .fill;
 
-    _ = try self.createPipeline("full", &graphics_pipeline_create_info);
+    _ = try self.createGraphicsPipeline("screen", &pipeline_create_info);
 
     sections.sub(.init).end();
     return self;
 }
 
 pub fn deinit(self: *Self, engine: *const Engine) void {
-    _ = c.SDL_WaitForGPUIdle(self.gpu_device);
+    _ = c.SDL_WaitForGPUIdle(self.gpu_device.ptr);
     const gpa = self.allocator;
     const gpu_device = self.gpu_device;
 
     for (self.pipelines.map.values()) |graphics_pipeline| c.SDL_ReleaseGPUGraphicsPipeline(
-        self.gpu_device,
+        self.gpu_device.ptr,
         graphics_pipeline,
     );
     self.pipelines.deinit(gpa);
@@ -296,13 +278,13 @@ pub fn deinit(self: *Self, engine: *const Engine) void {
     self.mesh_bufs.deinit();
     for (self.storage_bufs.map.values()) |buf| buf.deinit(gpa, gpu_device);
     self.storage_bufs.deinit();
-    for (self.textures.map.values()) |texture| c.SDL_ReleaseGPUTexture(gpu_device, texture);
+    for (self.textures.map.values()) |texture| GPUTexture.release(gpu_device, texture);
     self.textures.deinit(gpa);
-    for (self.samplers.map.values()) |sampler| c.SDL_ReleaseGPUSampler(gpu_device, sampler);
+    for (self.samplers.map.values()) |sampler| GPUSampler.release(gpu_device, sampler);
     self.samplers.deinit(gpa);
 
-    c.SDL_ReleaseWindowFromGPUDevice(self.gpu_device, engine.main_win.ptr);
-    c.SDL_DestroyGPUDevice(self.gpu_device);
+    self.gpu_device.releaseWindow(engine.main_win);
+    self.gpu_device.deinit();
 }
 
 fn stencilFormat(self: *const Self) GPUTexture.Format {
@@ -322,50 +304,34 @@ fn stencilFormat(self: *const Self) GPUTexture.Format {
 }
 
 pub fn swapchainFormat(self: *const Self, engine: *const Engine) GPUTexture.Format {
-    return @enumFromInt(c.SDL_GetGPUSwapchainTextureFormat(self.gpu_device, engine.main_win.ptr));
+    return @enumFromInt(c.SDL_GetGPUSwapchainTextureFormat(self.gpu_device.ptr, engine.main_win.ptr));
 }
 
-pub fn setPresentMode(self: *Self, engine: *const Engine) InitError!void {
-    var present_mode: PresentMode = .vsync;
-    if (c.SDL_WindowSupportsGPUPresentMode(
-        self.gpu_device,
-        engine.main_win.ptr,
-        c.SDL_GPU_PRESENTMODE_MAILBOX,
-    )) present_mode = .mailbox;
-
-    if (!c.SDL_SetGPUSwapchainParameters(
-        self.gpu_device,
-        engine.main_win.ptr,
-        c.SDL_GPU_SWAPCHAINCOMPOSITION_SDR,
-        @intFromEnum(present_mode),
-    )) {
-        log.err("failed setting swapchain parameters: {s}", .{c.SDL_GetError()});
-        return InitError.WindowFailed;
-    }
+pub fn setPresentMode(self: *Self, engine: *const Engine) !void {
+    var present_mode: types.PresentMode = .vsync;
+    if (self.gpu_device.supportsPresentMode(engine.main_win, .mailbox)) present_mode = .mailbox;
+    try self.gpu_device.setSwapchainParameters(engine.main_win, .SDR, present_mode);
 }
 
-fn createSelf(allocator: std.mem.Allocator, engine: *const Engine) InitError!*Self {
-    const gpu_device = c.SDL_CreateGPUDevice(
-        c.SDL_GPU_SHADERFORMAT_SPIRV | c.SDL_GPU_SHADERFORMAT_DXIL | c.SDL_GPU_SHADERFORMAT_MSL,
+fn createSelf(allocator: std.mem.Allocator, engine: *const Engine) !*Self {
+    var gpu_device: GPUDevice = try .init(
+        .initMany(&.{ .dxil, .spirv, .msl }),
         std.debug.runtime_safety,
         null,
     );
-    if (gpu_device == null) {
+    if (!gpu_device.isValid()) {
         log.err("failed creating gpu device: {s}", .{c.SDL_GetError()});
-        return InitError.GPUFailed;
+        return Error.GPUFailed;
     }
-    errdefer c.SDL_DestroyGPUDevice(gpu_device);
+    errdefer gpu_device.deinit();
 
-    if (!c.SDL_ClaimWindowForGPUDevice(gpu_device, engine.main_win.ptr)) {
-        log.err("failed claiming window for gpu device: {s}", .{c.SDL_GetError()});
-        return InitError.WindowFailed;
-    }
-    errdefer c.SDL_ReleaseWindowFromGPUDevice(gpu_device, engine.main_win.ptr);
+    try gpu_device.claimWindow(engine.main_win);
+    errdefer gpu_device.releaseWindow(engine.main_win);
 
     const self = try allocators.global().create(Self);
     self.* = .{
         .allocator = allocator,
-        .gpu_device = gpu_device.?,
+        .gpu_device = gpu_device,
         .pipelines = try .init(allocator, 128),
         .mesh_objs = try .init(allocator, 128),
         .mesh_bufs = try .init(allocator, 128),
@@ -450,7 +416,7 @@ pub fn createSampler(
     var sampler: GPUSampler = try .init(self.gpu_device, info);
     if (!sampler.isValid()) {
         log.err("failed creating sampler: {s}", .{c.SDL_GetError()});
-        return InitError.SamplerFailed;
+        return Error.SamplerFailed;
     }
     errdefer sampler.deinit(self.gpu_device);
     try self.samplers.insert(self.allocator, key, sampler.ptr.?);
@@ -468,27 +434,19 @@ fn createStencilTexture(
         .usage = .initOne(.depth_stencil_target),
         .size = engine.main_win.pixelSize(),
     });
-    if (!stencil_texture.isValid()) {
-        log.err("failed creating stencil texture: {s}", .{c.SDL_GetError()});
-        return InitError.BufferFailed;
-    }
     errdefer stencil_texture.deinit(self.gpu_device);
     return self.insertTexture("stencil", stencil_texture.ptr.?);
 }
 
-fn createPipeline(
+fn createGraphicsPipeline(
     self: *Self,
     key: []const u8,
-    info: *const c.SDL_GPUGraphicsPipelineCreateInfo,
+    info: *const GPUGraphicsPipeline.CreateInfo,
 ) !*c.SDL_GPUGraphicsPipeline {
-    const graphics_pipeline = c.SDL_CreateGPUGraphicsPipeline(self.gpu_device, info);
-    if (graphics_pipeline == null) {
-        log.err("failed creating graphics pipeline: {s}", .{c.SDL_GetError()});
-        return InitError.PipelineFailed;
-    }
-    errdefer c.SDL_ReleaseGPUGraphicsPipeline(self.gpu_device, graphics_pipeline);
-    try self.pipelines.insert(self.allocator, key, graphics_pipeline.?);
-    return graphics_pipeline.?;
+    var pipeline: GPUGraphicsPipeline = try .init(self.gpu_device, info);
+    errdefer pipeline.deinit(self.gpu_device);
+    try self.pipelines.insert(self.allocator, key, pipeline.ptr.?);
+    return pipeline.toOwnedGPUGraphicsPipeline();
 }
 
 pub fn render(
@@ -498,7 +456,7 @@ pub fn render(
     flat: *const Scene.Flattened,
     ui_ptr: ?*ui_mod.UI,
     items_iter: anytype,
-) DrawError!bool {
+) !bool {
     const section = sections.sub(.render);
     section.begin();
 
@@ -516,10 +474,10 @@ pub fn render(
     const fa = allocators.frame();
 
     log.debug("command_buffer", .{});
-    const command_buffer = c.SDL_AcquireGPUCommandBuffer(gpu_device);
+    const command_buffer = c.SDL_AcquireGPUCommandBuffer(gpu_device.ptr);
     if (command_buffer == null) {
         log.err("failed to acquire command_buffer: {s}", .{c.SDL_GetError()});
-        return DrawError.DrawFailed;
+        return Error.DrawFailed;
     }
     errdefer _ = c.SDL_CancelGPUCommandBuffer(command_buffer);
 
@@ -527,7 +485,7 @@ pub fn render(
     var swapchain_texture: ?*c.SDL_GPUTexture = undefined;
     if (!c.SDL_AcquireGPUSwapchainTexture(command_buffer, window, &swapchain_texture, null, null)) {
         log.err("failed to acquire swapchain_texture: {s}", .{c.SDL_GetError()});
-        return DrawError.DrawFailed;
+        return Error.DrawFailed;
     }
 
     section.sub(.acquire).end();
@@ -560,7 +518,7 @@ pub fn render(
         tr_projection,
         @floatFromInt(win_size[0]),
         @floatFromInt(win_size[1]),
-        7.5,
+        0.1,
         10_000.0,
     );
     camera.transform(tr_view);
@@ -569,17 +527,13 @@ pub fn render(
     log.debug("camera_position: {any}", .{camera.position});
     log.debug("camera_direction: {any}", .{camera.direction});
 
-    var uniform_buffer = try fa.alloc(f32, 32);
-    @memcpy(uniform_buffer[0..16], math.matrix4x4.sliceConst(tr_view_projection));
+    const uniform_buf = try fa.alloc(f32, 32);
+    @memcpy(uniform_buf[0..16], math.matrix4x4.sliceConst(tr_view_projection));
 
-    var frag_uniform_buffer = try fa.alloc(f32, 8 * 4);
-    const frag_uniform_buffer_u32: []u32 = @ptrCast(frag_uniform_buffer);
-    @memset(frag_uniform_buffer_u32, 0);
-    @memcpy(frag_uniform_buffer[24..27], math.vector3.sliceConst(&camera.position));
+    const frag_uniform_buf = try fa.alloc(f32, 7 * 4);
+    @memset(frag_uniform_buf, 0);
+    @memcpy(frag_uniform_buf[24..27], math.vector3.sliceConst(&camera.position));
     const light_counts = scene.lightCounts(flat);
-    frag_uniform_buffer_u32[28] = light_counts.get(.ambient);
-    frag_uniform_buffer_u32[29] = light_counts.get(.directional);
-    frag_uniform_buffer_u32[30] = light_counts.get(.point);
 
     // var frag_uniform_buffer: [4]f32 = .{ time_s, aspect_ratio, mouse_x, mouse_y };
     // var origin_frag_uniform_buffer: [4]f32 = .{ 1, 0, 1, 1 };
@@ -606,7 +560,7 @@ pub fn render(
     //     );
     //     if (render_pass == null) {
     //         log.err("failed to begin render_pass: {s}", .{c.SDL_GetError()});
-    //         return DrawError.DrawFailed;
+    //         return Error.DrawFailed;
     //     }
     //
     //     c.SDL_PushGPUVertexUniformData(command_buffer, 0, uniform_buffer, @sizeOf(@TypeOf(uniform_buffer)));
@@ -643,7 +597,7 @@ pub fn render(
         );
         if (render_pass == null) {
             log.err("failed to begin render_pass: {s}", .{c.SDL_GetError()});
-            return DrawError.DrawFailed;
+            return Error.DrawFailed;
         }
 
         // c.SDL_BindGPUFragmentSamplers(render_pass, 0, &c.SDL_GPUTextureSamplerBinding{
@@ -661,6 +615,12 @@ pub fn render(
         const lights_buffer = self.storage_bufs.getPtr("lights");
 
         c.SDL_BindGPUFragmentStorageBuffers(render_pass, 0, &lights_buffer.gpu_bufs.getPtr(.vertex).ptr, 1);
+        c.SDL_PushGPUFragmentUniformData(
+            command_buffer,
+            1,
+            &light_counts.values,
+            @intCast(light_counts.values.len * @sizeOf(u32)),
+        );
 
         while (items_iter.next()) |_item| {
             const item: Item = _item;
@@ -672,22 +632,21 @@ pub fn render(
                 const material = self.materials.getPtr(mtl);
                 const mesh_buf = object.mesh_buf;
 
-                @memcpy(uniform_buffer[16..32], math.matrix4x4.sliceConst(item.transform));
+                @memcpy(uniform_buf[16..32], math.matrix4x4.sliceConst(item.transform));
+                @memcpy(frag_uniform_buf[0..24], material.uniformBuffer()[0..]);
 
                 c.SDL_PushGPUVertexUniformData(
                     command_buffer,
                     0,
-                    uniform_buffer.ptr,
-                    @intCast(@sizeOf(f32) * uniform_buffer.len),
+                    uniform_buf.ptr,
+                    @intCast(@sizeOf(f32) * uniform_buf.len),
                 );
-
-                @memcpy(frag_uniform_buffer[0..24], material.uniformBuffer()[0..]);
 
                 c.SDL_PushGPUFragmentUniformData(
                     command_buffer,
                     0,
-                    frag_uniform_buffer.ptr,
-                    @intCast(@sizeOf(f32) * frag_uniform_buffer.len),
+                    frag_uniform_buf.ptr,
+                    @intCast(@sizeOf(f32) * frag_uniform_buf.len),
                 );
 
                 const texture = if (material.texture) |tex| self.textures.getPtr(tex) else default_texture;
@@ -714,6 +673,7 @@ pub fn render(
                         0,
                     ),
                     .index => {
+                        log.info("{s}", .{item.object});
                         c.SDL_BindGPUIndexBuffer(render_pass, &c.SDL_GPUBufferBinding{
                             .buffer = mesh_buf.gpu_bufs.getPtrConst(.index).ptr,
                             .offset = 0,
@@ -737,7 +697,7 @@ pub fn render(
         const origin_mesh = self.mesh_bufs.getPtr("origin");
         const origin_graphics_pipeline = self.pipelines.getPtr("origin");
 
-        @memcpy(uniform_buffer[16..32], math.matrix4x4.sliceConst(&math.matrix4x4.identity));
+        @memcpy(uniform_buf[16..32], math.matrix4x4.sliceConst(&math.matrix4x4.identity));
 
         c.SDL_BindGPUVertexBuffers(render_pass, 0, &c.SDL_GPUBufferBinding{
             .buffer = origin_mesh.gpu_bufs.getPtrConst(.vertex).ptr,
@@ -747,35 +707,35 @@ pub fn render(
             .buffer = origin_mesh.gpu_bufs.getPtrConst(.index).ptr,
             .offset = 0,
         }, c.SDL_GPU_INDEXELEMENTSIZE_32BIT);
-        c.SDL_PushGPUVertexUniformData(command_buffer, 0, uniform_buffer.ptr, @intCast(@sizeOf(f32) * uniform_buffer.len));
+        c.SDL_PushGPUVertexUniformData(command_buffer, 0, uniform_buf.ptr, @intCast(@sizeOf(f32) * uniform_buf.len));
         c.SDL_BindGPUGraphicsPipeline(render_pass, origin_graphics_pipeline);
 
-        @memcpy(frag_uniform_buffer[0..3], &[_]f32{ 1, 0, 0 });
+        @memcpy(frag_uniform_buf[0..3], &[_]f32{ 1, 0, 0 });
         c.SDL_PushGPUFragmentUniformData(
             command_buffer,
             0,
-            frag_uniform_buffer.ptr,
-            @intCast(@sizeOf(f32) * frag_uniform_buffer.len),
+            frag_uniform_buf.ptr,
+            @intCast(@sizeOf(f32) * frag_uniform_buf.len),
         );
 
         c.SDL_DrawGPUIndexedPrimitives(render_pass, 2, 1, 0, 0, 0);
 
-        @memcpy(frag_uniform_buffer[0..3], &[_]f32{ 0, 1, 0 });
+        @memcpy(frag_uniform_buf[0..3], &math.RGBf32{ 0, 1, 0 });
         c.SDL_PushGPUFragmentUniformData(
             command_buffer,
             0,
-            frag_uniform_buffer.ptr,
-            @intCast(@sizeOf(f32) * frag_uniform_buffer.len),
+            frag_uniform_buf.ptr,
+            @intCast(@sizeOf(f32) * frag_uniform_buf.len),
         );
 
         c.SDL_DrawGPUIndexedPrimitives(render_pass, 2, 1, 2, 0, 0);
 
-        @memcpy(frag_uniform_buffer[0..3], &[_]f32{ 0, 0, 1 });
+        @memcpy(frag_uniform_buf[0..3], &math.RGBf32{ 0, 0, 1 });
         c.SDL_PushGPUFragmentUniformData(
             command_buffer,
             0,
-            frag_uniform_buffer.ptr,
-            @intCast(@sizeOf(f32) * frag_uniform_buffer.len),
+            frag_uniform_buf.ptr,
+            @intCast(@sizeOf(f32) * frag_uniform_buf.len),
         );
         c.SDL_DrawGPUIndexedPrimitives(render_pass, 2, 1, 4, 0, 0);
 
@@ -815,7 +775,7 @@ pub fn render(
     //     );
     //     if (render_pass == null) {
     //         log.err("failed to begin render_pass: {s}", .{c.SDL_GetError()});
-    //         return DrawError.DrawFailed;
+    //         return Error.DrawFailed;
     //     }
     //
     //     // c.SDL_BindGPUFragmentSamplers(render_pass, 0, &c.SDL_GPUTextureSamplerBinding{
@@ -830,7 +790,7 @@ pub fn render(
     log.debug("submit command_buffer", .{});
     if (!c.SDL_SubmitGPUCommandBuffer(command_buffer)) {
         log.err("failed submitting command_buffer: {s}", .{c.SDL_GetError()});
-        return DrawError.DrawFailed;
+        return Error.DrawFailed;
     }
     section.sub(.submit).end();
 
@@ -931,16 +891,3 @@ pub fn propertyEditorNode(
     }
     return root_node;
 }
-
-pub const PresentMode = enum(c.SDL_GPUPresentMode) {
-    vsync = c.SDL_GPU_PRESENTMODE_VSYNC,
-    immediate = c.SDL_GPU_PRESENTMODE_IMMEDIATE,
-    mailbox = c.SDL_GPU_PRESENTMODE_MAILBOX,
-};
-
-pub const SwapchainComposition = enum(c.SDL_GPUSwapchainComposition) {
-    SDR = c.SDL_GPU_SWAPCHAINCOMPOSITION_SDR,
-    SDR_linear = c.SDL_GPU_SWAPCHAINCOMPOSITION_SDR_LINEAR,
-    HDR_extended_linear = c.SDL_GPU_SWAPCHAINCOMPOSITION_HDR_EXTENDED_LINEAR,
-    HDR10_ST2084 = c.SDL_GPU_SWAPCHAINCOMPOSITION_HDR10_ST2084,
-};

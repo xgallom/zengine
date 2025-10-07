@@ -9,9 +9,10 @@ const c = @import("../ext.zig").c;
 const global = @import("../global.zig");
 const math = @import("../math.zig");
 const ui = @import("../ui.zig");
+const Error = @import("Error.zig").Error;
 const GPUTexture = @import("GPUTexture.zig");
 
-const log = std.log.scoped(.gfx_surface_texture);
+const log = std.log.scoped(.gfx_surface);
 
 ptr: ?*c.SDL_Surface = null,
 
@@ -34,7 +35,7 @@ pub fn create(size: math.Point_u32, pixel_format: PixelFormat) !*c.SDL_Surface {
     );
     if (ptr == null) {
         log.err("failed creating surface: {s}", .{c.SDL_GetError()});
-        return error.SurfaceFailed;
+        return Error.SurfaceFailed;
     }
     return ptr.?;
 }
@@ -79,7 +80,7 @@ pub fn convert(self: *Self, pixel_format: PixelFormat) !void {
     const new_surf = c.SDL_ConvertSurface(self.ptr, @intFromEnum(pixel_format));
     if (new_surf == null) {
         log.err("failed converting surface format: {s}", .{c.SDL_GetError()});
-        return error.ConvertFailed;
+        return Error.SurfaceFailed;
     }
     destroy(self.toOwnedSurface());
     self.ptr = new_surf;

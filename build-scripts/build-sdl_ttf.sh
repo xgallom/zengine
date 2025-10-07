@@ -17,6 +17,7 @@ git submodule update --init --recursive
 cd "$BDIR"
 
 CMAKE_INSTALL_PREFIX="$IDIR" cmake .. \
+	-DCMAKE_BUILD_TYPE=$1 \
 	-DCMAKE_FIND_PACKAGE_REDIRECTS_DIR="$IDIR/lib/cmake" \
 	-DSDLTTF_VENDORED=ON \
 	-DBUILD_SHARED_LIBS=ON \

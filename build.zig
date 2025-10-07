@@ -10,6 +10,13 @@ const ExtCommand = enum {
     cimplot,
 };
 
+const ext_optimize = std.EnumArray(std.builtin.OptimizeMode, []const u8).init(.{
+    .Debug = "Debug",
+    .ReleaseSafe = "RelWithDebInfo",
+    .ReleaseFast = "Release",
+    .ReleaseSmall = "MinSizeRel",
+});
+
 pub fn build(b: *std.Build) !void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
@@ -21,7 +28,7 @@ pub fn build(b: *std.Build) !void {
         "build-scripts",
         b.fmt("build-{t}.sh", .{ext_cmd_opt}),
     });
-    const build_ext = b.addSystemCommand(&.{build_ext_cmd});
+    const build_ext = b.addSystemCommand(&.{ build_ext_cmd, ext_optimize.get(optimize) });
     const build_ext_step = b.step("ext", "Build external dependencies");
     build_ext_step.dependOn(&build_ext.step);
 

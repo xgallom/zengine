@@ -157,9 +157,18 @@ pub fn InputField(comptime C: type, comptime field: StdType.StructField) type {
                     .input_type = field_resolver.optional(field_type),
                 }).drawImpl(field_ptr, ui, is_open),
                 .pointer => |field_info| {
-                    if (field_info.size != .slice) @compileError("Unsupported pointer size");
-                    if (field_info.child != u8) @compileError("Only strings supported");
-                    if (field_info.sentinel() != 0) @compileError("Only zero-terminated strings supported");
+                    if (field_info.size != .slice) {
+                        @compileLog(field_info);
+                        @compileError("Unsupported pointer size");
+                    }
+                    if (field_info.child != u8) {
+                        @compileLog(field_info);
+                        @compileError("Only strings supported");
+                    }
+                    if (field_info.sentinel() != 0) {
+                        @compileLog(field_info);
+                        @compileError("Only zero-terminated strings supported");
+                    }
 
                     InputText(.{
                         .name = name,

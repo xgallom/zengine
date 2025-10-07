@@ -16,7 +16,6 @@ const MaterialInfo = @import("MaterialInfo.zig");
 const log = std.log.scoped(.gfx_mtl_loader);
 
 pub const Materials = std.ArrayListUnmanaged(MaterialInfo);
-const LineIterator = std.mem.SplitIterator(u8, .scalar);
 
 pub const Result = struct {
     allocator: std.mem.Allocator,
@@ -94,25 +93,25 @@ pub fn loadFile(gpa: std.mem.Allocator, path: []const u8) !Result {
     };
 }
 
-fn parsePath(iter: *LineIterator) ![:0]const u8 {
+fn parsePath(iter: *str.ScalarIterator) ![:0]const u8 {
     const rest = str.trimRest(iter);
     if (rest.len != 0) return str.dupeZ(rest);
     return error.SyntaxError;
 }
 
-fn parseRGBf32(iter: *LineIterator) !math.RGBf32 {
+fn parseRGBf32(iter: *str.ScalarIterator) !math.RGBf32 {
     const r = try parseFloat(iter);
     const g = try parseFloat(iter);
     const b = try parseFloat(iter);
     return .{ r, g, b };
 }
 
-fn parseFloat(iter: *LineIterator) !f32 {
+fn parseFloat(iter: *str.ScalarIterator) !f32 {
     if (iter.next()) |token| return std.fmt.parseFloat(f32, token);
     return error.SyntaxError;
 }
 
-fn parseMode(iter: *LineIterator) !u8 {
+fn parseMode(iter: *str.ScalarIterator) !u8 {
     if (iter.next()) |token| return std.fmt.parseInt(u8, token, 10);
     return error.SyntaxError;
 }

@@ -4,20 +4,22 @@
 //!
 
 const std = @import("std");
+
 const math = @import("../math.zig");
-const RGBf32 = math.RGBf32;
 const ui = @import("../ui.zig");
+
+const log = std.log.scoped(.gfx_material_info);
 
 name: [:0]const u8,
 texture: ?[:0]const u8 = null,
 diffuse_map: ?[:0]const u8 = null,
 bump_map: ?[:0]const u8 = null,
 
-clr_ambient: RGBf32 = math.rgb_f32.one,
-clr_diffuse: RGBf32 = math.rgb_f32.one,
-clr_specular: RGBf32 = math.rgb_f32.zero,
-clr_emissive: RGBf32 = math.rgb_f32.zero,
-clr_filter: RGBf32 = math.rgb_f32.one,
+clr_ambient: math.RGBf32 = math.rgb_f32.one,
+clr_diffuse: math.RGBf32 = math.rgb_f32.one,
+clr_specular: math.RGBf32 = math.rgb_f32.zero,
+clr_emissive: math.RGBf32 = math.rgb_f32.zero,
+clr_filter: math.RGBf32 = math.rgb_f32.one,
 specular_exp: f32 = 1,
 ior: f32 = 1,
 alpha: f32 = 1,

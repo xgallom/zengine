@@ -140,6 +140,10 @@ pub inline fn queryCapacity() usize {
     return global_state.gpa_state.total_requested_bytes;
 }
 
+pub inline fn initArena() Arena {
+    return std.heap.ArenaAllocator.init(gpa());
+}
+
 pub inline fn arenaState(key: ArenaKey) *Arena {
     assert(is_init);
     return global_state.arena_states.getPtr(key);

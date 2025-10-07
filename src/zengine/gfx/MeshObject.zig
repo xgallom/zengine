@@ -5,14 +5,14 @@
 const std = @import("std");
 const assert = std.debug.assert;
 
+const KeyMap = @import("../containers.zig").KeyMap;
 const c = @import("../ext.zig").c;
 const global = @import("../global.zig");
 const math = @import("../math.zig");
 const ui = @import("../ui.zig");
 const MeshBuffer = @import("MeshBuffer.zig");
-const KeyMap = @import("../containers.zig").KeyMap;
 
-const log = std.log.scoped(.gfx_object);
+const log = std.log.scoped(.gfx_mesh_object);
 
 pub const FaceType = enum {
     invalid,
@@ -22,18 +22,27 @@ pub const FaceType = enum {
     pub const arr_len = 3;
 };
 
-pub const TestExhaustive = enum(u4) {
-    value,
-    value1,
-    value2,
-    value4 = 4,
-};
+pub const face_vert_counts: std.EnumArray(FaceType, usize) = .init(.{
+    .invalid = 0,
+    .point = 1,
+    .line = 2,
+    .triangle = 3,
+});
 
-pub const TestNonExhaustive = enum(u4) {
-    value,
-    value14 = 14,
-    _,
-};
+mesh_buf: *MeshBuffer = undefined,
+sections: Sections = .empty,
+groups: Groups = .empty,
+face_type: FaceType,
+has_active: packed struct {
+    section: bool = false,
+    group: bool = false,
+} = .{},
+
+const Self = @This();
+const Sections = std.ArrayList(Section);
+const Groups = std.ArrayList(Group);
+
+pub const exclude_properties: ui.property_editor.PropertyList = &.{ .mesh_buf, .sections, .groups };
 
 pub const Section = struct {
     offset: usize,
@@ -51,30 +60,6 @@ pub const AddSectionResult = struct {
     group: *Group,
     section: *Section,
 };
-
-pub const face_vert_counts: std.EnumArray(FaceType, usize) = .init(.{
-    .invalid = 0,
-    .point = 1,
-    .line = 2,
-    .triangle = 3,
-});
-
-mesh_buf: *MeshBuffer = undefined,
-sections: Sections = .empty,
-groups: Groups = .empty,
-face_type: FaceType,
-has_active: packed struct {
-    section: bool = false,
-    group: bool = false,
-    exhaustive: TestExhaustive = .value2,
-    non_exhaustive: TestNonExhaustive = .value14,
-} = .{},
-
-const Self = @This();
-const Sections = std.ArrayList(Section);
-const Groups = std.ArrayList(Group);
-
-pub const exclude_properties: ui.property_editor.PropertyList = &.{ .mesh_buf, .sections, .groups };
 
 pub fn init(face_type: FaceType) Self {
     return .{ .face_type = face_type };

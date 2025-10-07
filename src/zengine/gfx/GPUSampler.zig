@@ -1,5 +1,5 @@
 //!
-//! The zengine surface implementation
+//! The zengine gpu sampler implementation
 //!
 
 const std = @import("std");
@@ -9,9 +9,11 @@ const c = @import("../ext.zig").c;
 const global = @import("../global.zig");
 const math = @import("../math.zig");
 const ui = @import("../ui.zig");
-const GPUTexture = @import("GPUTexture.zig");
+const Error = @import("Error.zig").Error;
+const GPUDevice = @import("GPUDevice.zig");
+const types = @import("types.zig");
 
-const log = std.log.scoped(.gfx_surface_texture);
+const log = std.log.scoped(.gfx_gpu_sampler);
 
 ptr: ?*c.SDL_GPUSampler = null,
 
@@ -19,15 +21,15 @@ const Self = @This();
 pub const invalid: Self = .{};
 
 pub const CreateInfo = struct {
-    min_filter: Filter = .default,
-    mag_filter: Filter = .default,
+    min_filter: types.Filter = .default,
+    mag_filter: types.Filter = .default,
     mipmap_mode: MipMapMode = .default,
     address_mode_u: AddressMode = .default,
     address_mode_v: AddressMode = .default,
     address_mode_w: AddressMode = .default,
     mip_lod_bias: f32 = 0,
     max_anisotropy: f32 = 0,
-    compare_op: CompareOp = .default,
+    compare_op: types.CompareOp = .default,
     min_lod: f32 = 0,
     max_lod: f32 = 0,
     enable_anisotropy: bool = false,
@@ -35,16 +37,16 @@ pub const CreateInfo = struct {
     // props: c.SDL_PropertiesID = @import("std").mem.zeroes(SDL_PropertiesID),
 };
 
-pub fn init(gpu_device: ?*c.SDL_GPUDevice, info: *const CreateInfo) !Self {
+pub fn init(gpu_device: GPUDevice, info: *const CreateInfo) !Self {
     return fromOwnedGPUSampler(try create(gpu_device, info));
 }
 
-pub fn deinit(self: *Self, gpu_device: ?*c.SDL_GPUDevice) void {
+pub fn deinit(self: *Self, gpu_device: GPUDevice) void {
     if (self.ptr != null) release(gpu_device, self.toOwnedGPUSampler());
 }
 
-pub fn create(gpu_device: ?*c.SDL_GPUDevice, info: *const CreateInfo) !*c.SDL_GPUSampler {
-    const ptr = c.SDL_CreateGPUSampler(gpu_device, &c.SDL_GPUSamplerCreateInfo{
+pub fn create(gpu_device: GPUDevice, info: *const CreateInfo) !*c.SDL_GPUSampler {
+    const ptr = c.SDL_CreateGPUSampler(gpu_device.ptr, &c.SDL_GPUSamplerCreateInfo{
         .min_filter = @intFromEnum(info.min_filter),
         .mag_filter = @intFromEnum(info.mag_filter),
         .mipmap_mode = @intFromEnum(info.mipmap_mode),
@@ -60,14 +62,14 @@ pub fn create(gpu_device: ?*c.SDL_GPUDevice, info: *const CreateInfo) !*c.SDL_GP
         .enable_compare = info.enable_compare,
     });
     if (ptr == null) {
-        log.err("failed creating sampler: {s}", .{c.SDL_GetError()});
-        return error.SurfaceFailed;
+        log.err("failed creating gpu sampler: {s}", .{c.SDL_GetError()});
+        return Error.SurfaceFailed;
     }
     return ptr.?;
 }
 
-pub fn release(gpu_device: ?*c.SDL_GPUDevice, ptr: *c.SDL_GPUSampler) void {
-    c.SDL_ReleaseGPUSampler(gpu_device, ptr);
+pub fn release(gpu_device: GPUDevice, ptr: *c.SDL_GPUSampler) void {
+    c.SDL_ReleaseGPUSampler(gpu_device.ptr, ptr);
 }
 
 pub fn fromOwnedGPUSampler(ptr: *c.SDL_GPUSampler) Self {
@@ -84,12 +86,6 @@ pub inline fn isValid(self: Self) bool {
     return self.ptr != null;
 }
 
-pub const Filter = enum(c.SDL_GPUFilter) {
-    nearest = c.SDL_GPU_FILTER_NEAREST,
-    linear = c.SDL_GPU_FILTER_LINEAR,
-    pub const default = .nearest;
-};
-
 pub const MipMapMode = enum(c.SDL_GPUSamplerMipmapMode) {
     nearest = c.SDL_GPU_SAMPLERMIPMAPMODE_NEAREST,
     linear = c.SDL_GPU_SAMPLERMIPMAPMODE_LINEAR,
@@ -101,16 +97,4 @@ pub const AddressMode = enum(c.SDL_GPUSamplerAddressMode) {
     mirrored_repeat = c.SDL_GPU_SAMPLERADDRESSMODE_MIRRORED_REPEAT,
     clamp_to_edge = c.SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE,
     pub const default = .repeat;
-};
-pub const CompareOp = enum(c.SDL_GPUCompareOp) {
-    invalid = c.SDL_GPU_COMPAREOP_INVALID,
-    never = c.SDL_GPU_COMPAREOP_NEVER,
-    less = c.SDL_GPU_COMPAREOP_LESS,
-    equal = c.SDL_GPU_COMPAREOP_EQUAL,
-    less_or_equal = c.SDL_GPU_COMPAREOP_LESS_OR_EQUAL,
-    greater = c.SDL_GPU_COMPAREOP_GREATER,
-    not_equal = c.SDL_GPU_COMPAREOP_NOT_EQUAL,
-    greater_or_equal = c.SDL_GPU_COMPAREOP_GREATER_OR_EQUAL,
-    always = c.SDL_GPU_COMPAREOP_ALWAYS,
-    pub const default = .invalid;
 };

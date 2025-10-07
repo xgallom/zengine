@@ -1,5 +1,5 @@
 //!
-//! The zengine image implementation
+//! The zengine image loader implementation
 //!
 
 const std = @import("std");
@@ -7,21 +7,23 @@ const assert = std.debug.assert;
 
 const allocators = @import("../allocators.zig");
 const c = @import("../ext.zig").c;
-const global = @import("../global.zig");
 const fs = @import("../fs.zig");
+const global = @import("../global.zig");
+const Error = @import("Error.zig").Error;
+const GPUDevice = @import("GPUDevice.zig");
 const Surface = @import("Surface.zig");
 
-const log = std.log.scoped(.gfx_jpg);
+const log = std.log.scoped(.gfx_img_loader);
 
 const Self = @This();
 
 pub const OpenConfig = struct {
     allocator: std.mem.Allocator,
-    gpu_device: ?*c.SDL_GPUDevice,
+    gpu_device: GPUDevice,
     file_path: []const u8,
 };
 
-pub fn open(config: OpenConfig) !Surface {
+pub fn loadFile(config: *const OpenConfig) !Surface {
     const buf = try fs.readFileAbsolute(config.allocator, config.file_path);
     defer config.allocator.free(buf);
 
@@ -32,11 +34,11 @@ pub fn open(config: OpenConfig) !Surface {
     return surf;
 }
 
-fn load(config: OpenConfig, buf: []const u8) !Surface {
+fn load(config: *const OpenConfig, buf: []const u8) !Surface {
     const surf = c.IMG_Load_IO(c.SDL_IOFromConstMem(buf.ptr, buf.len), true);
     if (surf == null) {
         log.err("image load failed for \"{s}\": {s}", .{ config.file_path, c.SDL_GetError() });
-        return error.LoadFailed;
+        return error.ImageFailed;
     }
     return .fromOwnedSurface(surf);
 }

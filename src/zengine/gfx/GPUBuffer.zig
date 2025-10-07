@@ -5,9 +5,11 @@
 const std = @import("std");
 const assert = std.debug.assert;
 
+const Tree = @import("../containers.zig").Tree;
 const c = @import("../ext.zig").c;
 const math = @import("../math.zig");
-const Tree = @import("../containers.zig").Tree;
+const Error = @import("Error.zig").Error;
+const GPUDevice = @import("GPUDevice.zig");
 
 const log = std.log.scoped(.gfx_gpu_buffer);
 
@@ -15,7 +17,6 @@ ptr: ?*c.SDL_GPUBuffer = null,
 size: u32 = 0,
 
 const Self = @This();
-pub const State = enum { invalid, empty, valid };
 pub const invalid: Self = .{};
 
 pub const CreateInfo = struct {
@@ -23,7 +24,7 @@ pub const CreateInfo = struct {
     size: u32,
 };
 
-pub fn deinit(self: *Self, gpu_device: ?*c.SDL_GPUDevice) void {
+pub fn deinit(self: *Self, gpu_device: GPUDevice) void {
     if (self.ptr != null) self.release(gpu_device);
 }
 
@@ -31,30 +32,32 @@ pub inline fn byteLen(self: *const Self) u32 {
     return self.size;
 }
 
-pub fn create(self: *Self, gpu_device: ?*c.SDL_GPUDevice, info: *const CreateInfo) !void {
+pub fn create(self: *Self, gpu_device: GPUDevice, info: *const CreateInfo) !void {
     if (self.ptr != null) self.release(gpu_device);
     self.size = info.size;
-    self.ptr = c.SDL_CreateGPUBuffer(gpu_device, &c.SDL_GPUBufferCreateInfo{
+    self.ptr = c.SDL_CreateGPUBuffer(gpu_device.ptr, &c.SDL_GPUBufferCreateInfo{
         .usage = info.usage.bits.mask,
         .size = self.size,
     });
     if (self.ptr == null) {
         log.err("failed creating gpu buffer: {s}", .{c.SDL_GetError()});
-        return error.BufferFailed;
+        return Error.BufferFailed;
     }
 }
 
-pub fn release(self: *Self, gpu_device: ?*c.SDL_GPUDevice) void {
+pub fn release(self: *Self, gpu_device: GPUDevice) void {
     assert(self.ptr != null);
-    c.SDL_ReleaseGPUBuffer(gpu_device, self.ptr);
+    c.SDL_ReleaseGPUBuffer(gpu_device.ptr, self.ptr);
     self.ptr = null;
     self.size = 0;
 }
 
-pub inline fn state(self: *const Self) State {
-    if (self.ptr == null) return .invalid;
-    if (self.size == 0) return .empty;
-    return .valid;
+pub inline fn isValid(self: Self) bool {
+    return self.ptr != null;
+}
+
+pub inline fn isnNotEmpty(self: Self) bool {
+    return self.ptr != null and self.byte_len > 0;
 }
 
 pub const Usage = enum(c.SDL_GPUBufferUsageFlags) {

@@ -7,10 +7,12 @@ const assert = std.debug.assert;
 
 const c = @import("../ext.zig").c;
 const math = @import("../math.zig");
+const Error = @import("Error.zig").Error;
+const GPUDevice = @import("GPUDevice.zig");
 const MeshBuffer = @import("MeshBuffer.zig");
 const SurfaceTexture = @import("SurfaceTexture.zig");
 
-const log = std.log.scoped(.gfx_gpu_transfer_buffer);
+const log = std.log.scoped(.gfx_upload_transfer_buffer);
 
 mesh_bufs: MeshBuffers = .empty,
 surf_texes: SurfaceTextures = .empty,
@@ -24,7 +26,7 @@ pub const SurfaceTextures = std.ArrayList(*const SurfaceTexture);
 pub const State = enum { invalid, upload, mapped, uploaded };
 pub const empty: Self = .{};
 
-pub fn deinit(self: *Self, gpa: std.mem.Allocator, gpu_device: *c.SDL_GPUDevice) void {
+pub fn deinit(self: *Self, gpa: std.mem.Allocator, gpu_device: GPUDevice) void {
     self.mesh_bufs.deinit(gpa);
     self.surf_texes.deinit(gpa);
 
@@ -40,7 +42,7 @@ pub fn deinit(self: *Self, gpa: std.mem.Allocator, gpu_device: *c.SDL_GPUDevice)
     self.releaseGPUTransferBuffer(gpu_device);
 }
 
-pub fn createGPUTransferBuffer(self: *Self, gpu_device: ?*c.SDL_GPUDevice) !void {
+pub fn createGPUTransferBuffer(self: *Self, gpu_device: GPUDevice) !void {
     assert(self.state == .invalid);
     assert(self.transfer_buffer == null);
     assert(self.len == 0);
@@ -51,39 +53,39 @@ pub fn createGPUTransferBuffer(self: *Self, gpu_device: ?*c.SDL_GPUDevice) !void
     }
     for (self.surf_texes.items) |surf_tex| self.len += surf_tex.surf.byteLen();
 
-    self.transfer_buffer = c.SDL_CreateGPUTransferBuffer(gpu_device, &c.SDL_GPUTransferBufferCreateInfo{
+    self.transfer_buffer = c.SDL_CreateGPUTransferBuffer(gpu_device.ptr, &c.SDL_GPUTransferBufferCreateInfo{
         .usage = c.SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD,
         .size = self.len,
     });
     if (self.transfer_buffer == null) {
         log.err("failed creating transfer buffer: {s}", .{c.SDL_GetError()});
         self.len = 0;
-        return error.BufferFailed;
+        return Error.BufferFailed;
     }
 
     self.state = .upload;
 }
 
-pub fn releaseGPUTransferBuffer(self: *Self, gpu_device: ?*c.SDL_GPUDevice) void {
+pub fn releaseGPUTransferBuffer(self: *Self, gpu_device: GPUDevice) void {
     assert(self.state == .upload or self.state == .uploaded);
     assert(self.transfer_buffer != null);
-    c.SDL_ReleaseGPUTransferBuffer(gpu_device, self.transfer_buffer);
+    c.SDL_ReleaseGPUTransferBuffer(gpu_device.ptr, self.transfer_buffer);
     self.transfer_buffer = null;
     self.len = 0;
     self.state = .invalid;
 }
 
-pub fn map(self: *Self, gpu_device: *c.SDL_GPUDevice) !void {
+pub fn map(self: *Self, gpu_device: GPUDevice) !void {
     assert(self.state == .upload);
     if (self.len == 0) {
         self.state = .mapped;
         return;
     }
 
-    const tb_ptr = c.SDL_MapGPUTransferBuffer(gpu_device, self.transfer_buffer, false);
+    const tb_ptr = c.SDL_MapGPUTransferBuffer(gpu_device.ptr, self.transfer_buffer, false);
     if (tb_ptr == null) {
         log.err("failed mapping transfer buffer: {s}", .{c.SDL_GetError()});
-        return error.BufferFailed;
+        return Error.BufferFailed;
     }
 
     const start: [*]u8 = @ptrCast(@alignCast(tb_ptr));
@@ -110,7 +112,7 @@ pub fn map(self: *Self, gpu_device: *c.SDL_GPUDevice) !void {
     }
     assert(dest - start == self.len);
 
-    c.SDL_UnmapGPUTransferBuffer(gpu_device, self.transfer_buffer);
+    c.SDL_UnmapGPUTransferBuffer(gpu_device.ptr, self.transfer_buffer);
     self.state = .mapped;
 }
 

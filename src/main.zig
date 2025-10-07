@@ -37,6 +37,7 @@ pub const std_options: std.Options = .{
         // .{ .scope = .key_tree, .level = .debug },
         // .{ .scope = .radix_tree, .level = .debug },
         // .{ .scope = .scheduler, .level = .debug },
+        // .{ .scope = .gfx_shader_loader, .level = .debug },
         // .{ .scope = .tree, .level = .debug },
         // .{ .scope = .scene, .level = .debug },
     },

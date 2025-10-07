@@ -12,8 +12,8 @@ struct Input {
 struct Output {
     float4 position  : SV_Position;
     float2 tex_coord : TEXCOORD0;
-    float3 normal    : TEXCOORD1;
-    float3 world_pos : TEXCOORD2;
+    float3 normal    : TEXCOORD2;
+    float3 world_pos : TEXCOORD3;
 };
 
 Output main(Input input)

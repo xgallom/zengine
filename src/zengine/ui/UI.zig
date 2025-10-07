@@ -40,7 +40,7 @@ pub const Element = struct {
 
 var ref_count: std.atomic.Value(usize) = .init(0);
 
-pub fn create(engine: *Engine, renderer: *gfx.Renderer) gfx.Renderer.InitError!*Self {
+pub fn create(engine: *Engine, renderer: *gfx.Renderer) !*Self {
     try sections.register();
 
     const section = sections.sub(.init);
@@ -66,7 +66,7 @@ pub fn create(engine: *Engine, renderer: *gfx.Renderer) gfx.Renderer.InitError!*
 
     _ = c.ImGui_ImplSDL3_InitForSDLGPU(engine.main_win.ptr);
     var init_info: c.ImGui_ImplSDLGPU3_InitInfo = .{
-        .Device = renderer.gpu_device,
+        .Device = renderer.gpu_device.ptr,
         .ColorTargetFormat = @intFromEnum(renderer.swapchainFormat(engine)),
         .MSAASamples = c.SDL_GPU_SAMPLECOUNT_1,
     };
@@ -163,7 +163,7 @@ pub fn endDraw(self: *Self) void {
     sections.sub(.draw).end();
 }
 
-pub fn submitPass(self: *Self, command_buffer: ?*c.SDL_GPUCommandBuffer, swapchain_texture: ?*c.SDL_GPUTexture) gfx.Renderer.DrawError!void {
+pub fn submitPass(self: *Self, command_buffer: ?*c.SDL_GPUCommandBuffer, swapchain_texture: ?*c.SDL_GPUTexture) !void {
     if (!self.show_ui) return;
 
     assert(self.draw_data != null);
@@ -185,7 +185,7 @@ pub fn submitPass(self: *Self, command_buffer: ?*c.SDL_GPUCommandBuffer, swapcha
     );
     if (render_pass == null) {
         log.err("failed to begin render_pass: {s}", .{c.SDL_GetError()});
-        return gfx.Renderer.DrawError.DrawFailed;
+        return gfx.Error.DrawFailed;
     }
 
     c.ImGui_ImplSDLGPU3_RenderDrawData(self.draw_data, command_buffer, render_pass, null);
