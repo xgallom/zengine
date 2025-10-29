@@ -171,6 +171,7 @@ pub fn build(b: *std.Build) !void {
             //     "libcimgui.dylib",
             // ).step);
         },
+        .windows => {},
         else => std.process.fatal("Unsupported target os: {s}", .{@tagName(target.result.os.tag)}),
     }
 
