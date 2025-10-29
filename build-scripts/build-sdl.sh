@@ -16,7 +16,7 @@ git submodule update --init --recursive
 
 cd "$BDIR"
 
-CMAKE_INSTALL_PREFIX="$IDIR" cmake .. \
+CMAKE_INSTALL_PREFIX="$IDIR" cmake .. "$@" \
 	-DCMAKE_BUILD_TYPE=$1 \
 	-DCMAKE_OSX_ARCHITECTURES="x86_64;arm64" \
 	-DSDL_VULKAN=ON -DSDL_RENDER_VULKAN=ON \

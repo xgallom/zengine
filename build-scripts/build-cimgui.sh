@@ -16,7 +16,7 @@ git submodule update --init --recursive
 
 cd "$BDIR"
 
-CMAKE_INSTALL_PREFIX="$IDIR" cmake .. \
+CMAKE_INSTALL_PREFIX="$IDIR" cmake .. "$@" \
 	-DCMAKE_BUILD_TYPE=$1 \
 	-DCMAKE_FIND_PACKAGE_REDIRECTS_DIR="$IDIR/lib/cmake" \
 	-Dcimgui_SOURCE_DIR="$PDIR" \
