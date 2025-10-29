@@ -6,12 +6,12 @@ const std = @import("std");
 const assert = std.debug.assert;
 
 const allocators = @import("allocators.zig");
+const ArrayMap = @import("containers.zig").ArrayMap;
+const ArrayPoolMap = @import("containers.zig").ArrayPoolMap;
 const c = @import("ext.zig").c;
 const gfx = @import("gfx.zig");
 const global = @import("global.zig");
-const KeyMap = @import("containers.zig").KeyMap;
 const math = @import("math.zig");
-const PtrKeyMap = @import("containers.zig").PtrKeyMap;
 pub const Camera = @import("Scene/Camera.zig");
 pub const Light = @import("Scene/Light.zig");
 pub const Node = @import("Scene/Node.zig");
@@ -29,9 +29,9 @@ objects: Objects,
 nodes: Nodes,
 
 const Self = @This();
-const Cameras = KeyMap(Camera, .{});
-const Lights = KeyMap(Light, .{});
-const Objects = PtrKeyMap(Object);
+const Cameras = ArrayPoolMap(Camera, .{});
+const Lights = ArrayPoolMap(Light, .{});
+const Objects = ArrayMap(Object);
 pub const FlatList = std.MultiArrayList(Node.Flat);
 pub const Flattened = std.EnumArray(Node.Type, FlatList);
 
@@ -87,7 +87,7 @@ pub fn createLight(self: *Self, key: []const u8, light: Light) !*Light {
     return self.lights.insert(key, light);
 }
 
-pub fn createObject(self: *Self, key: []const u8, object: *Object) !*Object {
+pub fn createObject(self: *Self, key: []const u8, object: Object) !Object {
     try self.objects.insert(self.allocator, key, object);
     return object;
 }

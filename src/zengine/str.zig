@@ -3,6 +3,8 @@
 //!
 
 const std = @import("std");
+const assert = std.debug.assert;
+
 const allocators = @import("allocators.zig");
 
 pub const ScalarIterator = std.mem.SplitIterator(u8, .scalar);
@@ -31,6 +33,33 @@ pub inline fn trimRest(iter: *ScalarIterator) []const u8 {
 
 pub inline fn trim(str: []const u8) []const u8 {
     return std.mem.trim(u8, str, " \t\n\r");
+}
+
+pub fn join(strs: []const []const u8) ![]const u8 {
+    var len: usize = 0;
+    for (strs) |str| len += str.len;
+    const buf = try allocators.string().alloc(u8, len);
+    var off: usize = 0;
+    for (strs) |str| {
+        @memcpy(buf[off .. off + str.len], str);
+        off += str.len;
+    }
+    assert(len == off);
+    return buf;
+}
+
+pub fn joinZ(strs: []const []const u8) ![:0]const u8 {
+    var len: usize = 0;
+    for (strs) |str| len += str.len;
+    const buf = try allocators.string().alloc(u8, len + 1);
+    var off: usize = 0;
+    for (strs) |str| {
+        @memcpy(buf[off .. off + str.len], str);
+        off += str.len;
+    }
+    buf[off] = 0;
+    assert(len == off);
+    return buf[0..off :0];
 }
 
 // Duplicate a string slice aligned to 1-byte boundary

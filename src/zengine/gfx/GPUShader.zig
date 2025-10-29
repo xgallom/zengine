@@ -31,14 +31,15 @@ pub const CreateInfo = struct {
 };
 
 pub fn init(gpu_device: GPUDevice, info: *const CreateInfo) !Self {
-    return fromOwnedGPUShader(try create(gpu_device, info));
+    return fromOwned(try create(gpu_device, info));
 }
 
 pub fn deinit(self: *Self, gpu_device: GPUDevice) void {
-    if (self.ptr != null) destroy(gpu_device, self.toOwnedGPUShader());
+    if (self.isValid()) destroy(gpu_device, self.toOwned());
 }
 
 fn create(gpu_device: GPUDevice, info: *const CreateInfo) !*c.SDL_GPUShader {
+    assert(gpu_device.isValid());
     const ptr = c.SDL_CreateGPUShader(gpu_device.ptr, &c.SDL_GPUShaderCreateInfo{
         .code = info.code.ptr,
         .code_size = info.code.len,
@@ -58,15 +59,16 @@ fn create(gpu_device: GPUDevice, info: *const CreateInfo) !*c.SDL_GPUShader {
 }
 
 fn destroy(gpu_device: GPUDevice, ptr: *c.SDL_GPUShader) void {
+    assert(gpu_device.isValid());
     c.SDL_ReleaseGPUShader(gpu_device.ptr, ptr);
 }
 
-pub fn fromOwnedGPUShader(ptr: *c.SDL_GPUShader) Self {
+pub fn fromOwned(ptr: *c.SDL_GPUShader) Self {
     return .{ .ptr = ptr };
 }
 
-pub fn toOwnedGPUShader(self: *Self) *c.SDL_GPUShader {
-    assert(self.ptr != null);
+pub fn toOwned(self: *Self) *c.SDL_GPUShader {
+    assert(self.isValid());
     defer self.ptr = null;
     return self.ptr.?;
 }

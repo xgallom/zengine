@@ -24,7 +24,7 @@ pub fn init(size: math.Point_u32, pixel_format: PixelFormat) !Self {
 }
 
 pub fn deinit(self: *Self) void {
-    if (self.ptr != null) destroy(self.toOwnedSurface());
+    if (self.isValid()) destroy(self.toOwnedSurface());
 }
 
 pub fn create(size: math.Point_u32, pixel_format: PixelFormat) !*c.SDL_Surface {
@@ -45,17 +45,17 @@ pub fn destroy(ptr: *c.SDL_Surface) void {
 }
 
 pub inline fn width(self: Self) u32 {
-    assert(self.ptr != null);
+    assert(self.isValid());
     return @intCast(self.ptr.?.w);
 }
 
 pub inline fn height(self: Self) u32 {
-    assert(self.ptr != null);
+    assert(self.isValid());
     return @intCast(self.ptr.?.h);
 }
 
 pub inline fn pitch(self: Self) u32 {
-    assert(self.ptr != null);
+    assert(self.isValid());
     return @intCast(self.ptr.?.pitch);
 }
 
@@ -64,19 +64,19 @@ pub inline fn byteLen(self: Self) u32 {
 }
 
 pub inline fn format(self: Self) PixelFormat {
-    assert(self.ptr != null);
+    assert(self.isValid());
     return @enumFromInt(self.ptr.?.format);
 }
 
 pub fn slice(self: Self, comptime T: type) []T {
-    assert(self.ptr != null);
+    assert(self.isValid());
     assert(self.ptr.?.pixels != null);
     const ptr: [*]align(@alignOf(u32)) u8 = @ptrCast(@alignCast(self.ptr.?.pixels));
     return std.mem.bytesAsSlice(T, ptr[0..self.byteLen()]);
 }
 
 pub fn convert(self: *Self, pixel_format: PixelFormat) !void {
-    assert(self.ptr != null);
+    assert(self.isValid());
     const new_surf = c.SDL_ConvertSurface(self.ptr, @intFromEnum(pixel_format));
     if (new_surf == null) {
         log.err("failed converting surface format: {s}", .{c.SDL_GetError()});
@@ -91,7 +91,7 @@ pub fn fromOwnedSurface(ptr: *c.SDL_Surface) Self {
 }
 
 pub fn toOwnedSurface(self: *Self) *c.SDL_Surface {
-    assert(self.ptr != null);
+    assert(self.isValid());
     defer self.ptr = null;
     return self.ptr.?;
 }

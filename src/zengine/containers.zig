@@ -4,12 +4,14 @@
 
 const std = @import("std");
 
-pub const AutoArrayKeyMap = @import("containers/key_map.zig").AutoArrayKeyMap;
-pub const AutoArrayPtrKeyMap = @import("containers/key_map.zig").AutoArrayPtrKeyMap;
-pub const ArrayKeyMap = @import("containers/key_map.zig").StringArrayKeyMap;
-pub const ArrayPtrKeyMap = @import("containers/key_map.zig").StringArrayPtrKeyMap;
-pub const KeyMap = @import("containers/key_map.zig").StringKeyMap;
-pub const PtrKeyMap = @import("containers/key_map.zig").StringPtrKeyMap;
+pub const AutoArrayPoolMap = @import("containers/key_map.zig").AutoArrayPoolMap;
+pub const AutoArrayPtrMap = @import("containers/key_map.zig").AutoArrayPtrMap;
+pub const AutoArrayMap = @import("containers/key_map.zig").AutoArrayMap;
+pub const ArrayPoolMap = @import("containers/key_map.zig").ArrayPoolMap;
+pub const ArrayPtrMap = @import("containers/key_map.zig").ArrayPtrMap;
+pub const ArrayMap = @import("containers/key_map.zig").ArrayMap;
+pub const PoolMap = @import("containers/key_map.zig").PoolMap;
+pub const PtrMap = @import("containers/key_map.zig").PtrMap;
 pub const KeyTree = @import("containers/key_tree.zig").KeyTree;
 pub const RadixTree = @import("containers/radix_tree.zig").RadixTree;
 pub const SwapWrapper = @import("containers/swap_wrapper.zig").SwapWrapper;

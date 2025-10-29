@@ -160,11 +160,11 @@ pub fn freeCPUBuffers(self: *Self, gpa: std.mem.Allocator) void {
 }
 
 pub fn createGPUBuffers(self: *Self, gpu_device: GPUDevice, usage: ?GPUBuffer.UsageFlags) !void {
-    try self.gpu_bufs.getPtr(.vertex).create(gpu_device, &.{
+    try self.gpu_bufs.getPtr(.vertex).resize(gpu_device, &.{
         .usage = usage orelse .initOne(.vertex),
         .size = self.byteLen(.vertex),
     });
-    if (self.type == .index) try self.gpu_bufs.getPtr(.index).create(gpu_device, &.{
+    if (self.type == .index) try self.gpu_bufs.getPtr(.index).resize(gpu_device, &.{
         .usage = .initOne(.index),
         .size = self.byteLen(.index),
     });

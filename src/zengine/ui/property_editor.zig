@@ -55,6 +55,11 @@ pub const InputType = struct {
     pub const slider: InputTypeEnum = .{ .scalar = .slider };
 };
 
+pub const ScalarSpeedType = enum {
+    absolute,
+    relative,
+};
+
 pub const Options = struct {
     pub const InputNull = struct {
         name: [:0]const u8,
@@ -84,6 +89,7 @@ pub const Options = struct {
             min: ?C = null,
             max: ?C = null,
             speed: ?f32 = null,
+            speed_type: ?ScalarSpeedType = null,
             input_type: ?InputTypeEnum.Scalar = null,
         };
     }
@@ -116,6 +122,7 @@ pub fn InputField(comptime C: type, comptime field: StdType.StructField) type {
     const field_min = field.name ++ "_min";
     const field_max = field.name ++ "_max";
     const field_speed = field.name ++ "_speed";
+    const field_speed_type = field.name ++ "_speed_type";
     const field_type = field.name ++ "_type";
     const field_resolver = FieldResolver(C);
 
@@ -154,6 +161,7 @@ pub fn InputField(comptime C: type, comptime field: StdType.StructField) type {
                     .min = field_resolver.optional(field_min),
                     .max = field_resolver.optional(field_max),
                     .speed = field_resolver.optional(field_speed),
+                    .speed_type = field_resolver.optional(field_speed_type),
                     .input_type = field_resolver.optional(field_type),
                 }).drawImpl(field_ptr, ui, is_open),
                 .pointer => |field_info| {
@@ -192,6 +200,7 @@ pub fn InputField(comptime C: type, comptime field: StdType.StructField) type {
                             .min = field_resolver.optional(field_min),
                             .max = field_resolver.optional(field_max),
                             .speed = field_resolver.optional(field_speed),
+                            .speed_type = field_resolver.optional(field_speed_type),
                             .input_type = scalar_type,
                         }).drawImpl(field_ptr, ui, is_open),
                         else => @compileError("Unsupported array type"),
@@ -610,6 +619,7 @@ pub fn InputScalar(comptime C: type, comptime count: usize, comptime options: Op
         pub const min = options.min orelse defaults.min;
         pub const max = options.max orelse defaults.max;
         pub const speed = options.speed orelse defaults.speed;
+        pub const speed_type = options.speed_type orelse ScalarSpeedType.absolute;
         pub const input_type = options.input_type orelse defaults.input_type;
 
         pub fn init(component: CPtr) Self {
@@ -631,7 +641,14 @@ pub fn InputScalar(comptime C: type, comptime count: usize, comptime options: Op
             _ = c.igTableNextColumn();
             c.igSetNextItemWidth(-std.math.floatMin(f32));
             switch (comptime input_type) {
-                .drag => _ = c.igDragScalarN("##" ++ name, data_type, component, count, speed, &min, &max, null, 0),
+                .drag => {
+                    const speed_val = switch (comptime speed_type) {
+                        .absolute => speed,
+                        .relative => relSpeed(component),
+                    };
+
+                    _ = c.igDragScalarN("##" ++ name, data_type, component, count, speed_val, &min, &max, null, 0);
+                },
                 .slider => _ = c.igSliderScalarN("##" ++ name, data_type, component, count, &min, &max, null, 0),
             }
 
@@ -643,6 +660,19 @@ pub fn InputScalar(comptime C: type, comptime count: usize, comptime options: Op
                 .ptr = @ptrCast(self.component),
                 .drawFn = @ptrCast(&drawImpl),
             };
+        }
+
+        fn relSpeed(component: *C) f32 {
+            var x = @abs(component.*);
+            var acc = speed;
+            if ((comptime @typeInfo(C) == .float) and x != @floor(x)) {
+                return 1;
+            } else {
+                while (@mod(x, 10) == 0) : (x /= 10) {
+                    acc *= 10;
+                }
+            }
+            return acc;
         }
     };
 }

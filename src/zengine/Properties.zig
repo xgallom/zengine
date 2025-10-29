@@ -8,13 +8,12 @@ const assert = std.debug.assert;
 const allocators = @import("allocators.zig");
 const c = @import("ext.zig").c;
 const math = @import("math.zig");
-const ArrayKeyMap = @import("containers.zig").ArrayKeyMap;
-const AutoArrayKeyMap = @import("containers.zig").AutoArrayKeyMap;
+const ArrayPoolMap = @import("containers.zig").ArrayPoolMap;
+const AutoArrayPoolMap = @import("containers.zig").AutoArrayPoolMap;
 const str = @import("str.zig");
 
 const log = std.log.scoped(.properties);
 
-/// keys: .{ .field1 = Type1, .field2 = Type2 }
 pub fn GlobalRegistry(comptime registries: []const type) type {
     comptime var inner_fields: []const std.builtin.Type.StructField = &[_]std.builtin.Type.StructField{};
     for (registries) |Registry| {
@@ -27,18 +26,16 @@ pub fn GlobalRegistry(comptime registries: []const type) type {
         }};
     }
 
-    const inner_info: std.builtin.Type.Struct = .{
-        .layout = .auto,
-        .fields = inner_fields,
-        .decls = &.{},
-        .is_tuple = false,
-    };
-
     return struct {
         inner: InnerType,
 
         const RA = @This();
-        pub const InnerType = @Type(.{ .@"struct" = inner_info });
+        pub const InnerType = @Type(.{ .@"struct" = .{
+            .layout = .auto,
+            .fields = inner_fields,
+            .decls = &.{},
+            .is_tuple = false,
+        } });
 
         pub fn init() !RA {
             var ra: RA = undefined;
@@ -63,7 +60,7 @@ pub const RegistryOptions = struct {
 
 pub fn AutoRegistry(comptime K: type, comptime options: RegistryOptions) type {
     return struct {
-        map: AutoArrayKeyMap(K, Self, .{}),
+        map: AutoArrayPoolMap(K, Self, .{}),
 
         const R = @This();
         pub const Key = K;
@@ -90,7 +87,7 @@ pub fn AutoRegistry(comptime K: type, comptime options: RegistryOptions) type {
 
 pub fn StringRegistry(comptime options: RegistryOptions) type {
     return struct {
-        map: ArrayKeyMap(Self),
+        map: AutoArrayPoolMap(Self),
 
         const R = @This();
         pub const Key = []const u8;
@@ -115,17 +112,17 @@ pub fn StringRegistry(comptime options: RegistryOptions) type {
     };
 }
 
-u8: ArrayKeyMap(u8, .{}),
-u16: ArrayKeyMap(u16, .{}),
-u32: ArrayKeyMap(u32, .{}),
-u64: ArrayKeyMap(u64, .{}),
-i8: ArrayKeyMap(i8, .{}),
-i16: ArrayKeyMap(i16, .{}),
-i32: ArrayKeyMap(i32, .{}),
-i64: ArrayKeyMap(i64, .{}),
-f32: ArrayKeyMap(f32, .{}),
-f64: ArrayKeyMap(f64, .{}),
-string: ArrayKeyMap([:0]u8, .{}),
+u8: ArrayPoolMap(u8, .{}),
+u16: ArrayPoolMap(u16, .{}),
+u32: ArrayPoolMap(u32, .{}),
+u64: ArrayPoolMap(u64, .{}),
+i8: ArrayPoolMap(i8, .{}),
+i16: ArrayPoolMap(i16, .{}),
+i32: ArrayPoolMap(i32, .{}),
+i64: ArrayPoolMap(i64, .{}),
+f32: ArrayPoolMap(f32, .{}),
+f64: ArrayPoolMap(f64, .{}),
+string: ArrayPoolMap([:0]u8, .{}),
 
 pub const Self = @This();
 pub const Type = enum { u8, u16, u32, u64, i8, i16, i32, i64, f32, f64, string };

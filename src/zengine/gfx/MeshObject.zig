@@ -30,19 +30,21 @@ pub const face_vert_counts: std.EnumArray(FaceType, usize) = .init(.{
 });
 
 mesh_buf: *MeshBuffer = undefined,
+normals_buf: *MeshBuffer = undefined,
 sections: Sections = .empty,
 groups: Groups = .empty,
 face_type: FaceType,
 has_active: packed struct {
     section: bool = false,
     group: bool = false,
+    normals: bool = false,
 } = .{},
 
 const Self = @This();
 const Sections = std.ArrayList(Section);
 const Groups = std.ArrayList(Group);
 
-pub const exclude_properties: ui.property_editor.PropertyList = &.{ .mesh_buf, .sections, .groups };
+pub const exclude_properties: ui.property_editor.PropertyList = &.{ .mesh_buf, .normals_buf, .sections, .groups };
 
 pub const Section = struct {
     offset: usize,

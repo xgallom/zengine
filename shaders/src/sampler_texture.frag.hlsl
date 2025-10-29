@@ -17,11 +17,13 @@ cbuffer Material : register(b0, space3) {
     float mtl_ior;
     float mtl_alpha;
     uint  mtl_config;
-
-    float3 camera_pos;
 };
 
-cbuffer LightsBufferMeta : register(b1, space3) {
+cbuffer Camera : register(b1, space3) {
+    float3 camera_pos;
+}
+
+cbuffer LightsBufferMeta : register(b2, space3) {
     uint  lgh_cnt_ambient;
     uint lgh_cnt_directional;
     uint lgh_cnt_point;

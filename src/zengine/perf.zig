@@ -31,10 +31,6 @@ pub const Value = *Section;
 pub const KeyIndex = struct {
     key: []const u8,
     value: Value,
-
-    pub fn format(self: *const KeyIndex, w: *std.Io.Writer) !void {
-        try w.print("{s}", .{self.key});
-    }
 };
 pub const SectionsTree = containers.KeyTree(KeyIndex, .{
     .has_depth = true,
@@ -155,7 +151,7 @@ const Self = struct {
         self.framerate_imm_clock.start(now_nano);
     }
 
-    fn updateStats(self: *Self, now: u64, force_update: bool) void {
+    fn updateStats(self: *Self, now: u64, comptime force_update: bool) void {
         if (!force_update) {
             if (!self.update_stats_timer.updated(now)) return;
         } else {
@@ -427,7 +423,7 @@ pub fn reset() void {
     global_state.reset();
 }
 
-pub fn updateStats(now: u64, force_update: bool) void {
+pub fn updateStats(now: u64, comptime force_update: bool) void {
     assert(is_init);
     assert(is_constructed);
 

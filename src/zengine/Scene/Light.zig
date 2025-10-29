@@ -29,6 +29,7 @@ pub const Source = struct {
 
     pub const color_type = ui.property_editor.InputType.scalar;
     pub const intensity_speed = 0.05;
+    pub const intensity_speed_type = ui.property_editor.ScalarSpeedType.absolute;
 };
 
 pub fn ambient(src: Source) Self {

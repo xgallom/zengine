@@ -33,7 +33,7 @@ pub fn deinit(self: *Self, gpu_device: GPUDevice) void {
 }
 
 pub fn toOwnedGPUTexture(self: *Self) *c.SDL_GPUTexture {
-    return self.gpu_tex.toOwnedGPUTexture();
+    return self.gpu_tex.toOwned();
 }
 
 pub fn createGPUTexture(self: *Self, gpu_device: GPUDevice) !void {

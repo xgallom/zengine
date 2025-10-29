@@ -20,6 +20,11 @@ ptr: ?*c.SDL_GPUTexture = null,
 const Self = @This();
 pub const invalid: Self = .{};
 
+comptime {
+    assert(@sizeOf(Self) == @sizeOf(*c.SDL_GPUTexture));
+    assert(@alignOf(Self) == @alignOf(*c.SDL_GPUTexture));
+}
+
 pub const CreateInfo = struct {
     type: Type = .default,
     format: Format = .default,
@@ -40,14 +45,15 @@ pub fn supportsFormat(gpu_device: GPUDevice, format: Format, tex_type: Type, usa
 }
 
 pub fn init(gpu_device: GPUDevice, info: *const CreateInfo) !Self {
-    return fromOwnedGPUTexture(try create(gpu_device, info));
+    return fromOwned(try create(gpu_device, info));
 }
 
 pub fn deinit(self: *Self, gpu_device: GPUDevice) void {
-    if (self.ptr != null) release(gpu_device, self.toOwnedGPUTexture());
+    if (self.isValid()) release(gpu_device, self.toOwned());
 }
 
 pub fn create(gpu_device: GPUDevice, info: *const CreateInfo) !*c.SDL_GPUTexture {
+    assert(gpu_device.isValid());
     const ptr = c.SDL_CreateGPUTexture(gpu_device.ptr, &c.SDL_GPUTextureCreateInfo{
         .type = @intFromEnum(info.type),
         .format = @intFromEnum(info.format),
@@ -66,15 +72,16 @@ pub fn create(gpu_device: GPUDevice, info: *const CreateInfo) !*c.SDL_GPUTexture
 }
 
 pub fn release(gpu_device: GPUDevice, ptr: *c.SDL_GPUTexture) void {
+    assert(gpu_device.isValid());
     c.SDL_ReleaseGPUTexture(gpu_device.ptr, ptr);
 }
 
-pub fn fromOwnedGPUTexture(ptr: *c.SDL_GPUTexture) Self {
+pub fn fromOwned(ptr: *c.SDL_GPUTexture) Self {
     return .{ .ptr = ptr };
 }
 
-pub fn toOwnedGPUTexture(self: *Self) *c.SDL_GPUTexture {
-    assert(self.ptr != null);
+pub fn toOwned(self: *Self) *c.SDL_GPUTexture {
+    assert(self.isValid());
     defer self.ptr = null;
     return self.ptr.?;
 }

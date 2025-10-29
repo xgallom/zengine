@@ -21,6 +21,8 @@ pub fn init() Self {
     return .{};
 }
 
+pub fn deinit(_: *Self) void {}
+
 pub fn draw(self: *Self, ui: *const UI, is_open: *bool) void {
     _ = self;
     _ = ui;

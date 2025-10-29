@@ -9,6 +9,7 @@ const allocators = @import("../allocators.zig");
 const c = @import("../ext.zig").c;
 const global = @import("../global.zig");
 const math = @import("../math.zig");
+const sdl = @import("../sdl.zig");
 const ui = @import("../ui.zig");
 const Error = @import("Error.zig").Error;
 const GPUDevice = @import("GPUDevice.zig");
@@ -48,17 +49,19 @@ pub const CreateInfo = struct {
 };
 
 pub fn init(gpu_device: GPUDevice, info: *const CreateInfo) !Self {
-    return fromOwnedGPUGraphicsPipeline(try create(gpu_device, info));
+    return fromOwned(try create(gpu_device, info));
 }
 
 pub fn deinit(self: *Self, gpu_device: GPUDevice) void {
-    if (self.ptr != null) release(gpu_device, self.toOwnedGPUGraphicsPipeline());
+    if (self.isValid()) release(gpu_device, self.toOwned());
 }
 
-fn create(gpu_device: GPUDevice, info: *const CreateInfo) !*c.SDL_GPUGraphicsPipeline {
+pub fn create(gpu_device: GPUDevice, info: *const CreateInfo) !*c.SDL_GPUGraphicsPipeline {
+    assert(gpu_device.isValid());
     var arena = allocators.initArena();
     defer arena.deinit();
-    const ptr = c.SDL_CreateGPUGraphicsPipeline(gpu_device.ptr, &try info.toSDL(arena.allocator()));
+    const sdl_info = try info.toSDL(arena.allocator());
+    const ptr = c.SDL_CreateGPUGraphicsPipeline(gpu_device.ptr, &sdl_info);
     if (ptr == null) {
         log.err("failed creating gpu graphics pipeline: {s}", .{c.SDL_GetError()});
         return Error.PipelineFailed;
@@ -66,16 +69,17 @@ fn create(gpu_device: GPUDevice, info: *const CreateInfo) !*c.SDL_GPUGraphicsPip
     return ptr.?;
 }
 
-fn release(gpu_device: GPUDevice, ptr: *c.SDL_GPUGraphicsPipeline) void {
+pub fn release(gpu_device: GPUDevice, ptr: *c.SDL_GPUGraphicsPipeline) void {
+    assert(gpu_device.isValid());
     c.SDL_ReleaseGPUGraphicsPipeline(gpu_device.ptr, ptr);
 }
 
-pub fn fromOwnedGPUGraphicsPipeline(ptr: *c.SDL_GPUGraphicsPipeline) Self {
+pub fn fromOwned(ptr: *c.SDL_GPUGraphicsPipeline) Self {
     return .{ .ptr = ptr };
 }
 
-pub fn toOwnedGPUGraphicsPipeline(self: *Self) *c.SDL_GPUGraphicsPipeline {
-    assert(self.ptr != null);
+pub fn toOwned(self: *Self) *c.SDL_GPUGraphicsPipeline {
+    assert(self.isValid());
     defer self.ptr = null;
     return self.ptr.?;
 }
@@ -90,13 +94,7 @@ pub const TargetInfo = struct {
     has_depth_stencil_target: bool = false,
 
     pub fn toSDL(self: *const @This(), gpa: std.mem.Allocator) !c.SDL_GPUGraphicsPipelineTargetInfo {
-        const color_target_descriptions = try gpa.alloc(
-            c.SDL_GPUColorTargetDescription,
-            self.color_target_descriptions.len,
-        );
-        for (color_target_descriptions, self.color_target_descriptions) |*to, *from| {
-            to.* = from.toSDL();
-        }
+        const color_target_descriptions = try sdl.sliceFrom(gpa, self.color_target_descriptions);
         return .{
             .color_target_descriptions = color_target_descriptions.ptr,
             .num_color_targets = @intCast(color_target_descriptions.len),

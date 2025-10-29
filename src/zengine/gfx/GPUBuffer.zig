@@ -15,6 +15,7 @@ const log = std.log.scoped(.gfx_gpu_buffer);
 
 ptr: ?*c.SDL_GPUBuffer = null,
 size: u32 = 0,
+usage: UsageFlags = .initEmpty(),
 
 const Self = @This();
 pub const invalid: Self = .{};
@@ -24,32 +25,57 @@ pub const CreateInfo = struct {
     size: u32,
 };
 
+pub fn init(gpu_device: GPUDevice, info: *const CreateInfo) !Self {
+    return .{
+        .ptr = try create(gpu_device, info),
+        .size = info.size,
+        .usage = info.usage,
+    };
+}
+
 pub fn deinit(self: *Self, gpu_device: GPUDevice) void {
-    if (self.ptr != null) self.release(gpu_device);
+    if (self.isValid()) release(gpu_device, self.toOwned());
+}
+
+pub fn toOwned(self: *Self) *c.SDL_GPUBuffer {
+    assert(self.isValid());
+    defer self.ptr = null;
+    return self.ptr.?;
+}
+
+pub fn toSDL(self: *const Self) *c.SDL_GPUBuffer {
+    assert(self.isValid());
+    return self.ptr.?;
+}
+
+pub fn create(gpu_device: GPUDevice, info: *const CreateInfo) !*c.SDL_GPUBuffer {
+    assert(gpu_device.isValid());
+    const ptr = c.SDL_CreateGPUBuffer(gpu_device.ptr, &c.SDL_GPUBufferCreateInfo{
+        .usage = info.usage.bits.mask,
+        .size = info.size,
+    });
+    if (ptr == null) {
+        log.err("failed creating gpu buffer: {s}", .{c.SDL_GetError()});
+        return Error.BufferFailed;
+    }
+    return ptr.?;
+}
+
+pub fn release(gpu_device: GPUDevice, ptr: *c.SDL_GPUBuffer) void {
+    assert(gpu_device.isValid());
+    c.SDL_ReleaseGPUBuffer(gpu_device.ptr, ptr);
+}
+
+pub fn resize(self: *Self, gpu_device: GPUDevice, info: *const CreateInfo) !void {
+    assert(gpu_device.isValid());
+    if (self.size != info.size) {
+        self.deinit(gpu_device);
+        self.* = try gpu_device.buffer(info);
+    }
 }
 
 pub inline fn byteLen(self: *const Self) u32 {
     return self.size;
-}
-
-pub fn create(self: *Self, gpu_device: GPUDevice, info: *const CreateInfo) !void {
-    if (self.ptr != null) self.release(gpu_device);
-    self.size = info.size;
-    self.ptr = c.SDL_CreateGPUBuffer(gpu_device.ptr, &c.SDL_GPUBufferCreateInfo{
-        .usage = info.usage.bits.mask,
-        .size = self.size,
-    });
-    if (self.ptr == null) {
-        log.err("failed creating gpu buffer: {s}", .{c.SDL_GetError()});
-        return Error.BufferFailed;
-    }
-}
-
-pub fn release(self: *Self, gpu_device: GPUDevice) void {
-    assert(self.ptr != null);
-    c.SDL_ReleaseGPUBuffer(gpu_device.ptr, self.ptr);
-    self.ptr = null;
-    self.size = 0;
 }
 
 pub inline fn isValid(self: Self) bool {

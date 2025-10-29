@@ -3,9 +3,14 @@
 //!
 
 const std = @import("std");
+const assert = std.debug.assert;
 
 const c = @import("../ext.zig").c;
-pub const GPUTexture = @import("GPUTexture.zig");
+const math = @import("../math.zig");
+const sdl = @import("../sdl.zig");
+const GPUBuffer = @import("GPUBuffer.zig");
+const GPUSampler = @import("GPUSampler.zig");
+const GPUTexture = @import("GPUTexture.zig");
 
 pub const PrimitiveType = enum(c.SDL_GPUPrimitiveType) {
     triangle_list = c.SDL_GPU_PRIMITIVETYPE_TRIANGLELIST,
@@ -31,6 +36,11 @@ pub const StoreOp = enum(c.SDL_GPUStoreOp) {
     pub const default = .store;
 };
 
+pub const IndexElementSize = enum(c.SDL_GPUIndexElementSize) {
+    @"16bit" = c.SDL_GPU_INDEXELEMENTSIZE_16BIT,
+    @"32bit" = c.SDL_GPU_INDEXELEMENTSIZE_32BIT,
+    pub const default = .@"16bit";
+};
 pub const SampleCount = enum(c.SDL_GPUSampleCount) {
     @"1" = c.SDL_GPU_SAMPLECOUNT_1,
     @"2" = c.SDL_GPU_SAMPLECOUNT_2,
@@ -177,20 +187,8 @@ pub const VertexInputState = struct {
     vertex_attributes: []const VertexAttribute = &.{},
 
     pub fn toSDL(self: *const @This(), gpa: std.mem.Allocator) !c.SDL_GPUVertexInputState {
-        const vertex_buffer_descriptions = try gpa.alloc(
-            c.SDL_GPUVertexBufferDescription,
-            self.vertex_buffer_descriptions.len,
-        );
-        for (vertex_buffer_descriptions, self.vertex_buffer_descriptions) |*to, *from| {
-            to.* = from.toSDL();
-        }
-        const vertex_attributes = try gpa.alloc(
-            c.SDL_GPUVertexAttribute,
-            self.vertex_attributes.len,
-        );
-        for (vertex_attributes, self.vertex_attributes) |*to, *from| {
-            to.* = from.toSDL();
-        }
+        const vertex_buffer_descriptions = try sdl.sliceFrom(gpa, self.vertex_buffer_descriptions);
+        const vertex_attributes = try sdl.sliceFrom(gpa, self.vertex_attributes);
         return .{
             .vertex_buffer_descriptions = vertex_buffer_descriptions.ptr,
             .num_vertex_buffers = @intCast(vertex_buffer_descriptions.len),
@@ -312,18 +310,6 @@ pub const StencilOpState = struct {
     }
 };
 
-pub const ColorTargetDescription = struct {
-    format: GPUTexture.Format = .default,
-    blend_state: ColorTargetBlendState = .{},
-
-    pub fn toSDL(self: *const @This()) c.SDL_GPUColorTargetDescription {
-        return .{
-            .format = @intFromEnum(self.format),
-            .blend_state = self.blend_state.toSDL(),
-        };
-    }
-};
-
 pub const ColorTargetBlendState = struct {
     src_color_blendfactor: BlendFactor = .default,
     dst_color_blendfactor: BlendFactor = .default,
@@ -346,6 +332,101 @@ pub const ColorTargetBlendState = struct {
             .color_write_mask = self.color_write_mask,
             .enable_blend = self.enable_blend,
             .enable_color_write_mask = self.enable_color_write_mask,
+        };
+    }
+};
+
+pub const ColorTargetDescription = struct {
+    format: GPUTexture.Format = .default,
+    blend_state: ColorTargetBlendState = .{},
+
+    pub fn toSDL(self: *const @This()) c.SDL_GPUColorTargetDescription {
+        return .{
+            .format = @intFromEnum(self.format),
+            .blend_state = self.blend_state.toSDL(),
+        };
+    }
+};
+
+pub const ColorTargetInfo = struct {
+    texture: GPUTexture = .invalid,
+    mip_level: u32 = 0,
+    layer_or_depth_plane: u32 = 0,
+    clear_color: math.RGBAf32 = math.rgba_f32.zero,
+    load_op: LoadOp = .default,
+    store_op: StoreOp = .default,
+    resolve_texture: GPUTexture = .invalid,
+    resolve_mip_level: u21 = 0,
+    resolve_layer: u32 = 0,
+    cycle: bool = false,
+    cycle_resolve_texture: bool = false,
+
+    pub fn toSDL(self: *const @This()) c.SDL_GPUColorTargetInfo {
+        return .{
+            .texture = self.texture.ptr,
+            .mip_level = self.mip_level,
+            .layer_or_depth_plane = self.layer_or_depth_plane,
+            .clear_color = .{
+                .r = self.clear_color[0],
+                .g = self.clear_color[1],
+                .b = self.clear_color[2],
+                .a = self.clear_color[3],
+            },
+            .load_op = @intFromEnum(self.load_op),
+            .store_op = @intFromEnum(self.store_op),
+            .resolve_texture = self.resolve_texture.ptr,
+            .resolve_mip_level = self.resolve_mip_level,
+            .resolve_layer = self.resolve_layer,
+            .cycle = self.cycle,
+            .cycle_resolve_texture = self.cycle_resolve_texture,
+        };
+    }
+};
+
+pub const DepthStencilTargetInfo = struct {
+    texture: GPUTexture = .invalid,
+    clear_depth: f32 = 0,
+    load_op: LoadOp = .default,
+    store_op: StoreOp = .default,
+    stencil_load_op: LoadOp = .default,
+    stencil_store_op: StoreOp = .default,
+    cycle: bool = false,
+    clear_stencil: u8 = 0,
+
+    pub fn toSDL(self: *const @This()) c.SDL_GPUDepthStencilTargetInfo {
+        return .{
+            .texture = self.texture.ptr,
+            .clear_depth = self.clear_depth,
+            .load_op = @intFromEnum(self.load_op),
+            .store_op = @intFromEnum(self.store_op),
+            .stencil_load_op = @intFromEnum(self.stencil_load_op),
+            .stencil_store_op = @intFromEnum(self.stencil_store_op),
+            .cycle = self.cycle,
+            .clear_stencil = self.clear_stencil,
+        };
+    }
+};
+
+pub const BufferBinding = struct {
+    buffer: GPUBuffer,
+    offset: u32,
+
+    pub fn toSDL(self: *const @This()) c.struct_SDL_GPUBufferBinding {
+        return .{
+            .buffer = self.buffer.ptr,
+            .offset = self.offset,
+        };
+    }
+};
+
+pub const TextureSamplerBinding = struct {
+    texture: GPUTexture,
+    sampler: GPUSampler,
+
+    pub fn toSDL(self: *const @This()) c.SDL_GPUTextureSamplerBinding {
+        return .{
+            .texture = self.texture.ptr,
+            .sampler = self.sampler.ptr,
         };
     }
 };

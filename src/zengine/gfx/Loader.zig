@@ -6,8 +6,7 @@ const std = @import("std");
 const assert = std.debug.assert;
 
 const allocators = @import("../allocators.zig");
-const KeyMap = @import("../containers.zig").ArrayKeyMap;
-const PtrKeyMap = @import("../containers.zig").ArrayPtrKeyMap;
+const ArrayPoolMap = @import("../containers.zig").ArrayPoolMap;
 const ecs = @import("../ecs.zig");
 const c = @import("../ext.zig").c;
 const global = @import("../global.zig");
@@ -16,6 +15,7 @@ const perf = @import("../perf.zig");
 const Scene = @import("../Scene.zig");
 const ui_mod = @import("../ui.zig");
 const Error = @import("Error.zig").Error;
+const str = @import("../str.zig");
 const GPUBuffer = @import("GPUBuffer.zig");
 const img_loader = @import("img_loader.zig");
 const MaterialInfo = @import("MaterialInfo.zig");
@@ -41,7 +41,7 @@ surface_textures: SurfaceTextures,
 modifs: std.EnumArray(Target, std.ArrayList([]const u8)),
 
 const Self = @This();
-const SurfaceTextures = KeyMap(SurfaceTexture, .{});
+const SurfaceTextures = ArrayPoolMap(SurfaceTexture, .{});
 
 pub fn init(renderer: *Renderer) !Self {
     return .{
@@ -104,10 +104,13 @@ pub fn loadMesh(self: *Self, scene: *Scene, key: []const u8, asset_path: []const
     const mesh_buf = try self.renderer.insertMeshBuffer(key, &.fromCPUBuffer(&result.mesh_buf));
     try self.flagModified(.mesh_buffer, key);
 
+    const normals_buf = try self.createNormalIndicators(key);
+
     var iter = result.mesh_objs.iterator();
     while (iter.next()) |e| {
         const mesh_obj = e.value_ptr;
         mesh_obj.mesh_buf = mesh_buf;
+        mesh_obj.normals_buf = normals_buf;
         _ = try scene.createObject(
             e.key_ptr.*,
             .fromMeshObject(
@@ -162,10 +165,10 @@ pub fn createOriginMesh(self: *Self) !*MeshBuffer {
     try self.flagModified(.mesh_buffer, "origin");
 
     origin_mesh.appendSlice(self.renderer.allocator, .vertex, [3]math.Vertex, 1, &.{
-        .{ .{ 0, 0, 0 }, .{ 0, 0, 0 }, .{ 0, 0, 0 } },
-        .{ .{ 1, 0, 0 }, .{ 0, 0, 0 }, .{ 0, 0, 0 } },
-        .{ .{ 0, 1, 0 }, .{ 0, 0, 0 }, .{ 0, 0, 0 } },
-        .{ .{ 0, 0, 1 }, .{ 0, 0, 0 }, .{ 0, 0, 0 } },
+        .{ .{ 0, 0, 0 }, math.vertex.zero, math.vertex.zero },
+        .{ .{ 1, 0, 0 }, math.vertex.zero, math.vertex.zero },
+        .{ .{ 0, 1, 0 }, math.vertex.zero, math.vertex.zero },
+        .{ .{ 0, 0, 1 }, math.vertex.zero, math.vertex.zero },
     }) catch |err| {
         log.err("failed appending origin mesh vertices: {t}", .{err});
         return Error.BufferFailed;
@@ -179,6 +182,28 @@ pub fn createOriginMesh(self: *Self) !*MeshBuffer {
         return Error.BufferFailed;
     };
     return origin_mesh;
+}
+
+pub fn createNormalIndicators(self: *Self, key: []const u8) !*MeshBuffer {
+    const normals_key = try str.join(&.{ key, "-normals" });
+    const mesh = self.renderer.mesh_bufs.getPtr(key);
+    const scalars = mesh.slice(.vertex);
+    const verts: [][3]math.Vertex = @ptrCast(scalars);
+
+    const result = try self.renderer.createMeshBuffer(normals_key, .vertex);
+    try self.flagModified(.mesh_buffer, normals_key);
+
+    // for every vertex append two vertices
+    try result.ensureUnusedCapacity(self.renderer.allocator, .vertex, [3]math.Vertex, 2 * verts.len);
+    for (verts) |vert| {
+        var dest = vert[0];
+        math.vertex.add(&dest, &vert[2]);
+        result.appendSliceAssumeCapacity(.vertex, [3]math.Vertex, 1, &.{
+            .{ vert[0], math.vertex.zero, vert[2] },
+            .{ dest, math.vertex.zero, vert[2] },
+        });
+    }
+    return result;
 }
 
 pub fn createDefaultMaterial(self: *Self) !*MaterialInfo {
@@ -289,10 +314,24 @@ fn uploadTransferBuffers(self: *Self) !void {
 
     for (self.modifs.getPtrConst(.mesh_buffer).items) |key| {
         const buf = self.renderer.mesh_bufs.getPtr(key);
+        try buf.gpu_bufs.getPtr(.vertex).resize(gpu_device, &.{
+            .size = buf.byteLen(.vertex),
+            .usage = .initOne(.vertex),
+        });
+        if (buf.type == .index) {
+            try buf.gpu_bufs.getPtr(.vertex).resize(gpu_device, &.{
+                .size = buf.byteLen(.vertex),
+                .usage = .initOne(.vertex),
+            });
+        }
         tb.mesh_bufs.appendAssumeCapacity(buf);
     }
     for (self.modifs.getPtrConst(.storage_buffer).items) |key| {
         const buf = self.renderer.storage_bufs.getPtr(key);
+        try buf.gpu_bufs.getPtr(.vertex).resize(gpu_device, &.{
+            .size = buf.byteLen(.vertex),
+            .usage = .initOne(.graphics_storage_read),
+        });
         tb.mesh_bufs.appendAssumeCapacity(buf);
     }
     for (self.modifs.getPtrConst(.surface_texture).items) |key| {

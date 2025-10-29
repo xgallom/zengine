@@ -25,19 +25,19 @@ pub const CreateInfo = struct {
 };
 
 pub fn init(info: *const CreateInfo) !Self {
-    return fromOwnedWindow(try create(info));
+    return fromOwned(try create(info));
 }
 
 pub fn deinit(self: *Self) void {
-    if (self.ptr != null) destroy(self.toOwnedWindow());
+    if (self.isValid()) destroy(self.toOwned());
 }
 
-pub fn fromOwnedWindow(ptr: *c.SDL_Window) Self {
+pub fn fromOwned(ptr: *c.SDL_Window) Self {
     return .{ .ptr = ptr };
 }
 
-pub fn toOwnedWindow(self: *Self) *c.SDL_Window {
-    assert(self.ptr != null);
+pub fn toOwned(self: *Self) *c.SDL_Window {
+    assert(self.isValid());
     defer self.ptr = null;
     return self.ptr.?;
 }
@@ -61,7 +61,7 @@ pub fn destroy(ptr: *c.SDL_Window) void {
 }
 
 pub fn pixelSize(self: Self) math.Point_u32 {
-    assert(self.ptr != null);
+    assert(self.isValid());
     var result: math.Point_u32 = undefined;
     if (!c.SDL_GetWindowSizeInPixels(self.ptr, @ptrCast(&result[0]), @ptrCast(&result[1]))) {
         log.err("failed getting window size: {s}", .{c.SDL_GetError()});
@@ -71,7 +71,7 @@ pub fn pixelSize(self: Self) math.Point_u32 {
 }
 
 pub fn logicalSize(self: Self) math.Point_u32 {
-    assert(self.ptr != null);
+    assert(self.isValid());
     var result: math.Point_u32 = undefined;
     if (!c.SDL_GetWindowSize(self.ptr, @ptrCast(&result[0]), @ptrCast(&result[1]))) {
         log.err("failed getting window size: {s}", .{c.SDL_GetError()});

@@ -20,6 +20,11 @@ ptr: ?*c.SDL_GPUSampler = null,
 const Self = @This();
 pub const invalid: Self = .{};
 
+comptime {
+    assert(@sizeOf(Self) == @sizeOf(*c.SDL_GPUSampler));
+    assert(@alignOf(Self) == @alignOf(*c.SDL_GPUSampler));
+}
+
 pub const CreateInfo = struct {
     min_filter: types.Filter = .default,
     mag_filter: types.Filter = .default,
@@ -38,14 +43,15 @@ pub const CreateInfo = struct {
 };
 
 pub fn init(gpu_device: GPUDevice, info: *const CreateInfo) !Self {
-    return fromOwnedGPUSampler(try create(gpu_device, info));
+    return fromOwned(try create(gpu_device, info));
 }
 
 pub fn deinit(self: *Self, gpu_device: GPUDevice) void {
-    if (self.ptr != null) release(gpu_device, self.toOwnedGPUSampler());
+    if (self.isValid()) release(gpu_device, self.toOwned());
 }
 
 pub fn create(gpu_device: GPUDevice, info: *const CreateInfo) !*c.SDL_GPUSampler {
+    assert(gpu_device.isValid());
     const ptr = c.SDL_CreateGPUSampler(gpu_device.ptr, &c.SDL_GPUSamplerCreateInfo{
         .min_filter = @intFromEnum(info.min_filter),
         .mag_filter = @intFromEnum(info.mag_filter),
@@ -69,15 +75,16 @@ pub fn create(gpu_device: GPUDevice, info: *const CreateInfo) !*c.SDL_GPUSampler
 }
 
 pub fn release(gpu_device: GPUDevice, ptr: *c.SDL_GPUSampler) void {
+    assert(gpu_device.isValid());
     c.SDL_ReleaseGPUSampler(gpu_device.ptr, ptr);
 }
 
-pub fn fromOwnedGPUSampler(ptr: *c.SDL_GPUSampler) Self {
+pub fn fromOwned(ptr: *c.SDL_GPUSampler) Self {
     return .{ .ptr = ptr };
 }
 
-pub fn toOwnedGPUSampler(self: *Self) *c.SDL_GPUSampler {
-    assert(self.ptr != null);
+pub fn toOwned(self: *Self) *c.SDL_GPUSampler {
+    assert(self.isValid());
     defer self.ptr = null;
     return self.ptr.?;
 }

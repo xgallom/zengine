@@ -94,13 +94,12 @@ pub fn map(self: *Self, gpu_device: GPUDevice) !void {
         // TODO: Make not shitty
         const vert_buf = std.mem.sliceAsBytes(mesh_buf.slice(.vertex));
         const idx_buf = std.mem.sliceAsBytes(mesh_buf.slice(.index));
-        assert(mesh_buf.gpu_bufs.getPtrConst(.vertex).size != 0);
         // assert(cpu_buf.len <= gpu_buf.len);
         // assert(cpu_buf.len <= gpu_buf.len);
         @memcpy(dest[0..vert_buf.len], vert_buf);
         dest += vert_buf.len;
         if (idx_buf.len == 0) continue;
-        assert(mesh_buf.gpu_bufs.getPtrConst(.index).size != 0);
+        if (mesh_buf.gpu_bufs.getPtrConst(.index).size == 0) continue;
         @memcpy(dest[0..idx_buf.len], idx_buf);
         dest += idx_buf.len;
     }

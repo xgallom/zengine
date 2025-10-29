@@ -5,9 +5,10 @@
 const std = @import("std");
 const assert = std.debug.assert;
 
-const log = std.log.scoped(.key_tree);
+const log = std.log.scoped(.key_map);
 
-pub fn AutoArrayKeyMap(comptime K: type, comptime V: type, comptime options: struct {
+/// Auto key map data structure backed by a memory pool and a pointer array hash map
+pub fn AutoArrayPoolMap(comptime K: type, comptime V: type, comptime options: struct {
     pool_options: std.heap.MemoryPoolOptions = .{},
     is_big: bool = @sizeOf(V) > 16,
 }) type {
@@ -17,6 +18,7 @@ pub fn AutoArrayKeyMap(comptime K: type, comptime V: type, comptime options: str
 
         pub const Self = @This();
         pub const Value = V;
+        pub const empty: Self = .{};
         const Pool = std.heap.MemoryPoolExtra(V, options.pool_options);
         const ValIn = if (options.is_big) *const V else V;
 
@@ -103,14 +105,15 @@ pub fn AutoArrayKeyMap(comptime K: type, comptime V: type, comptime options: str
     };
 }
 
-/// Pointer array hash map
-pub fn AutoArrayPtrKeyMap(comptime K: type, comptime V: type) type {
+/// Auto pointer array hash map
+pub fn AutoArrayPtrMap(comptime K: type, comptime V: type) type {
     return struct {
         map: HashMap = .empty,
 
         pub const Self = @This();
         pub const Value = V;
         pub const HashMap = std.AutoArrayHashMapUnmanaged(K, *V);
+        pub const empty: Self = .{};
 
         // Initializes the map
         pub fn init(gpa: std.mem.Allocator, preheat: usize) !Self {
@@ -159,8 +162,73 @@ pub fn AutoArrayPtrKeyMap(comptime K: type, comptime V: type) type {
         }
     };
 }
+
+/// Auto owning array hash map
+pub fn AutoArrayMap(comptime K: type, comptime V: type) type {
+    return struct {
+        map: HashMap = .empty,
+
+        pub const Self = @This();
+        pub const Value = V;
+        pub const HashMap = std.AutoArrayHashMapUnmanaged(K, V);
+        pub const empty: Self = .{};
+
+        // Initializes the map
+        pub fn init(gpa: std.mem.Allocator, preheat: usize) !Self {
+            var result: Self = .{};
+            try result.map.ensureTotalCapacity(gpa, preheat);
+            return result;
+        }
+
+        /// Deinitializes the map
+        pub fn deinit(self: *Self, gpa: std.mem.Allocator) void {
+            self.map.deinit(gpa);
+        }
+
+        pub fn contains(self: *const Self, key: K) bool {
+            return self.map.contains(key);
+        }
+
+        pub fn get(self: *const Self, key: K) V {
+            const ptr = self.map.getPtr(key);
+            assert(ptr != null);
+            return ptr.?.*;
+        }
+
+        pub fn getPtr(self: *const Self, key: K) *V {
+            const ptr = self.map.getPtr(key);
+            assert(ptr != null);
+            return ptr.?;
+        }
+
+        pub fn getPtrOrNull(self: *const Self, key: K) ?*V {
+            return self.map.getPtr(key);
+        }
+
+        /// Inserts new pointer value into the map
+        pub fn insert(self: *Self, gpa: std.mem.Allocator, key: K, value: V) !void {
+            try self.map.putNoClobber(gpa, key, value);
+        }
+
+        /// Removes existing pointer value from the map
+        pub fn remove(self: *Self, key: K) void {
+            const idx = self.map.getIndex(key);
+            assert(idx != null);
+            self.map.swapRemoveAt(idx);
+        }
+
+        pub fn put(self: *Self, gpa: std.mem.Allocator, key: K, value: V) !void {
+            try self.map.put(gpa, key, value);
+        }
+
+        pub fn values(self: *const Self) []V {
+            return self.map.values();
+        }
+    };
+}
+
 /// Key map data structure backed by a memory pool and a pointer array hash map
-pub fn StringArrayKeyMap(comptime V: type, comptime options: struct {
+pub fn ArrayPoolMap(comptime V: type, comptime options: struct {
     pool_options: std.heap.MemoryPoolOptions = .{},
     is_big: bool = @sizeOf(V) > 16,
 }) type {
@@ -170,8 +238,13 @@ pub fn StringArrayKeyMap(comptime V: type, comptime options: struct {
 
         pub const Self = @This();
         pub const Value = V;
+        pub const empty: Self = .{};
         const Pool = std.heap.MemoryPoolExtra(V, options.pool_options);
         const ValIn = if (options.is_big) *const V else V;
+
+        inline fn valDeref(value: ValIn) V {
+            return if (comptime options.is_big) value.* else value;
+        }
 
         // Initializes the map
         pub fn init(allocator: std.mem.Allocator, preheat: usize) !Self {
@@ -223,7 +296,7 @@ pub fn StringArrayKeyMap(comptime V: type, comptime options: struct {
         /// Inserts new value into the map
         pub fn insert(self: *Self, key: []const u8, value: ValIn) !*V {
             const item = try self.create(key);
-            item.* = if (comptime options.is_big) value.* else value;
+            item.* = valDeref(value);
             return item;
         }
 
@@ -237,7 +310,7 @@ pub fn StringArrayKeyMap(comptime V: type, comptime options: struct {
         pub fn put(self: *Self, key: []const u8, value: ValIn) !*V {
             const r = try self.map.getOrPut(self.gpa(), key);
             if (!r.found_existing) r.value_ptr.* = try self.pool.create();
-            r.value_ptr.*.* = if (comptime options.is_big) value.* else value;
+            r.value_ptr.*.* = valDeref(value);
             return r.value_ptr.*;
         }
 
@@ -252,13 +325,14 @@ pub fn StringArrayKeyMap(comptime V: type, comptime options: struct {
 }
 
 /// Pointer array hash map
-pub fn StringArrayPtrKeyMap(comptime V: type) type {
+pub fn ArrayPtrMap(comptime V: type) type {
     return struct {
         map: HashMap = .empty,
 
         pub const Self = @This();
         pub const Value = V;
         pub const HashMap = std.StringArrayHashMapUnmanaged(*V);
+        pub const empty: Self = .{};
 
         // Initializes the map
         pub fn init(gpa: std.mem.Allocator, preheat: usize) !Self {
@@ -308,8 +382,72 @@ pub fn StringArrayPtrKeyMap(comptime V: type) type {
     };
 }
 
+/// Pointer array hash map
+pub fn ArrayMap(comptime V: type) type {
+    return struct {
+        map: HashMap = .empty,
+
+        pub const Self = @This();
+        pub const Value = V;
+        pub const HashMap = std.StringArrayHashMapUnmanaged(V);
+        pub const empty: Self = .{};
+
+        // Initializes the map
+        pub fn init(gpa: std.mem.Allocator, preheat: usize) !Self {
+            var result: Self = .{};
+            try result.map.ensureTotalCapacity(gpa, preheat);
+            return result;
+        }
+
+        /// Deinitializes the map
+        pub fn deinit(self: *Self, gpa: std.mem.Allocator) void {
+            self.map.deinit(gpa);
+        }
+
+        pub fn contains(self: *const Self, key: []const u8) bool {
+            return self.map.contains(key);
+        }
+
+        pub fn get(self: *const Self, key: []const u8) V {
+            const ptr = self.map.getPtr(key);
+            assert(ptr != null);
+            return ptr.?.*;
+        }
+
+        pub fn getPtr(self: *const Self, key: []const u8) *V {
+            const ptr = self.map.getPtr(key);
+            assert(ptr != null);
+            return ptr.?;
+        }
+
+        pub fn getPtrOrNull(self: *const Self, key: []const u8) ?*V {
+            return self.map.getPtr(key);
+        }
+
+        /// Inserts new value into the map
+        pub fn insert(self: *Self, gpa: std.mem.Allocator, key: []const u8, value: V) !void {
+            try self.map.putNoClobber(gpa, key, value);
+        }
+
+        /// Removes existing value from the map
+        pub fn remove(self: *Self, key: []const u8) void {
+            const idx = self.map.getIndex(key);
+            assert(idx != null);
+            self.map.swapRemoveAt(idx);
+        }
+
+        pub fn put(self: *Self, gpa: std.mem.Allocator, key: []const u8, value: V) !void {
+            try self.map.put(gpa, key, value);
+        }
+
+        pub fn values(self: *const Self) []*V {
+            return self.map.values();
+        }
+    };
+}
+
 /// Sparse key map data structure backed by a memory pool and a pointer hash map
-pub fn StringKeyMap(comptime V: type, comptime options: struct {
+pub fn PoolMap(comptime V: type, comptime options: struct {
     pool_options: std.heap.MemoryPoolOptions = .{},
     is_big: bool = @sizeOf(V) > 16,
 }) type {
@@ -318,8 +456,13 @@ pub fn StringKeyMap(comptime V: type, comptime options: struct {
         map: PtrHashMap(V) = .empty,
 
         pub const Self = @This();
+        pub const empty: Self = .{};
         const Pool = std.heap.MemoryPoolExtra(V, options.pool_options);
         const ValIn = if (options.is_big) *const V else V;
+
+        inline fn valDeref(value: ValIn) V {
+            return if (comptime options.is_big) value.* else value;
+        }
 
         // Initializes the map
         pub fn init(allocator: std.mem.Allocator, preheat: u32) !Self {
@@ -371,7 +514,7 @@ pub fn StringKeyMap(comptime V: type, comptime options: struct {
         /// Inserts new value into the map
         pub fn insert(self: *Self, key: []const u8, value: ValIn) !*V {
             const item = try self.create(key);
-            item.* = if (comptime options.is_big) value.* else value;
+            item.* = valDeref(value);
             return item;
         }
 
@@ -395,12 +538,13 @@ pub fn StringKeyMap(comptime V: type, comptime options: struct {
 }
 
 /// Sparse pointer hash map
-pub fn StringPtrKeyMap(comptime V: type) type {
+pub fn PtrMap(comptime V: type) type {
     return struct {
         map: PtrHashMap(V) = .empty,
 
         pub const Self = @This();
         pub const Value = V;
+        pub const empty: Self = .{};
 
         // Initializes the map
         pub fn init(gpa: std.mem.Allocator, preheat: u32) !Self {

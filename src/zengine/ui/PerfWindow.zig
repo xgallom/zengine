@@ -41,7 +41,7 @@ pub fn init(allocator: std.mem.Allocator) Self {
 }
 
 pub fn deinit(self: *Self) void {
-    while (self.items.popFirst()) |node| self.destroy(node);
+    _ = self;
 }
 
 pub fn draw(self: *Self, ui: *const UI, is_open: *bool) void {
