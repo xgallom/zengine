@@ -9,6 +9,7 @@ pub const containers = @import("containers.zig");
 pub const controls = @import("controls.zig");
 pub const ecs = @import("ecs.zig");
 pub const Engine = @import("Engine.zig");
+pub const Event = @import("Event.zig");
 pub const ext = @import("ext.zig");
 pub const fs = @import("fs.zig");
 pub const gfx = @import("gfx.zig");
@@ -22,6 +23,7 @@ pub const scheduler = @import("scheduler.zig");
 pub const sdl_allocator = @import("sdl_allocator.zig");
 pub const time = @import("time.zig");
 pub const ui = @import("ui.zig");
+pub const Module = @import("Module.zig");
 pub const Window = @import("Window.zig");
 
 pub const ZEngine = struct {

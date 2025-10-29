@@ -13,9 +13,11 @@ const Engine = @import("Engine.zig");
 const log = std.log.scoped(.window);
 
 ptr: ?*c.SDL_Window = null,
+is_relative_mouse_mode_enabled: bool = false,
 
 const Self = @This();
-pub const Registry = Engine.Properties.AutoRegistry(Self, .{});
+pub const Registry = Engine.Properties.AutoRegistry(?*c.SDL_Window, .{});
+
 pub const invalid: Self = .{};
 
 pub const CreateInfo = struct {
@@ -80,13 +82,18 @@ pub fn logicalSize(self: Self) math.Point_u32 {
     return result;
 }
 
+pub fn setRelativeMouseMode(self: *Self, enabled: bool) void {
+    self.is_relative_mouse_mode_enabled = enabled;
+    assert(c.SDL_SetWindowRelativeMouseMode(self.ptr, enabled));
+}
+
 pub inline fn isValid(self: Self) bool {
     return self.ptr != null;
 }
 
 pub inline fn properties(self: Self) !*Engine.Properties {
     assert(self.isValid());
-    return Engine.properties(Registry, self);
+    return Engine.properties(Registry, self.ptr);
 }
 
 pub const Flag = enum(c.SDL_WindowFlags) {

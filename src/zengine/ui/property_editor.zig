@@ -282,7 +282,7 @@ pub fn InputFields(comptime C: type, comptime options: Options.InputFields) type
             unpacked: @Type(.{ .@"struct" = .{
                 .layout = .auto,
                 .fields = unpacked_fields,
-                .decls = type_info.decls,
+                .decls = &.{},
                 .is_tuple = type_info.is_tuple,
             } }) = undefined,
 
