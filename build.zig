@@ -28,7 +28,7 @@ pub fn build(b: *std.Build) !void {
         "build-scripts",
         b.fmt("build-{t}.sh", .{ext_cmd_opt}),
     });
-    const build_ext = b.addSystemCommand(&.{ build_ext_cmd, ext_optimize.get(optimize) });
+    const build_ext = b.addSystemCommand(&.{ build_ext_cmd, ext_optimize.get(optimize), "", "-j", "" });
     const build_ext_step = b.step("ext", "Build external dependencies");
     build_ext_step.dependOn(&build_ext.step);
 

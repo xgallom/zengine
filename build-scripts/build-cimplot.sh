@@ -16,13 +16,13 @@ git submodule update --init --recursive
 
 cd "$BDIR"
 
-CMAKE_INSTALL_PREFIX="$IDIR" cmake .. "$@" \
-	-DCMAKE_BUILD_TYPE=$1 \
+CMAKE_INSTALL_PREFIX="$IDIR" cmake .. $2 \
+	-DCMAKE_BUILD_TYPE=${1:-Debug} \
 	-DCMAKE_FIND_PACKAGE_REDIRECTS_DIR="$IDIR/lib/cmake" \
 	-DIMGUI_USER_CONFIG="$PWD/external/cimgui/cimconfig.h" \
 
-make -j
-make install
+make $3
+make install $3
 
 cd "$SDIR"
 printf "\n\n"
