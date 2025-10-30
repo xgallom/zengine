@@ -23,12 +23,33 @@ pub fn build(b: *std.Build) !void {
 
     const compile_shaders_opt = b.option(bool, "compile-shaders", "Force shader compilation");
     const ext_cmd_opt = b.option(ExtCommand, "ext-command", "Project to use for external compilation") orelse .external;
+    const ext_cmd_cmake_args_opt = b.option(
+        []const u8,
+        "ext-cmake-args",
+        "Arguments for external configuration",
+    ) orelse "";
+    const ext_cmd_make_args_opt = b.option(
+        []const u8,
+        "ext-make-args",
+        "Arguments for external compilation",
+    ) orelse "-j";
+    const ext_cmd_make_install_args_opt = b.option(
+        []const u8,
+        "ext-make-install-args",
+        "Arguments for external installation",
+    ) orelse "";
 
     const build_ext_cmd = try std.fs.path.join(b.allocator, &.{
         "build-scripts",
         b.fmt("build-{t}.sh", .{ext_cmd_opt}),
     });
-    const build_ext = b.addSystemCommand(&.{ build_ext_cmd, ext_optimize.get(optimize), "", "-j", "" });
+    const build_ext = b.addSystemCommand(&.{
+        build_ext_cmd,
+        ext_optimize.get(optimize),
+        ext_cmd_cmake_args_opt,
+        ext_cmd_make_args_opt,
+        ext_cmd_make_install_args_opt,
+    });
     const build_ext_step = b.step("ext", "Build external dependencies");
     build_ext_step.dependOn(&build_ext.step);
 
