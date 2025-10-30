@@ -21,7 +21,7 @@ CMAKE_INSTALL_PREFIX="$IDIR" cmake .. "$@" \
 	-DCMAKE_FIND_PACKAGE_REDIRECTS_DIR="$IDIR/lib/cmake" \
 	-Dcimgui_SOURCE_DIR="$PDIR" \
 
-make -j 8
+make -j
 make install
 
 cd "$SDIR"

@@ -23,7 +23,7 @@ CMAKE_INSTALL_PREFIX="$IDIR" cmake .. "$@" \
 	-DBUILD_SHARED_LIBS=ON \
 	-DSDLTTF_INSTALL=ON \
 
-make -j 8
+make -j
 make install
 
 cd "$SDIR"
