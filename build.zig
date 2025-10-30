@@ -49,6 +49,7 @@ pub fn build(b: *std.Build) !void {
         .pic = true,
     });
 
+    zengine.addLibraryPath(b.path("external/build/bin"));
     zengine.addLibraryPath(b.path("external/build/lib"));
     zengine.addIncludePath(b.path("external/build/include"));
     zengine.addIncludePath(b.path("external/cimgui"));
