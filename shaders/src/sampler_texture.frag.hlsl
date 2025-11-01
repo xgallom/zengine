@@ -5,6 +5,9 @@
 #define MTL_HAS_BUMP_MAP    (1 << 2)
 #define MTL_HAS_FILTER      (1 << 3)
 
+#define LGH_MIN_DIST_SQR  0.01
+#define LGH_MIN_INTENSITY 0.01
+
 cbuffer Material : register(b0, space3) {
     float3 mtl_clr_ambient;
     float3 mtl_clr_diffuse;
@@ -24,29 +27,29 @@ cbuffer Camera : register(b1, space3) {
 }
 
 cbuffer LightsBufferMeta : register(b2, space3) {
-    uint  lgh_cnt_ambient;
+    uint lgh_cnt_ambient;
     uint lgh_cnt_directional;
     uint lgh_cnt_point;
 }
 
 struct LightAmbient {
     float3 clr;
-    float pwr;
+    float int_ambient;
 };
 
 struct LightDirectional {
     float3 dir;
     float3 clr;
-    float pwr_diffuse;
-    float pwr_specular;
+    float int_diffuse;
+    float int_specular;
 };
 
 struct LightPoint {
     float3 pos;
     float3 dir;
     float3 clr;
-    float pwr_diffuse;
-    float pwr_specular;
+    float int_diffuse;
+    float int_specular;
 };
 
 struct Input {
@@ -85,19 +88,19 @@ float4 main(Input input) : SV_Target0 {
 
     for (uint n = 0; n < lgh_cnt_ambient; ++n) {
         const LightAmbient light = lightAmbient();
-        ambient_light += light.clr * light.pwr;
+        ambient_light += light.int_ambient * light.clr;
     }
 
     for (uint n = 0; n < lgh_cnt_directional; ++n) {
         const LightDirectional light = lightDirectional(normal, world_pos, camera_refl);
-        diffuse_light += light.pwr_diffuse * light.clr;
-        specular_light += light.pwr_specular * light.clr;
+        diffuse_light += light.int_diffuse * light.clr;
+        specular_light += light.int_specular * light.clr;
     }
 
     for (uint n = 0; n < lgh_cnt_point; ++n) {
         const LightPoint light = lightPoint(normal, world_pos, camera_refl);
-        diffuse_light += light.pwr_diffuse * light.clr;
-        specular_light += light.pwr_specular * light.clr;
+        diffuse_light += light.int_diffuse * light.clr;
+        specular_light += light.int_specular * light.clr;
     }
 
     float3 ambient_tex = float3(1, 1, 1);
@@ -146,7 +149,7 @@ LightAmbient lightAmbient() {
     const float4 light_clr = LightsBuffer.Load(lgh_idx++);
 
     output.clr = light_clr.xyz;
-    output.pwr = light_clr.w;
+    output.int_ambient = light_clr.w;
     return output;
 }
 
@@ -155,13 +158,14 @@ LightDirectional lightDirectional(in float3 normal, in float3 world_pos, in floa
     const float3 light_ray = LightsBuffer.Load(lgh_idx++).xyz;
     const float4 light_clr = LightsBuffer.Load(lgh_idx++);
     const float3 light_dir = normalize(light_ray);
+
     const float diffuse_falloff = max(0, dot(light_dir, normal));
     const float specular_falloff = pow( max(0, dot(light_dir, camera_refl)), mtl_specular_exp );
 
     output.dir = light_dir;
     output.clr = light_clr.xyz;
-    output.pwr_diffuse = light_clr.w * diffuse_falloff;
-    output.pwr_specular = light_clr.w * specular_falloff;
+    output.int_diffuse = light_clr.w * diffuse_falloff;
+    output.int_specular = light_clr.w * specular_falloff;
     return output;
 }
 
@@ -171,17 +175,21 @@ LightPoint lightPoint(in float3 normal, in float3 world_pos, in float3 camera_re
     const float4 light_clr = LightsBuffer.Load(lgh_idx++);
     const float3 light_ray = light_pos - world_pos;
     const float3 light_dir = normalize(light_ray);
+
     const float diffuse_falloff = max(0, dot(light_dir, normal));
     const float specular_falloff = pow( max(0, dot(light_dir, camera_refl)), mtl_specular_exp );
+
     const float light_dist_sqr = dot(light_ray, light_ray);
     const float light_dist = sqrt(light_dist_sqr);
-    //const float dist_falloff = max(0, 1 / (0.01 + light_dist_sqr) - light_dist / 1e9);
-    const float dist_falloff = max(0, 1 / (0.01 + light_dist_sqr));
+
+    const float light_dist_falloff = light_clr.w / (LGH_MIN_DIST_SQR + light_dist_sqr);
+    const float light_max_radius = sqrt(light_clr.w / LGH_MIN_INTENSITY - LGH_MIN_DIST_SQR);
+    const float light_int = max(0, light_dist_falloff - light_dist / light_max_radius * LGH_MIN_INTENSITY);
 
     output.pos = light_pos;
     output.dir = light_dir;
     output.clr = light_clr.xyz;
-    output.pwr_diffuse = light_clr.w * diffuse_falloff * dist_falloff;
-    output.pwr_specular = light_clr.w * specular_falloff * dist_falloff;
+    output.int_diffuse = diffuse_falloff * light_int;
+    output.int_specular = specular_falloff * light_int;
     return output;
 }

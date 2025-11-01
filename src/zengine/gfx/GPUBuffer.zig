@@ -86,6 +86,32 @@ pub inline fn isnNotEmpty(self: Self) bool {
     return self.ptr != null and self.byte_len > 0;
 }
 
+pub const Region = struct {
+    buffer: Self = .invalid,
+    offset: u32 = 0,
+    size: u32 = 0,
+
+    pub fn toSDL(self: *const @This()) c.SDL_GPUBufferRegion {
+        return .{
+            .buffer = self.buffer.ptr,
+            .offset = self.offset,
+            .size = self.size,
+        };
+    }
+};
+
+pub const Binding = struct {
+    buffer: Self = .invalid,
+    offset: u32 = 0,
+
+    pub fn toSDL(self: *const @This()) c.struct_SDL_GPUBufferBinding {
+        return .{
+            .buffer = self.buffer.ptr,
+            .offset = self.offset,
+        };
+    }
+};
+
 pub const Usage = enum(c.SDL_GPUBufferUsageFlags) {
     vertex = c.SDL_GPU_BUFFERUSAGE_VERTEX,
     index = c.SDL_GPU_BUFFERUSAGE_INDEX,

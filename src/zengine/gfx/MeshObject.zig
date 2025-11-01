@@ -106,6 +106,6 @@ pub fn endGroup(self: *Self, offset: usize) void {
     self.has_active.group = false;
 }
 
-pub fn propertyEditor(self: *Self) ui.PropertyEditor(Self) {
-    return .init(self);
+pub fn propertyEditor(self: *Self) ui.UI.Element {
+    return ui.PropertyEditor(Self).init(self).element();
 }

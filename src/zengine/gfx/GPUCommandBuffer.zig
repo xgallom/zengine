@@ -9,14 +9,15 @@ const allocators = @import("../allocators.zig");
 const c = @import("../ext.zig").c;
 const global = @import("../global.zig");
 const math = @import("../math.zig");
+const sdl = @import("../sdl.zig");
 const ui = @import("../ui.zig");
 const Window = @import("../Window.zig");
 const Error = @import("Error.zig").Error;
+const GPUCopyPass = @import("GPUCopyPass.zig");
 const GPUDevice = @import("GPUDevice.zig");
-const GPUTexture = @import("GPUTexture.zig");
 const GPURenderPass = @import("GPURenderPass.zig");
+const GPUTexture = @import("GPUTexture.zig");
 const types = @import("types.zig");
-const sdl = @import("../sdl.zig");
 
 const log = std.log.scoped(.gfx_gpu_texture);
 
@@ -63,7 +64,7 @@ pub fn swapchainTexture(self: Self, window: Window) !GPUTexture {
 pub fn renderPass(
     self: Self,
     color_target_infos: []const types.ColorTargetInfo,
-    depth_stencil_target_info: *const types.DepthStencilTargetInfo,
+    depth_stencil_target_info: ?*const types.DepthStencilTargetInfo,
 ) !GPURenderPass {
     assert(self.isValid());
     var arena = allocators.initArena();
@@ -73,11 +74,21 @@ pub fn renderPass(
         self.ptr,
         ct_infos.ptr,
         @intCast(ct_infos.len),
-        &depth_stencil_target_info.toSDL(),
+        if (depth_stencil_target_info) |info| &info.toSDL() else null,
     );
     if (ptr == null) {
-        log.err("failed to begin render pass: {s}", .{c.SDL_GetError()});
+        log.err("failed to begin gpu render pass: {s}", .{c.SDL_GetError()});
         return Error.RenderPassFailed;
+    }
+    return .fromOwned(ptr.?);
+}
+
+pub fn copyPass(self: Self) !GPUCopyPass {
+    assert(self.isValid());
+    const ptr = c.SDL_BeginGPUCopyPass(self.ptr);
+    if (ptr == null) {
+        log.err("failed to begin gpu copy pass: {s}", .{c.SDL_GetError()});
+        return Error.CopyPassFailed;
     }
     return .fromOwned(ptr.?);
 }

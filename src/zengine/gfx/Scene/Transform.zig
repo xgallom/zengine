@@ -5,12 +5,11 @@
 const std = @import("std");
 const assert = std.debug.assert;
 
-const c = @import("../ext.zig").c;
-const global = @import("../global.zig");
-const math = @import("../math.zig");
-const ui = @import("../ui.zig");
+const global = @import("../../global.zig");
+const math = @import("../../math.zig");
+const ui = @import("../../ui.zig");
 
-const log = std.log.scoped(.scene_transform);
+const log = std.log.scoped(.gfx_scene_transform);
 
 translation: math.Vertex = math.vertex.zero,
 order: math.TransformOrder = .default,

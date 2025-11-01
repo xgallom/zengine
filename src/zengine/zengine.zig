@@ -15,20 +15,21 @@ pub const fs = @import("fs.zig");
 pub const gfx = @import("gfx.zig");
 pub const global = @import("global.zig");
 pub const math = @import("math.zig");
+pub const Module = @import("Module.zig");
 pub const Options = @import("options.zig").Options;
 pub const options = @import("options.zig").options;
 pub const perf = @import("perf.zig");
-pub const Scene = @import("Scene.zig");
 pub const scheduler = @import("scheduler.zig");
 pub const sdl_allocator = @import("sdl_allocator.zig");
 pub const time = @import("time.zig");
+pub const TypeId = @import("type_id.zig").TypeId;
+pub const typeId = @import("type_id.zig").typeId;
 pub const ui = @import("ui.zig");
-pub const Module = @import("Module.zig");
 pub const Window = @import("Window.zig");
 
 pub const ZEngine = struct {
     engine: *Engine,
-    scene: *Scene,
+    scene: *gfx.Scene,
     renderer: *gfx.Renderer,
     ui: *ui.UI,
     handlers: Handlers = .{},
@@ -62,9 +63,9 @@ pub const ZEngine = struct {
         try engine.initMainWindow();
 
         const renderer = try gfx.Renderer.create(engine);
-        errdefer renderer.deinit(engine);
+        errdefer renderer.deinit();
 
-        const scene = try Scene.create();
+        const scene = try gfx.Scene.create(renderer);
         errdefer scene.deinit();
 
         const ui_ptr = try ui.UI.create(engine, renderer);
@@ -87,7 +88,7 @@ pub const ZEngine = struct {
         defer self.engine.deinit();
         defer perf.deinit();
         defer global.deinit();
-        defer self.renderer.deinit(self.engine);
+        defer self.renderer.deinit();
         defer self.scene.deinit();
         defer self.ui.deinit();
         defer perf.releaseGraph();

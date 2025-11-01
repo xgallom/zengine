@@ -11,6 +11,7 @@ const sdl = @import("../sdl.zig");
 const GPUBuffer = @import("GPUBuffer.zig");
 const GPUSampler = @import("GPUSampler.zig");
 const GPUTexture = @import("GPUTexture.zig");
+const GPUTransferBuffer = @import("GPUTransferBuffer.zig");
 
 pub const PrimitiveType = enum(c.SDL_GPUPrimitiveType) {
     triangle_list = c.SDL_GPU_PRIMITIVETYPE_TRIANGLELIST,
@@ -182,18 +183,30 @@ pub const SwapchainComposition = enum(c.SDL_GPUSwapchainComposition) {
     HDR10_ST2084 = c.SDL_GPU_SWAPCHAINCOMPOSITION_HDR10_ST2084,
 };
 
-pub const VertexInputState = struct {
-    vertex_buffer_descriptions: []const VertexBufferDescription = &.{},
-    vertex_attributes: []const VertexAttribute = &.{},
+pub const TextureTransferInfo = struct {
+    transfer_buffer: GPUTransferBuffer = .invalid,
+    offset: u32 = 0,
+    pixels_per_row: u32 = 0,
+    rows_per_layer: u32 = 0,
 
-    pub fn toSDL(self: *const @This(), gpa: std.mem.Allocator) !c.SDL_GPUVertexInputState {
-        const vertex_buffer_descriptions = try sdl.sliceFrom(gpa, self.vertex_buffer_descriptions);
-        const vertex_attributes = try sdl.sliceFrom(gpa, self.vertex_attributes);
+    pub fn toSDL(self: *const @This()) c.SDL_GPUTextureTransferInfo {
         return .{
-            .vertex_buffer_descriptions = vertex_buffer_descriptions.ptr,
-            .num_vertex_buffers = @intCast(vertex_buffer_descriptions.len),
-            .vertex_attributes = vertex_attributes.ptr,
-            .num_vertex_attributes = @intCast(vertex_attributes.len),
+            .transfer_buffer = self.transfer_buffer.ptr,
+            .offset = self.offset,
+            .pixels_per_row = self.pixels_per_row,
+            .rows_per_layer = self.rows_per_layer,
+        };
+    }
+};
+
+pub const TransferBufferLocation = struct {
+    transfer_buffer: GPUTransferBuffer = .invalid,
+    offset: u32 = 0,
+
+    pub fn toSDL(self: *const @This()) c.SDL_GPUTransferBufferLocation {
+        return .{
+            .transfer_buffer = self.transfer_buffer.ptr,
+            .offset = self.offset,
         };
     }
 };
@@ -210,6 +223,22 @@ pub const VertexBufferDescription = struct {
             .pitch = self.pitch,
             .input_rate = @intFromEnum(self.input_rate),
             .instance_step_rate = self.instance_step_rate,
+        };
+    }
+};
+
+pub const VertexInputState = struct {
+    vertex_buffer_descriptions: []const VertexBufferDescription = &.{},
+    vertex_attributes: []const VertexAttribute = &.{},
+
+    pub fn toSDL(self: *const @This(), gpa: std.mem.Allocator) !c.SDL_GPUVertexInputState {
+        const vertex_buffer_descriptions = try sdl.sliceFrom(gpa, self.vertex_buffer_descriptions);
+        const vertex_attributes = try sdl.sliceFrom(gpa, self.vertex_attributes);
+        return .{
+            .vertex_buffer_descriptions = vertex_buffer_descriptions.ptr,
+            .num_vertex_buffers = @intCast(vertex_buffer_descriptions.len),
+            .vertex_attributes = vertex_attributes.ptr,
+            .num_vertex_attributes = @intCast(vertex_attributes.len),
         };
     }
 };
@@ -407,21 +436,9 @@ pub const DepthStencilTargetInfo = struct {
     }
 };
 
-pub const BufferBinding = struct {
-    buffer: GPUBuffer,
-    offset: u32,
-
-    pub fn toSDL(self: *const @This()) c.struct_SDL_GPUBufferBinding {
-        return .{
-            .buffer = self.buffer.ptr,
-            .offset = self.offset,
-        };
-    }
-};
-
 pub const TextureSamplerBinding = struct {
-    texture: GPUTexture,
-    sampler: GPUSampler,
+    texture: GPUTexture = .invalid,
+    sampler: GPUSampler = .invalid,
 
     pub fn toSDL(self: *const @This()) c.SDL_GPUTextureSamplerBinding {
         return .{

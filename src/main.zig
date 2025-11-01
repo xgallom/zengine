@@ -12,7 +12,7 @@ const allocators = zengine.allocators;
 const ecs = zengine.ecs;
 const Event = zengine.Event;
 const gfx = zengine.gfx;
-const Scene = zengine.Scene;
+const Scene = zengine.gfx.Scene;
 const global = zengine.global;
 const math = zengine.math;
 const perf = zengine.perf;
@@ -21,6 +21,7 @@ const scheduler = zengine.scheduler;
 const time = zengine.time;
 const Engine = zengine.Engine;
 const UI = zengine.ui.UI;
+var mouse_motion: math.Point_f32 = math.point_f32.zero;
 
 const log = std.log.scoped(.main);
 
@@ -66,18 +67,21 @@ var property_editor: zengine.ui.PropertyEditorWindow = undefined;
 var allocs_window: zengine.ui.AllocsWindow = undefined;
 var perf_window: zengine.ui.PerfWindow = undefined;
 
-var scene_map: zengine.containers.ArrayPtrMap(Scene.Node) = .empty;
+var scene_map: zengine.containers.ArrayMap(Scene.Node.Id) = .empty;
 
-var mouse_motion: math.Point_f32 = math.point_f32.zero;
 var config: Config = .{};
 
 const Config = struct {
     flags: packed struct {
         mouse_y_inverted: bool = false,
+        camera_controls_type: enum(u1) {
+            y_up,
+            y_dynamic,
+        } = .y_up,
     } = .{},
 
-    pub fn propertyEditor(self: *Config) zengine.ui.PropertyEditor(Config) {
-        return .init(self);
+    pub fn propertyEditor(self: *Config) UI.Element {
+        return zengine.ui.PropertyEditor(Config).init(self).element();
     }
 };
 
@@ -110,40 +114,33 @@ fn load(self: *const ZEngine) !bool {
     {
         errdefer gfx_loader.cancel();
 
-        _ = try gfx_loader.loadMesh(self.scene, "Cat", "cat.obj");
-        _ = try gfx_loader.loadMesh(self.scene, "Black Cat", "black_cat.obj");
-        _ = try gfx_loader.loadMesh(self.scene, "Cow", "cow_nonormals.obj");
-        _ = try gfx_loader.loadMesh(self.scene, "Mountain", "mountain.obj");
-        _ = try gfx_loader.loadMesh(self.scene, "Cube", "cube.obj");
+        _ = try gfx_loader.loadMesh("Cat", "cat.obj");
+        _ = try gfx_loader.loadMesh("Black Cat", "black_cat.obj");
+        _ = try gfx_loader.loadMesh("Cow", "cow_nonormals.obj");
+        _ = try gfx_loader.loadMesh("Mountain", "mountain.obj");
+        _ = try gfx_loader.loadMesh("Cube", "cube.obj");
+
         _ = try gfx_loader.createOriginMesh();
         _ = try gfx_loader.createDefaultMaterial();
         _ = try gfx_loader.createTestingMaterial();
         _ = try gfx_loader.createDefaultTexture();
 
-        _ = try self.scene.createDefaultCamera();
+        {
+            var camera_position: math.Vertex = .{ 4, 8, 10 };
+            var camera_direction: math.Vertex = undefined;
 
-        _ = try self.scene.createLight("Ambient", .ambient(.{
-            .color = .{ 255, 255, 255 },
-            .intensity = 0.05,
-        }));
-        _ = try self.scene.createLight("Directional Magenta", .directional(.{
-            .color = .{ 127, 127, 127 },
-            .intensity = 0.1,
-        }));
-        _ = try self.scene.createLight("Diffuse Red", .point(.{
-            .color = .{ 255, 32, 64 },
-            .intensity = 2e4,
-        }));
-        _ = try self.scene.createLight("Diffuse Green", .point(.{
-            .color = .{ 32, 255, 64 },
-            .intensity = 8e3,
-        }));
-        _ = try self.scene.createLight("Diffuse Blue", .point(.{
-            .color = .{ 64, 32, 255 },
-            .intensity = 2e4,
-        }));
+            math.vector3.scale(&camera_position, 50);
+            math.vector3.lookAt(&camera_direction, &camera_position, &math.vector3.zero);
 
-        _ = try gfx_loader.createLightsBuffer(self.scene, null);
+            _ = try self.renderer.insertCamera("default", &.{
+                .type = .perspective,
+                .position = camera_position,
+                .direction = camera_direction,
+            });
+        }
+
+        _ = try gfx_loader.loadLights("scene.lgh");
+        _ = try gfx_loader.createLightsBuffer(null);
         try gfx_loader.commit();
     }
 
@@ -152,60 +149,62 @@ fn load(self: *const ZEngine) !bool {
 
     const pi = std.math.pi;
 
-    _ = try self.scene.createRootNode(.light("Ambient"), &.{});
-    const dir_light = try self.scene.createRootNode(.light("Directional Magenta"), &.{});
-
-    const objects = try self.scene.createRootNode(.node("Objects"), &.{
-        .order = .srt,
+    _ = try self.scene.createRootNode("Ambient Light", .light("Ambient"), &.{});
+    const dir_light = try self.scene.createRootNode("Directional Light", .light("Directional"), &.{
+        .rotation = .{ pi, -pi / 4.0, -pi / 3.0 },
     });
-    const ground = try self.scene.createRootNode(.node("Ground"), &.{
+
+    const objects = try self.scene.createRootNode("Objects", .node(), &.{
+        .order = .trs,
+    });
+    const ground = try self.scene.createRootNode("Ground", .node(), &.{
         .translation = .{ 0, -450, 0 },
         .scale = .{ 250, 250, 250 },
     });
-    const lights = try self.scene.createRootNode(.node("Lights"), &.{});
+    const lights = try self.scene.createRootNode("Cubes", .node(), &.{});
 
-    const cat = try self.scene.createChildNode(objects, .object("Cat"), &.{
+    const cat = try self.scene.createChildNode(objects, "Cat", .object("Cat"), &.{
         .translation = .{ 200, 0, 0 },
         .rotation = .{ -pi / 2.0, 0, 0 },
     });
 
-    _ = try self.scene.createRootNode(.object("Black Cat"), &.{
+    _ = try self.scene.createRootNode("Black Cat", .object("Black Cat"), &.{
         .translation = .{ 100, 0, 0 },
         .rotation = .{ -pi / 2.0, 0, 0 },
     });
 
-    _ = try self.scene.createChildNode(objects, .object("Cow"), &.{
+    _ = try self.scene.createChildNode(objects, "Cow", .object("Cow"), &.{
         .translation = .{ 0, 0, 0 },
         .rotation = .{ 0, -pi / 2.0, 0 },
         .scale = .{ 10, 10, 10 },
     });
 
-    _ = try self.scene.createChildNode(ground, .object("Plane"), &.{});
-    _ = try self.scene.createChildNode(ground, .object("Landscape"), &.{});
+    _ = try self.scene.createChildNode(ground, "Plane", .object("Plane"), &.{});
+    _ = try self.scene.createChildNode(ground, "Landscape", .object("Landscape"), &.{});
 
-    const cube_r = try self.scene.createChildNode(lights, .node("Red"), &.{
+    const cube_r = try self.scene.createChildNode(lights, "Red", .node(), &.{
         .translation = .{ 100, 0, 0 },
     });
-    _ = try self.scene.createChildNode(cube_r, .object("Cube Red"), &.{
+    _ = try self.scene.createChildNode(cube_r, "Light", .light("Cube Red"), &.{});
+    _ = try self.scene.createChildNode(cube_r, "Mesh", .object("Cube Red"), &.{
         .scale = .{ 3, 3, 3 },
     });
-    _ = try self.scene.createChildNode(cube_r, .light("Diffuse Red"), &.{});
 
-    const cube_g = try self.scene.createChildNode(lights, .node("Green"), &.{
+    const cube_g = try self.scene.createChildNode(lights, "Green", .node(), &.{
         .translation = .{ 0, 100, 0 },
     });
-    _ = try self.scene.createChildNode(cube_g, .object("Cube Green"), &.{
+    _ = try self.scene.createChildNode(cube_g, "Light", .light("Cube Green"), &.{});
+    _ = try self.scene.createChildNode(cube_g, "Mesh", .object("Cube Green"), &.{
         .scale = .{ 3, 3, 3 },
     });
-    _ = try self.scene.createChildNode(cube_g, .light("Diffuse Green"), &.{});
 
-    const cube_b = try self.scene.createChildNode(lights, .node("Blue"), &.{
+    const cube_b = try self.scene.createChildNode(lights, "Blue", .node(), &.{
         .translation = .{ -100, 0, 0 },
     });
-    _ = try self.scene.createChildNode(cube_b, .object("Cube Blue"), &.{
+    _ = try self.scene.createChildNode(cube_b, "Light", .light("Cube Blue"), &.{});
+    _ = try self.scene.createChildNode(cube_b, "Mesh", .object("Cube Blue"), &.{
         .scale = .{ 3, 3, 3 },
     });
-    _ = try self.scene.createChildNode(cube_b, .light("Diffuse Blue"), &.{});
 
     try scene_map.insert(self.scene.allocator, "dir_light", dir_light);
     try scene_map.insert(self.scene.allocator, "objects", objects);
@@ -355,7 +354,7 @@ fn input(self: *const ZEngine) !bool {
 }
 
 fn update(self: *const ZEngine) !bool {
-    const camera = self.scene.cameras.getPtr("default");
+    const camera = self.renderer.cameras.getPtr(self.renderer.camera);
 
     var coords: math.vector3.Coords = undefined;
     camera.coords(&coords);
@@ -366,12 +365,7 @@ fn update(self: *const ZEngine) !bool {
     const translation_speed = 20 * delta * speed_scale;
     const scale_speed = 15 * delta;
 
-    log.debug("coords_norm: {any}", .{coords});
-
-    // math.vector2.localCoords(&coordinates2, &.{ 0, 1 }, &.{ 1, 0 });
     camera.up = coords.y;
-
-    const time_s = global.timeSinceStart().toFloat().toValue32(.s) * 2;
 
     if (mouse_motion[0] != 0) {
         math.vector3.rotateDirectionScale(&camera.direction, &coords.x, rotation_speed * mouse_speed * mouse_motion[0]);
@@ -443,30 +437,31 @@ fn update(self: *const ZEngine) !bool {
     math.vector3.normalize(&camera.up);
     camera.orto_scale = std.math.clamp(
         camera.orto_scale,
-        Scene.Camera.orto_scale_min,
-        Scene.Camera.orto_scale_max,
+        gfx.Camera.orto_scale_min,
+        gfx.Camera.orto_scale_max,
     );
     camera.fov = std.math.clamp(
         camera.fov,
-        Scene.Camera.fov_min,
-        Scene.Camera.fov_max,
+        gfx.Camera.fov_min,
+        gfx.Camera.fov_max,
     );
 
     {
         errdefer gfx_loader.cancel();
 
         const pi = std.math.pi;
+        const time_s = global.timeSinceStart().toFloat().toValue32(.s);
+        const s = self.scene.nodes.slice();
 
-        const cat = scene_map.getPtr("cat");
-        const dir_light = scene_map.getPtr("dir_light");
-        const objects = scene_map.getPtr("objects");
+        const cat = s.transform(scene_map.get("cat"));
+        const objects = s.transform(scene_map.get("objects"));
 
-        const cube_r = scene_map.getPtr("cube_r");
-        const cube_g = scene_map.getPtr("cube_g");
-        const cube_b = scene_map.getPtr("cube_b");
+        const cube_r = s.transform(scene_map.get("cube_r"));
+        const cube_g = s.transform(scene_map.get("cube_g"));
+        const cube_b = s.transform(scene_map.get("cube_b"));
 
-        const cos = @cos(time_s);
-        const sin = @sin(time_s);
+        const cos = @cos(1.5 * time_s);
+        const sin = @sin(1.5 * time_s);
         const x = 150 * cos;
         const y = 25 * cos;
         const z = 150 * sin;
@@ -478,31 +473,29 @@ fn update(self: *const ZEngine) !bool {
         const dy: f32 = @floatFromInt(ry - 15);
         const dz: f32 = @floatFromInt(rz - 15);
 
-        var g_pos = cube_g.transform.translation;
+        var g_pos = cube_g.translation;
         var axis: math.Vertex = .{ dx, dy, dz };
         math.vertex.normalize(&axis);
         math.vertex.rotateDirectionScale(&dir, &axis, 20 * delta);
         math.vertex.normalize(&dir);
         math.vertex.translateScale(&g_pos, &dir, 20 * delta);
-        math.vertex.clamp(&g_pos, &.{ -100, -100, -100 }, &.{ 100, 100, 100 });
+        math.vertex.clamp(&g_pos, &.{ -300, 0, -300 }, &.{ 300, 300, 300 });
 
         const r_pos = .{ x, y + 55, z };
         const b_pos = .{ -x, -y + 55, -z };
 
-        dir_light.transform.rotation[0] = time_s;
+        objects.translation[1] = 30 * cos + 30;
+        objects.rotation[0] = 2 * time_s / pi;
+        objects.rotation[1] = 2 * time_s;
+        cat.rotation[1] = 20 * time_s;
+        cat.translation[1] = 25 * @cos(10 * time_s);
 
-        objects.transform.translation[1] = 30 * cos + 30;
-        objects.transform.rotation[0] = time_s / pi;
-        objects.transform.rotation[1] = time_s;
-        cat.transform.rotation[1] = 10 * time_s;
-        cat.transform.translation[1] = 25 * @cos(5 * time_s);
-
-        cube_r.transform.translation = r_pos;
-        cube_g.transform.translation = g_pos;
-        cube_b.transform.translation = b_pos;
+        cube_r.translation = r_pos;
+        cube_g.translation = g_pos;
+        cube_b.translation = b_pos;
 
         flat_scene = try self.scene.flatten();
-        _ = try gfx_loader.createLightsBuffer(self.scene, &flat_scene);
+        _ = try gfx_loader.createLightsBuffer(&flat_scene);
         try gfx_loader.commit();
     }
 
@@ -527,5 +520,7 @@ fn render(self: *const ZEngine) !void {
     self.ui.endDraw();
 
     var items: gfx.Renderer.Items = .init(&flat_scene);
-    _ = try self.renderer.render(self.engine, self.scene, &flat_scene, self.ui, &items);
+    _ = try flat_scene.render(self.ui, &items);
 }
+
+fn updateCameraControls() void {}

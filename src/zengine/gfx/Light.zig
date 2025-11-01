@@ -1,5 +1,5 @@
 //!
-//! The zengine scene light implementation
+//! The zengine light implementation
 //!
 
 const std = @import("std");
@@ -10,26 +10,29 @@ const global = @import("../global.zig");
 const math = @import("../math.zig");
 const ui = @import("../ui.zig");
 
-const log = std.log.scoped(.scene_light);
+const log = std.log.scoped(.gfx_light);
 
-src: Source,
-type: Type,
+name: [:0]const u8 = "",
+src: Source = .{},
+type: Type = .default,
 
 pub const Self = @This();
+
+pub const Source = struct {
+    color: math.RGBf32 = math.rgb_f32.zero,
+    power: math.Scalar = 1,
+
+    pub const color_max = 1;
+    pub const color_min = 0;
+    pub const color_speed = 0.05;
+    pub const intensity_speed = 0.05;
+};
 
 pub const Type = enum {
     ambient,
     directional,
     point,
-};
-
-pub const Source = struct {
-    color: math.RGBu8 = math.rgb_u8.zero,
-    intensity: math.Scalar = 1,
-
-    pub const color_type = ui.property_editor.InputType.scalar;
-    pub const intensity_speed = 0.05;
-    pub const intensity_speed_type = ui.property_editor.ScalarSpeedType.absolute;
+    pub const default = .ambient;
 };
 
 pub fn ambient(src: Source) Self {
@@ -44,6 +47,6 @@ pub fn point(src: Source) Self {
     return .{ .src = src, .type = .point };
 }
 
-pub fn propertyEditor(self: *Self) ui.PropertyEditor(Self) {
-    return .init(self);
+pub fn propertyEditor(self: *Self) ui.UI.Element {
+    return ui.PropertyEditor(Self).init(self).element();
 }

@@ -32,7 +32,7 @@ pub const KeyIndex = struct {
     key: []const u8,
     value: Value,
 };
-pub const SectionsTree = containers.KeyTree(KeyIndex, .{
+pub const SectionsTree = containers.KeyTreeMap(KeyIndex, .{
     .has_depth = true,
 });
 pub const SectionsListTree = containers.Tree(KeyIndex, .{

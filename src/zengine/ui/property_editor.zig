@@ -99,6 +99,61 @@ pub fn PropertyEditor(comptime C: type) type {
     return InputFields(C, .{});
 }
 
+pub fn RefPropertyEditor(comptime C: type, comptime K: type) type {
+    comptime assert(@typeInfo(C) == .@"struct");
+    const type_info = @typeInfo(C).@"struct";
+    const field_resolver = FieldResolver(C);
+
+    const exclude_properties = field_resolver.propertyList("exclude_properties");
+
+    return struct {
+        ref: CRef = undefined,
+
+        pub const Self = @This();
+        pub const CRef = @Type(.{ .@"struct" = .{
+            .layout = .auto,
+            .fields = ref_fields,
+            .decls = &.{},
+            .is_tuple = type_info.is_tuple,
+        } });
+        pub const fields = type_info.fields;
+        pub const ref_fields = refFields(fields);
+
+        var cc: cache.Cache(K) = .empty;
+
+        pub fn init(key: K, ref: CRef) UI.Element {
+            const result = cc.getOrPut(Self, key, .{ .ref = ref });
+            return result.value.element;
+        }
+
+        pub fn register() !void {
+            try cc.register();
+        }
+
+        pub fn draw(self: *Self, ui: *const UI, is_open: *bool) void {
+            fields: inline for (type_info.fields) |field| {
+                comptime if (exclude_properties.contains(field.name)) continue :fields;
+
+                const field_ptr = @field(self.ref, field.name);
+                const Input = InputField(C, field);
+                if (comptime isOptional(field.type)) {
+                    if (field_ptr.* == null) {
+                        InputNull(.{ .name = field.name }).draw(ui, is_open);
+                        return;
+                    } else Input.drawFieldImpl(@ptrCast(field_ptr), ui, is_open);
+                } else Input.drawFieldImpl(field_ptr, ui, is_open);
+            }
+        }
+
+        pub fn element(self: *Self) UI.Element {
+            return .{
+                .ptr = @ptrCast(self),
+                .drawFn = @ptrCast(&draw),
+            };
+        }
+    };
+}
+
 pub const PropertyEditorNull = struct {
     const Self = @This();
 
@@ -155,68 +210,29 @@ pub fn InputField(comptime C: type, comptime field: StdType.StructField) type {
             is_open: *bool,
         ) void {
             switch (@typeInfo(StripOptional(field.type))) {
-                .bool => _ = InputCheckbox(.{ .name = name }).drawImpl(field_ptr, ui, is_open),
-                .int, .float => InputScalar(field.type, 1, .{
-                    .name = name,
-                    .min = field_resolver.optional(field_min),
-                    .max = field_resolver.optional(field_max),
-                    .speed = field_resolver.optional(field_speed),
-                    .speed_type = field_resolver.optional(field_speed_type),
-                    .input_type = field_resolver.optional(field_type),
-                }).drawImpl(field_ptr, ui, is_open),
-                .pointer => |field_info| {
-                    if (field_info.size != .slice) {
+                .bool => inputBool(field_ptr, ui, is_open),
+                .int, .float => inputIntOrFloat(field.type, field_ptr, ui, is_open),
+                .pointer => |field_info| switch (field_info.size) {
+                    .one => switch (@typeInfo(field_info.child)) {
+                        .bool => inputBool(field_ptr.*, ui, is_open),
+                        .int, .float => inputIntOrFloat(field_info.child, field_ptr.*, ui, is_open),
+                        .array => inputArray(field_info.child, field_ptr.*, ui, is_open),
+                        .@"struct" => inputStruct(field_info.child, field_ptr.*, ui, is_open),
+                        .@"enum" => inputEnum(field_info.child, field_ptr.*, ui, is_open),
+                        inline else => {
+                            @compileLog(field_info);
+                            @compileError("Unsupported pointer property");
+                        },
+                    },
+                    .slice => inputSlice(StripOptional(field.type), field_ptr, ui, is_open),
+                    inline else => {
                         @compileLog(field_info);
                         @compileError("Unsupported pointer size");
-                    }
-                    if (field_info.child != u8) {
-                        @compileLog(field_info);
-                        @compileError("Only strings supported");
-                    }
-                    if (field_info.sentinel() != 0) {
-                        @compileLog(field_info);
-                        @compileError("Only zero-terminated strings supported");
-                    }
-
-                    InputText(.{
-                        .name = name,
-                        .read_only = field_info.is_const,
-                    }).drawImpl(@constCast(field_ptr.*), ui, is_open);
+                    },
                 },
-                .array => |field_info| {
-                    const input_type = comptime field_resolver.default(
-                        field_type,
-                        if (field_info.child == u8) InputType.text else InputType.scalar,
-                    );
-                    if (input_type == .text and field_info.sentinel() != 0) {
-                        @compileError("Only zero-terminated strings supported");
-                    }
-                    const len = field_info.len;
-
-                    switch (comptime input_type) {
-                        .text => InputText(.{ .name = name }).drawImpl(field_ptr[0..len :0], ui, is_open),
-                        .scalar => |scalar_type| InputScalar(field_info.child, len, .{
-                            .name = name,
-                            .min = field_resolver.optional(field_min),
-                            .max = field_resolver.optional(field_max),
-                            .speed = field_resolver.optional(field_speed),
-                            .speed_type = field_resolver.optional(field_speed_type),
-                            .input_type = scalar_type,
-                        }).drawImpl(field_ptr, ui, is_open),
-                        else => @compileError("Unsupported array type"),
-                    }
-                },
-                .@"struct" => InputFields(field.type, .{ .name = name }).init(field_ptr).draw(ui, is_open),
-                .@"enum" => |field_info| switch (field_info.is_exhaustive) {
-                    false => InputScalar(field_info.tag_type, 1, .{
-                        .name = name,
-                        .min = field_resolver.optional(field_min),
-                        .max = field_resolver.optional(field_max),
-                        .speed = 1,
-                        .input_type = .drag,
-                    }).drawImpl(@ptrCast(field_ptr), ui, is_open),
-                    true => _ = InputCombo(field.type, .{ .name = name }).init(field_ptr).draw(ui, is_open),
-                },
+                .array => inputArray(field.type, field_ptr, ui, is_open),
+                .@"struct" => inputStruct(field.type, field_ptr, ui, is_open),
+                .@"enum" => inputEnum(field.type, field_ptr, ui, is_open),
                 inline else => |field_info| {
                     @compileLog(field_info);
                     @compileError("Unsupported property");
@@ -229,6 +245,90 @@ pub fn InputField(comptime C: type, comptime field: StdType.StructField) type {
                 .ptr = @ptrCast(self.component),
                 .drawFn = @ptrCast(&drawImpl),
             };
+        }
+
+        fn inputBool(ptr: *bool, ui: *const UI, is_open: *bool) void {
+            _ = InputCheckbox(.{ .name = name }).drawImpl(ptr, ui, is_open);
+        }
+
+        fn inputIntOrFloat(comptime T: type, ptr: *T, ui: *const UI, is_open: *bool) void {
+            _ = InputScalar(T, 1, .{
+                .name = name,
+                .min = field_resolver.optional(field_min),
+                .max = field_resolver.optional(field_max),
+                .speed = field_resolver.optional(field_speed),
+                .speed_type = field_resolver.optional(field_speed_type),
+                .input_type = field_resolver.optional(field_type),
+            }).drawImpl(ptr, ui, is_open);
+        }
+
+        fn inputSlice(comptime T: type, ptr: *T, ui: *const UI, is_open: *bool) void {
+            comptime assert(@typeInfo(T) == .pointer);
+            const field_info = @typeInfo(T).pointer;
+
+            comptime {
+                assert(field_info.size == .slice);
+                if (field_info.child != u8) {
+                    @compileLog(field_info);
+                    @compileError("Only string slices supported");
+                }
+                if (field_info.sentinel() != 0) {
+                    @compileLog(field_info);
+                    @compileError("Only zero-terminated string slices supported");
+                }
+            }
+
+            _ = InputText(.{
+                .name = name,
+                .read_only = field_info.is_const,
+            }).drawImpl(@constCast(ptr.*), ui, is_open);
+        }
+
+        fn inputArray(comptime T: type, ptr: *T, ui: *const UI, is_open: *bool) void {
+            comptime assert(@typeInfo(T) == .array);
+            const field_info = @typeInfo(T).array;
+
+            const input_type = comptime field_resolver.default(
+                field_type,
+                if (field_info.child == u8) InputType.text else InputType.scalar,
+            );
+            if (input_type == .text and field_info.sentinel() != 0) {
+                @compileError("Only zero-terminated strings supported");
+            }
+            const len = field_info.len;
+
+            switch (comptime input_type) {
+                .text => _ = InputText(.{ .name = name }).drawImpl(ptr[0..len :0], ui, is_open),
+                .scalar => |scalar_type| _ = InputScalar(field_info.child, len, .{
+                    .name = name,
+                    .min = field_resolver.optional(field_min),
+                    .max = field_resolver.optional(field_max),
+                    .speed = field_resolver.optional(field_speed),
+                    .speed_type = field_resolver.optional(field_speed_type),
+                    .input_type = scalar_type,
+                }).drawImpl(ptr, ui, is_open),
+                else => @compileError("Unsupported array type"),
+            }
+        }
+
+        fn inputStruct(comptime T: type, ptr: *T, ui: *const UI, is_open: *bool) void {
+            InputFields(T, .{ .name = name }).init(ptr).draw(ui, is_open);
+        }
+
+        fn inputEnum(comptime T: type, ptr: *T, ui: *const UI, is_open: *bool) void {
+            comptime assert(@typeInfo(T) == .@"enum");
+            const field_info = @typeInfo(T).@"enum";
+
+            switch (field_info.is_exhaustive) {
+                false => _ = InputScalar(field_info.tag_type, 1, .{
+                    .name = name,
+                    .min = field_resolver.optional(field_min),
+                    .max = field_resolver.optional(field_max),
+                    .speed = 1,
+                    .input_type = .drag,
+                }).drawImpl(@ptrCast(ptr), ui, is_open),
+                true => InputCombo(field.type, .{ .name = name }).init(ptr).draw(ui, is_open),
+            }
         }
     };
 }
@@ -442,7 +542,7 @@ pub fn InputText(comptime options: Options.InputText) type {
             drawImpl(self.component, ui, is_open);
         }
 
-        pub fn drawImpl(component: [:0]u8, _: *const UI, _: *bool) void {
+        pub fn drawImpl(component: [:0]u8, _: *const UI, _: *bool) bool {
             c.igTableNextRow(0, 0);
             c.igPushID_Str(name);
 
@@ -452,9 +552,10 @@ pub fn InputText(comptime options: Options.InputText) type {
 
             _ = c.igTableNextColumn();
             c.igSetNextItemWidth(-std.math.floatMin(f32));
-            _ = c.igInputText("##Editor", component.ptr, component.len + 1, flags, null, null);
+            const value_changed = c.igInputText("##Editor", component.ptr, component.len + 1, flags, null, null);
 
             c.igPopID();
+            return value_changed;
         }
 
         pub fn element(self: *const Self) UI.Element {
@@ -513,11 +614,11 @@ pub fn InputCombo(comptime C: type, comptime options: Options.InputCombo) type {
 
             _ = c.igTableNextColumn();
             c.igSetNextItemWidth(-std.math.floatMin(f32));
-            const input_changed = c.igCombo_Str_arr("##" ++ name, @ptrCast(component), &items.values, items.values.len, -1);
+            const value_changed = c.igCombo_Str_arr("##" ++ name, @ptrCast(component), &items.values, items.values.len, -1);
 
             c.igPopID();
 
-            return input_changed;
+            return value_changed;
         }
 
         pub fn element(self: *const Self) UI.Element {
@@ -551,8 +652,8 @@ pub fn InputCombo(comptime C: type, comptime options: Options.InputCombo) type {
 
             _ = c.igTableNextColumn();
             c.igSetNextItemWidth(-std.math.floatMin(f32));
-            const input_changed = c.igCombo_Str_arr("##" ++ name, &self.value, &items.values, items.values.len, -1);
-            if (input_changed) self.component.* = Indexer.keyForIndex(@intCast(self.value));
+            const value_changed = c.igCombo_Str_arr("##" ++ name, &self.value, &items.values, items.values.len, -1);
+            if (value_changed) self.component.* = Indexer.keyForIndex(@intCast(self.value));
 
             c.igPopID();
         }
@@ -630,7 +731,11 @@ pub fn InputScalar(comptime C: type, comptime count: usize, comptime options: Op
             drawImpl(self.component, ui, is_open);
         }
 
-        pub fn drawImpl(component: CPtr, _: *const UI, _: *bool) void {
+        fn drawElement(component: CPtr, ui: *const UI, is_open: bool) void {
+            _ = drawImpl(component, ui, is_open);
+        }
+
+        pub fn drawImpl(component: CPtr, _: *const UI, _: *bool) bool {
             c.igTableNextRow(0, 0);
             c.igPushID_Str(name);
 
@@ -640,25 +745,27 @@ pub fn InputScalar(comptime C: type, comptime count: usize, comptime options: Op
 
             _ = c.igTableNextColumn();
             c.igSetNextItemWidth(-std.math.floatMin(f32));
-            switch (comptime input_type) {
-                .drag => {
+            const value_changed = switch (comptime input_type) {
+                .drag => blk: {
                     const speed_val = switch (comptime speed_type) {
                         .absolute => speed,
                         .relative => relSpeed(component),
                     };
 
-                    _ = c.igDragScalarN("##" ++ name, data_type, component, count, speed_val, &min, &max, null, 0);
+                    break :blk c.igDragScalarN("##" ++ name, data_type, component, count, speed_val, &min, &max, null, 0);
                 },
-                .slider => _ = c.igSliderScalarN("##" ++ name, data_type, component, count, &min, &max, null, 0),
-            }
+                .slider => c.igSliderScalarN("##" ++ name, data_type, component, count, &min, &max, null, 0),
+            };
 
             c.igPopID();
+
+            return value_changed;
         }
 
         pub fn element(self: *const Self) UI.Element {
             return .{
                 .ptr = @ptrCast(self.component),
-                .drawFn = @ptrCast(&drawImpl),
+                .drawFn = @ptrCast(&drawElement),
             };
         }
 
@@ -718,4 +825,18 @@ fn isOptional(comptime T: type) bool {
 
 fn StripOptional(comptime T: type) type {
     return if (isOptional(T)) StripOptional(std.meta.Child(T)) else T;
+}
+
+fn refFields(comptime fields: []const StdType.StructField) []const StdType.StructField {
+    comptime {
+        var result: []const StdType.StructField = &[_]StdType.StructField{};
+        for (fields) |field| result = result ++ &[_]StdType.StructField{.{
+            .name = field.name,
+            .type = *field.type,
+            .default_value_ptr = null,
+            .is_comptime = field.is_comptime,
+            .alignment = @alignOf(*field.type),
+        }};
+        return result;
+    }
 }

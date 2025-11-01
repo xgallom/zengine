@@ -70,6 +70,13 @@ pub fn slice(self: *const Self, comptime buf_type: Type) []Elem(buf_type) {
     return self.cpu_bufs.getPtrConst(buf_type).slice(Elem(buf_type));
 }
 
+pub fn slices(self: *const Self) struct { vertex: []Elem(.vertex), index: []Elem(.index) } {
+    return .{
+        .vertex = self.slice(.vertex),
+        .index = self.slice(.index),
+    };
+}
+
 pub fn vertCount(self: *const Self, comptime buf_type: Type) u32 {
     return self.cpu_bufs.getPtrConst(buf_type).vert_count;
 }
@@ -175,6 +182,6 @@ pub fn releaseGPUBuffers(self: *Self, gpu_device: GPUDevice) void {
     if (self.type == .index) self.gpu_bufs.getPtr(.index).release(gpu_device);
 }
 
-pub fn propertyEditor(self: *Self) ui.PropertyEditor(Self) {
-    return .init(self);
+pub fn propertyEditor(self: *Self) ui.UI.Element {
+    return ui.PropertyEditor(Self).init(self).element();
 }

@@ -13,8 +13,8 @@ pub const InsertionOrder = enum {
     insert_last,
 };
 
-/// Key tree data structure
-pub fn KeyTree(comptime V: type, comptime options: struct {
+/// Key tree map data structure
+pub fn KeyTreeMap(comptime V: type, comptime options: struct {
     pool_options: std.heap.MemoryPoolOptions = .{},
     insertion_order: InsertionOrder = .ordered,
     separator: u8 = '.',

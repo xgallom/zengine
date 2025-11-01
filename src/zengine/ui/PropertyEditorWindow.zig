@@ -88,10 +88,10 @@ fn destroy(self: *const Self, node: *std.DoublyLinkedList.Node) void {
     self.allocator.destroy(item);
 }
 
-pub fn append(self: *Self, property_editor: anytype, id: []const u8, name: []const u8) !*Item {
+pub fn append(self: *Self, node_element: UI.Element, id: []const u8, name: []const u8) !*Item {
     const result = try self.appendImpl(&self.items, .{
         .self = self,
-        .element = property_editor.element(),
+        .element = node_element,
         .depth = 0,
     });
     _ = try std.fmt.bufPrintZ(&result.id, "{s}", .{id});
@@ -110,10 +110,10 @@ pub fn appendNode(self: *Self, id: []const u8, name: []const u8) !*Item {
     return result;
 }
 
-pub fn appendChild(self: *Self, item: *Item, property_editor: anytype, id: []const u8, name: []const u8) !*Item {
+pub fn appendChild(self: *Self, item: *Item, node_element: UI.Element, id: []const u8, name: []const u8) !*Item {
     const result = try self.appendImpl(&item.children, .{
         .self = self,
-        .element = property_editor.element(),
+        .element = node_element,
         .depth = item.depth + 1,
     });
     _ = try std.fmt.bufPrintZ(&result.id, "{s}", .{id});
@@ -172,7 +172,7 @@ pub fn draw(self: *Self, ui: *const UI, is_open: *bool) void {
         c.igSeparatorEx(c.ImGuiSeparatorFlags_Horizontal, 1);
         if (c.igBeginTable("##properties", 2, c.ImGuiTableFlags_Resizable | c.ImGuiTableFlags_ScrollY, .{}, 0)) {
             c.igPushID_Str(&item.id);
-            c.igTableSetupColumn("", c.ImGuiTableColumnFlags_WidthFixed, 90, 0);
+            c.igTableSetupColumn("", c.ImGuiTableColumnFlags_WidthFixed, 120, 0);
             c.igTableSetupColumn("", c.ImGuiTableColumnFlags_WidthStretch, 2, 0);
 
             if (item.element) |el| ui.draw(el, is_open);

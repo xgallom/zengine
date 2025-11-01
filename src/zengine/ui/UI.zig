@@ -67,8 +67,8 @@ pub fn create(engine: *Engine, renderer: *gfx.Renderer) !*Self {
     _ = c.ImGui_ImplSDL3_InitForSDLGPU(engine.main_win.ptr);
     var init_info: c.ImGui_ImplSDLGPU3_InitInfo = .{
         .Device = renderer.gpu_device.ptr,
-        .ColorTargetFormat = @intFromEnum(renderer.swapchainFormat(engine)),
-        .MSAASamples = c.SDL_GPU_SAMPLECOUNT_1,
+        .ColorTargetFormat = @intFromEnum(renderer.swapchainFormat()),
+        .MSAASamples = @intFromEnum(gfx.types.SampleCount.@"1"),
     };
     _ = c.ImGui_ImplSDLGPU3_Init(&init_info);
 
@@ -163,33 +163,18 @@ pub fn endDraw(self: *Self) void {
     sections.sub(.draw).end();
 }
 
-pub fn submitPass(self: *Self, command_buffer: ?*c.SDL_GPUCommandBuffer, swapchain_texture: ?*c.SDL_GPUTexture) !void {
+pub fn submitPass(self: *Self, command_buffer: gfx.GPUCommandBuffer, swapchain: gfx.GPUTexture) !void {
     if (!self.show_ui) return;
 
     assert(self.draw_data != null);
-    assert(command_buffer != null);
-    assert(swapchain_texture != null);
+    assert(command_buffer.isValid());
+    assert(swapchain.isValid());
 
-    c.ImGui_ImplSDLGPU3_PrepareDrawData(self.draw_data, command_buffer);
+    c.ImGui_ImplSDLGPU3_PrepareDrawData(self.draw_data, command_buffer.ptr);
 
-    log.debug("imgui render pass", .{});
-    const render_pass = c.SDL_BeginGPURenderPass(
-        command_buffer,
-        &c.SDL_GPUColorTargetInfo{
-            .texture = swapchain_texture,
-            .load_op = c.SDL_GPU_LOADOP_LOAD,
-            .store_op = c.SDL_GPU_STOREOP_STORE,
-        },
-        1,
-        null,
-    );
-    if (render_pass == null) {
-        log.err("failed to begin render_pass: {s}", .{c.SDL_GetError()});
-        return gfx.Error.DrawFailed;
-    }
-
-    c.ImGui_ImplSDLGPU3_RenderDrawData(self.draw_data, command_buffer, render_pass, null);
-
-    log.debug("end imgui render pass", .{});
-    c.SDL_EndGPURenderPass(render_pass);
+    var render_pass = try command_buffer.renderPass(&.{
+        .{ .texture = swapchain, .load_op = .load, .store_op = .store },
+    }, null);
+    c.ImGui_ImplSDLGPU3_RenderDrawData(self.draw_data, command_buffer.ptr, render_pass.ptr, null);
+    render_pass.end();
 }

@@ -1,5 +1,5 @@
 //!
-//! The zengine gpu command buffer implementation
+//! The zengine gpu render pass implementation
 //!
 
 const std = @import("std");
@@ -16,10 +16,11 @@ const Error = @import("Error.zig").Error;
 const GPUBuffer = @import("GPUBuffer.zig");
 const GPUDevice = @import("GPUDevice.zig");
 const GPUGraphicsPipeline = @import("GPUGraphicsPipeline.zig");
+const GPURenderPass = @import("GPURenderPass.zig");
 const GPUTexture = @import("GPUTexture.zig");
 const types = @import("types.zig");
 
-const log = std.log.scoped(.gfx_gpu_texture);
+const log = std.log.scoped(.gfx_render_pass);
 
 ptr: ?*c.SDL_GPURenderPass = null,
 
@@ -46,7 +47,7 @@ pub fn bindGraphicsPipeline(self: Self, pipeline: GPUGraphicsPipeline) void {
     c.SDL_BindGPUGraphicsPipeline(self.ptr, pipeline.ptr);
 }
 
-pub fn bindVertexBuffers(self: Self, first_slot: u32, buffers: []const types.BufferBinding) !void {
+pub fn bindVertexBuffers(self: Self, first_slot: u32, buffers: []const GPUBuffer.Binding) !void {
     assert(self.isValid());
     var arena = allocators.initArena();
     defer arena.deinit();
@@ -54,7 +55,7 @@ pub fn bindVertexBuffers(self: Self, first_slot: u32, buffers: []const types.Buf
     c.SDL_BindGPUVertexBuffers(self.ptr, first_slot, bufs.ptr, @intCast(bufs.len));
 }
 
-pub fn bindIndexBuffer(self: Self, buffer: *const types.BufferBinding, size: types.IndexElementSize) void {
+pub fn bindIndexBuffer(self: Self, buffer: *const GPUBuffer.Binding, size: types.IndexElementSize) void {
     assert(self.isValid());
     const buf = buffer.toSDL();
     c.SDL_BindGPUIndexBuffer(self.ptr, &buf, @intFromEnum(size));

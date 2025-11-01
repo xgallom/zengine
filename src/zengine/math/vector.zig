@@ -130,6 +130,12 @@ pub fn vectorNT(comptime N: comptime_int, comptime T: type) type {
             return .{ .self = self };
         }
 
+        pub fn from(comptime U: type, self: *const types.VectorNT(len, U)) Self {
+            var result: Self = undefined;
+            for (0..len) |n| result[n] = scalarT(U).to(Scalar, self[n]);
+            return result;
+        }
+
         pub fn to(comptime U: type, self: *const Self) types.VectorNT(len, U) {
             var result: types.VectorNT(len, U) = undefined;
             for (0..len) |n| result[n] = scalar.to(U, self[n]);

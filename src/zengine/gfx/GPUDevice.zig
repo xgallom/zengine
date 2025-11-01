@@ -17,6 +17,7 @@ const GPUGraphcisPipeline = @import("GPUGraphicsPipeline.zig");
 const GPUSampler = @import("GPUSampler.zig");
 const GPUShader = @import("GPUShader.zig");
 const GPUTexture = @import("GPUTexture.zig");
+const GPUTransferBuffer = @import("GPUTransferBuffer.zig");
 const types = @import("types.zig");
 
 const log = std.log.scoped(.gfx_gpu_device);
@@ -87,12 +88,33 @@ pub fn graphicsPipeline(self: Self, info: *const GPUGraphcisPipeline.CreateInfo)
     return .init(self, info);
 }
 
+pub fn transferBuffer(self: Self, info: *const GPUTransferBuffer.CreateInfo) !GPUTransferBuffer {
+    return .init(self, info);
+}
+
 pub fn destroy(self: Self, item: anytype) void {
     std.meta.Child(@TypeOf(item)).destroy(self, item.toOwned());
 }
 
 pub fn release(self: Self, item: anytype) void {
     std.meta.Child(@TypeOf(item)).release(self, item.toOwned());
+}
+
+pub fn map(self: Self, tr_buf: GPUTransferBuffer, cycle: bool) !GPUTransferBuffer.Mapping {
+    assert(self.isValid());
+    assert(tr_buf.isValid());
+    const ptr = c.SDL_MapGPUTransferBuffer(self.ptr, tr_buf.ptr, cycle);
+    if (ptr == null) {
+        log.err("failed mapping transfer buffer: {s}", .{c.SDL_GetError()});
+        return Error.TransferBufferFailed;
+    }
+    return .{ .gpu_device = self, .tr_buf = tr_buf, .ptr = @ptrCast(@alignCast(ptr.?)) };
+}
+
+pub fn unmap(self: Self, tr_buf: GPUTransferBuffer) void {
+    assert(self.isValid());
+    assert(tr_buf.isValid());
+    c.SDL_UnmapGPUTransferBuffer(self.ptr, tr_buf.ptr);
 }
 
 pub fn formatFlags(self: Self) GPUShader.FormatFlags {
@@ -140,6 +162,21 @@ pub fn supportsPresentMode(self: Self, window: Window, present_mode: types.Prese
     assert(self.isValid());
     assert(window.isValid());
     return c.SDL_WindowSupportsGPUPresentMode(self.ptr, window.ptr, @intFromEnum(present_mode));
+}
+
+pub fn textureSupportsFormat(
+    self: Self,
+    format: GPUTexture.Format,
+    tex_type: GPUTexture.Type,
+    usage: GPUTexture.UsageFlags,
+) bool {
+    assert(self.isValid());
+    return c.SDL_GPUTextureSupportsFormat(
+        self.ptr,
+        @intFromEnum(format),
+        @intFromEnum(tex_type),
+        usage.bits.mask,
+    );
 }
 
 pub inline fn isValid(self: Self) bool {

@@ -10,7 +10,7 @@ const ui = @import("../ui.zig");
 
 const log = std.log.scoped(.gfx_material_info);
 
-name: [:0]const u8,
+name: [:0]const u8 = "",
 texture: ?[:0]const u8 = null,
 diffuse_map: ?[:0]const u8 = null,
 bump_map: ?[:0]const u8 = null,
@@ -73,6 +73,6 @@ pub fn uniformBuffer(self: *const Self) [24]f32 {
     return result;
 }
 
-pub fn propertyEditor(self: *Self) ui.PropertyEditor(Self) {
-    return .init(self);
+pub fn propertyEditor(self: *Self) ui.UI.Element {
+    return ui.PropertyEditor(Self).init(self).element();
 }

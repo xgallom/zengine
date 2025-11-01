@@ -1,5 +1,5 @@
 //!
-//! The zengine scene camera implementation
+//! The zengine camera implementation
 //!
 
 const std = @import("std");
@@ -9,14 +9,15 @@ const global = @import("../global.zig");
 const math = @import("../math.zig");
 const ui = @import("../ui.zig");
 
-const log = std.log.scoped(.scene_camera);
+const log = std.log.scoped(.gfx_camera);
 
-type: Type = .perspective,
+name: [:0]const u8 = "",
 position: math.Vertex = math.vertex.zero,
 direction: math.Vertex = .{ 1, 0, 0 },
 up: math.Vertex = global.cameraUp(),
 fov: f32 = 50,
 orto_scale: f32 = 100,
+type: Type = .perspective,
 
 const Self = @This();
 
@@ -77,6 +78,6 @@ pub fn projection(
     }
 }
 
-pub fn propertyEditor(self: *Self) ui.PropertyEditor(Self) {
-    return .init(self);
+pub fn propertyEditor(self: *Self) ui.UI.Element {
+    return ui.PropertyEditor(Self).init(self).element();
 }

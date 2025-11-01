@@ -7,8 +7,6 @@ const assert = std.debug.assert;
 
 const allocators = @import("allocators.zig");
 const c = @import("ext.zig").c;
-const KeyMap = @import("containers.zig").KeyMap;
-const KeyTree = @import("containers.zig").KeyTree;
 pub const Properties = @import("Properties.zig");
 pub const Window = @import("Window.zig");
 

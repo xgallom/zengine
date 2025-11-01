@@ -12,18 +12,19 @@ const c = @import("../ext.zig").c;
 const global = @import("../global.zig");
 const math = @import("../math.zig");
 const perf = @import("../perf.zig");
-const Scene = @import("../Scene.zig");
+const str = @import("../str.zig");
 const ui_mod = @import("../ui.zig");
 const Error = @import("Error.zig").Error;
-const str = @import("../str.zig");
 const GPUBuffer = @import("GPUBuffer.zig");
 const img_loader = @import("img_loader.zig");
+const lgh_loader = @import("lgh_loader.zig");
 const MaterialInfo = @import("MaterialInfo.zig");
 const MeshBuffer = @import("MeshBuffer.zig");
 const MeshObject = @import("MeshObject.zig");
 const mtl_loader = @import("mtl_loader.zig");
 const obj_loader = @import("obj_loader.zig");
 const Renderer = @import("Renderer.zig");
+const Scene = @import("Scene.zig");
 const Surface = @import("Surface.zig");
 const SurfaceTexture = @import("SurfaceTexture.zig");
 const UploadTransferBuffer = @import("UploadTransferBuffer.zig");
@@ -55,8 +56,6 @@ pub fn deinit(self: *Self) void {
     const gpa = self.renderer.allocator;
     const gpu_device = self.renderer.gpu_device;
 
-    for (self.renderer.mesh_bufs.map.values()) |mesh_buf| mesh_buf.freeCPUBuffers(gpa);
-    for (self.renderer.storage_bufs.map.values()) |buf| buf.freeCPUBuffers(gpa);
     for (self.surface_textures.map.values()) |tex| tex.deinit(gpu_device);
     self.surface_textures.deinit();
 
@@ -72,23 +71,20 @@ pub fn cancel(self: *Self) void {
     self.modifs.getPtr(.mesh_buffer).clearRetainingCapacity();
     self.modifs.getPtr(.storage_buffer).clearRetainingCapacity();
     self.modifs.getPtr(.surface_texture).clearRetainingCapacity();
-    self.deinit();
 }
 
 pub fn commit(self: *Self) !void {
     try self.createGPUData();
     try self.uploadTransferBuffers();
     try self.commitSurfaceTextures();
-    self.modifs.getPtr(.mesh_buffer).clearRetainingCapacity();
-    self.modifs.getPtr(.storage_buffer).clearRetainingCapacity();
-    self.modifs.getPtr(.surface_texture).clearRetainingCapacity();
+    self.cancel();
 }
 
 pub fn flagModified(self: *Self, comptime target: Target, key: []const u8) !void {
     return self.modifs.getPtr(target).append(self.renderer.allocator, key);
 }
 
-pub fn loadMesh(self: *Self, scene: *Scene, key: []const u8, asset_path: []const u8) !*MeshBuffer {
+pub fn loadMesh(self: *Self, key: []const u8, asset_path: []const u8) !*MeshBuffer {
     const mesh_path = try global.assetPath(asset_path);
 
     var result = obj_loader.loadFile(self.renderer.allocator, mesh_path) catch |err| {
@@ -111,15 +107,7 @@ pub fn loadMesh(self: *Self, scene: *Scene, key: []const u8, asset_path: []const
         const mesh_obj = e.value_ptr;
         mesh_obj.mesh_buf = mesh_buf;
         mesh_obj.normals_buf = normals_buf;
-        _ = try scene.createObject(
-            e.key_ptr.*,
-            .fromMeshObject(
-                try self.renderer.insertMeshObject(
-                    e.key_ptr.*,
-                    mesh_obj,
-                ),
-            ),
-        );
+        _ = try self.renderer.insertMeshObject(e.key_ptr.*, mesh_obj);
     }
 
     result.cleanup();
@@ -140,6 +128,16 @@ pub fn loadMaterials(self: *Self, asset_path: []const u8) !void {
         }
         _ = try self.renderer.insertMaterial(item.name, item);
     }
+}
+
+pub fn loadLights(self: *Self, asset_path: []const u8) !void {
+    const lgh_path = try global.assetPath(asset_path);
+    var lgh = lgh_loader.loadFile(self.renderer.allocator, lgh_path) catch |err| {
+        log.err("Error loading lights: {t}", .{err});
+        return Error.LightFailed;
+    };
+    defer lgh.deinit();
+    for (lgh.items) |*item| _ = try self.renderer.insertLight(item.name, item);
 }
 
 pub fn loadTexture(self: *Self, asset_path: []const u8) !*SurfaceTexture {
@@ -232,53 +230,48 @@ pub fn createDefaultTexture(self: *Self) !*SurfaceTexture {
     return tex;
 }
 
-pub fn createLightsBuffer(self: *Self, scene: *const Scene, flat: ?*const Scene.Flattened) !*MeshBuffer {
+pub fn createLightsBuffer(self: *Self, flat: ?*const Scene.Flattened) !*MeshBuffer {
     const key = "lights";
     const gpa = self.renderer.allocator;
-    const old_buf = self.renderer.storage_bufs.getPtrOrNull(key);
-    const lights_buf = old_buf orelse try self.renderer.createStorageBuffer(key);
+    const lights_buf = try self.renderer.getOrCreateStorageBuffer(key);
+
     lights_buf.clearCPUBuffers();
 
     if (flat == null) return lights_buf;
+    assert(self.renderer == flat.?.scene.renderer);
 
+    const lights = flat.?.lights.slice();
     try self.flagModified(.storage_buffer, key);
-    const lights = flat.?.getPtrConst(.light).slice();
-    for (lights.items(.target)) |target| {
-        const light = scene.lights.getPtr(target);
+
+    for (lights.items(.target)) |light| {
         if (light.type == .ambient) {
             log.debug("ambient: {any}", .{light.src});
-            var color = math.rgb_u8.to(math.Scalar, &light.src.color);
-            math.rgb_f32.scaleRecip(&color, 255);
-            try lights_buf.append(gpa, .vertex, math.RGBf32, 0, &color);
-            try lights_buf.append(gpa, .vertex, f32, 0, &light.src.intensity);
+            try lights_buf.append(gpa, .vertex, math.RGBf32, 0, &light.src.color);
+            try lights_buf.append(gpa, .vertex, f32, 0, &light.src.power);
         }
     }
-    for (lights.items(.target), lights.items(.transform)) |target, *tr| {
-        const light = scene.lights.getPtr(target);
+
+    for (lights.items(.target), lights.items(.transform)) |light, *tr| {
         if (light.type == .directional) {
-            var color = math.rgb_u8.to(math.Scalar, &light.src.color);
             const direction = math.vector4.ntr_fwd;
             var tr_direction: math.Vector4 = undefined;
-            math.rgb_f32.scaleRecip(&color, 255);
             math.matrix4x4.apply(&tr_direction, tr, &direction);
             log.debug("directional: {any} {any}", .{ light.src, tr_direction });
             try lights_buf.append(gpa, .vertex, math.Vector4, 0, &tr_direction);
-            try lights_buf.append(gpa, .vertex, math.RGBf32, 0, &color);
-            try lights_buf.append(gpa, .vertex, f32, 0, &light.src.intensity);
+            try lights_buf.append(gpa, .vertex, math.RGBf32, 0, &light.src.color);
+            try lights_buf.append(gpa, .vertex, f32, 0, &light.src.power);
         }
     }
-    for (lights.items(.target), lights.items(.transform)) |target, *tr| {
-        const light = scene.lights.getPtr(target);
+
+    for (lights.items(.target), lights.items(.transform)) |light, *tr| {
         if (light.type == .point) {
-            var color = math.rgb_u8.to(math.Scalar, &light.src.color);
             const pos = math.vector4.tr_zero;
             var tr_pos: math.Vector4 = undefined;
-            math.rgb_f32.scaleRecip(&color, 255);
             math.matrix4x4.apply(&tr_pos, tr, &pos);
             log.debug("point: {any} {any}", .{ light.src, tr_pos });
             try lights_buf.append(gpa, .vertex, math.Vector4, 0, &tr_pos);
-            try lights_buf.append(gpa, .vertex, math.RGBf32, 0, &color);
-            try lights_buf.append(gpa, .vertex, f32, 0, &light.src.intensity);
+            try lights_buf.append(gpa, .vertex, math.RGBf32, 0, &light.src.color);
+            try lights_buf.append(gpa, .vertex, f32, 0, &light.src.power);
         }
     }
 
@@ -287,14 +280,17 @@ pub fn createLightsBuffer(self: *Self, scene: *const Scene, flat: ?*const Scene.
 
 fn createGPUData(self: *Self) !void {
     const gpu_device = self.renderer.gpu_device;
+
     for (self.modifs.getPtrConst(.mesh_buffer).items) |key| {
         const mesh = self.renderer.mesh_bufs.getPtr(key);
         try mesh.createGPUBuffers(gpu_device, null);
     }
+
     for (self.modifs.getPtrConst(.storage_buffer).items) |key| {
         const buf = self.renderer.storage_bufs.getPtr(key);
         try buf.createGPUBuffers(gpu_device, .initOne(.graphics_storage_read));
     }
+
     for (self.modifs.getPtrConst(.surface_texture).items) |key| {
         const tex = self.surface_textures.getPtr(key);
         try tex.createGPUTexture(gpu_device);
@@ -319,13 +315,14 @@ fn uploadTransferBuffers(self: *Self) !void {
             .usage = .initOne(.vertex),
         });
         if (buf.type == .index) {
-            try buf.gpu_bufs.getPtr(.vertex).resize(gpu_device, &.{
-                .size = buf.byteLen(.vertex),
-                .usage = .initOne(.vertex),
+            try buf.gpu_bufs.getPtr(.index).resize(gpu_device, &.{
+                .size = buf.byteLen(.index),
+                .usage = .initOne(.index),
             });
         }
         tb.mesh_bufs.appendAssumeCapacity(buf);
     }
+
     for (self.modifs.getPtrConst(.storage_buffer).items) |key| {
         const buf = self.renderer.storage_bufs.getPtr(key);
         try buf.gpu_bufs.getPtr(.vertex).resize(gpu_device, &.{
@@ -334,6 +331,7 @@ fn uploadTransferBuffers(self: *Self) !void {
         });
         tb.mesh_bufs.appendAssumeCapacity(buf);
     }
+
     for (self.modifs.getPtrConst(.surface_texture).items) |key| {
         const surf_tex = self.surface_textures.getPtr(key);
         tb.surf_texes.appendAssumeCapacity(surf_tex);
@@ -342,28 +340,16 @@ fn uploadTransferBuffers(self: *Self) !void {
     try tb.createGPUTransferBuffer(gpu_device);
     try tb.map(gpu_device);
 
-    const command_buffer = c.SDL_AcquireGPUCommandBuffer(gpu_device.ptr);
-    if (command_buffer == null) {
-        log.err("failed to acquire gpu command buffer: {s}", .{c.SDL_GetError()});
-        return Error.CommandBufferFailed;
-    }
-    errdefer _ = c.SDL_CancelGPUCommandBuffer(command_buffer);
+    var command_buffer = try gpu_device.commandBuffer();
+    errdefer command_buffer.cancel() catch {};
 
     {
-        const copy_pass = c.SDL_BeginGPUCopyPass(command_buffer);
-        if (copy_pass == null) {
-            log.err("failed to begin copy pass: {s}", .{c.SDL_GetError()});
-            return Error.CopyPassFailed;
-        }
-
+        var copy_pass = try command_buffer.copyPass();
         tb.upload(copy_pass);
-        c.SDL_EndGPUCopyPass(copy_pass);
+        copy_pass.end();
     }
 
-    if (!c.SDL_SubmitGPUCommandBuffer(command_buffer)) {
-        log.err("failed submitting command buffer: {s}", .{c.SDL_GetError()});
-        return Error.CommandBufferFailed;
-    }
+    try command_buffer.submit();
 }
 
 fn commitSurfaceTextures(self: *Self) !void {

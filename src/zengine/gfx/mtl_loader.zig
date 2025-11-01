@@ -15,7 +15,7 @@ const MaterialInfo = @import("MaterialInfo.zig");
 
 const log = std.log.scoped(.gfx_mtl_loader);
 
-pub const Materials = std.ArrayListUnmanaged(MaterialInfo);
+pub const Materials = std.ArrayList(MaterialInfo);
 
 pub const Result = struct {
     allocator: std.mem.Allocator,
@@ -38,9 +38,10 @@ pub fn loadFile(gpa: std.mem.Allocator, path: []const u8) !Result {
 
     var material_ptr: ?*MaterialInfo = null;
     while (reader.interface.takeDelimiterExclusive('\n')) |full_line| {
-        const line = std.mem.trim(u8, full_line, " \t\n\r");
+        const line = str.trim(full_line);
         if (line.len == 0) continue;
         if (line[0] == '#') continue;
+
         var iter = std.mem.splitScalar(u8, line, ' ');
         if (iter.next()) |cmd| {
             if (str.eql(cmd, "newmtl")) {
@@ -77,8 +78,8 @@ pub fn loadFile(gpa: std.mem.Allocator, path: []const u8) !Result {
                     mat.alpha = 1 - try parseFloat(&iter);
                 } else if (str.eql(cmd, "illum")) {
                     mat.mode = try parseMode(&iter);
-                }
-            }
+                } else return error.SyntaxError;
+            } else return error.SyntaxError;
         } else return error.SyntaxError;
     } else |err| switch (err) {
         error.EndOfStream => {},

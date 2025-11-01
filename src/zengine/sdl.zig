@@ -6,6 +6,7 @@ const std = @import("std");
 const assert = std.debug.assert;
 
 pub fn sliceFrom(gpa: std.mem.Allocator, items: anytype) ![]SDLType(@TypeOf(items)) {
+    if (items.len == 0) return &.{};
     const result = try gpa.alloc(SDLType(@TypeOf(items)), items.len);
     if (comptime sdlNeedsAllocator(@TypeOf(items))) {
         for (result, items) |*to, *from| to.* = try from.toSDL(gpa);

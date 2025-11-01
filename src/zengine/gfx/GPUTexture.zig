@@ -35,15 +35,6 @@ pub const CreateInfo = struct {
     sample_count: types.SampleCount = .default,
 };
 
-pub fn supportsFormat(gpu_device: GPUDevice, format: Format, tex_type: Type, usage: UsageFlags) bool {
-    return c.SDL_GPUTextureSupportsFormat(
-        gpu_device.ptr,
-        @intFromEnum(format),
-        @intFromEnum(tex_type),
-        usage.bits.mask,
-    );
-}
-
 pub fn init(gpu_device: GPUDevice, info: *const CreateInfo) !Self {
     return fromOwned(try create(gpu_device, info));
 }
@@ -89,6 +80,32 @@ pub fn toOwned(self: *Self) *c.SDL_GPUTexture {
 pub inline fn isValid(self: Self) bool {
     return self.ptr != null;
 }
+
+pub const Region = struct {
+    texture: Self = .invalid,
+    mip_level: u32 = 0,
+    layer: u32 = 0,
+    x: u32 = 0,
+    y: u32 = 0,
+    z: u32 = 0,
+    w: u32 = 0,
+    h: u32 = 0,
+    d: u32 = 0,
+
+    pub fn toSDL(self: *const @This()) c.SDL_GPUTextureRegion {
+        return .{
+            .texture = self.texture.ptr,
+            .mip_level = self.mip_level,
+            .layer = self.layer,
+            .x = self.x,
+            .y = self.y,
+            .z = self.z,
+            .w = self.w,
+            .h = self.h,
+            .d = self.d,
+        };
+    }
+};
 
 pub const Type = enum(c.SDL_GPUTextureType) {
     @"2D" = c.SDL_GPU_TEXTURETYPE_2D,
