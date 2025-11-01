@@ -1,4 +1,5 @@
 const std = @import("std");
+const log = std.log;
 
 const ExtCommand = enum {
     external,
@@ -174,7 +175,11 @@ pub fn build(b: *std.Build) !void {
     // b.installArtifact(compile_shader);
 
     switch (target.result.os.tag) {
+        .linus => {
+            log.info("Building target linux...");
+        },
         .macos => {
+            log.info("Building target macos...");
             // zengine.addRPathSpecial("$ORIGIN/../lib");
             // b.getInstallStep().dependOn(&b.addInstallLibFile(
             //     b.path("SDL/build/libSDL3.0.dylib"),
@@ -193,7 +198,9 @@ pub fn build(b: *std.Build) !void {
             //     "libcimgui.dylib",
             // ).step);
         },
-        .windows => {},
+        .windows => {
+            log.info("Building target macos...");
+        },
         else => std.process.fatal("Unsupported target os: {s}", .{@tagName(target.result.os.tag)}),
     }
 
