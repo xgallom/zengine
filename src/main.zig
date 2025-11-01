@@ -52,12 +52,28 @@ pub const zengine_options: zengine.Options = .{
     },
 };
 
+const Config = struct {
+    flags: packed struct {
+        mouse_captured: bool = true,
+        mouse_y_inverted: bool = true,
+        camera_controls: CameraControlsType = .y_up,
+    } = .{},
+
+    pub const CameraControlsType = enum(u1) {
+        y_up,
+        y_dynamic,
+    };
+
+    pub fn propertyEditor(self: *Config) UI.Element {
+        return zengine.ui.PropertyEditor(Config).init(self).element();
+    }
+};
+
 var flat_scene: Scene.Flattened = undefined;
 var gfx_loader: gfx.Loader = undefined;
 
 var controls = zengine.controls.CameraControls{};
-var speed_change_timer = time.Timer.init(500);
-var speed_scale: f32 = 5;
+var speed_scale: f32 = 10;
 
 var rnd: std.Random.DefaultPrng = undefined;
 var dir: math.Vertex = .{ 1, 0, 0 };
@@ -70,20 +86,6 @@ var perf_window: zengine.ui.PerfWindow = undefined;
 var scene_map: zengine.containers.ArrayMap(Scene.Node.Id) = .empty;
 
 var config: Config = .{};
-
-const Config = struct {
-    flags: packed struct {
-        mouse_y_inverted: bool = false,
-        camera_controls_type: enum(u1) {
-            y_up,
-            y_dynamic,
-        } = .y_up,
-    } = .{},
-
-    pub fn propertyEditor(self: *Config) UI.Element {
-        return zengine.ui.PropertyEditor(Config).init(self).element();
-    }
-};
 
 pub fn main() !void {
     // memory limit 1GB, SDL allocations are not tracked
@@ -119,6 +121,7 @@ fn load(self: *const ZEngine) !bool {
         _ = try gfx_loader.loadMesh("Cow", "cow_nonormals.obj");
         _ = try gfx_loader.loadMesh("Mountain", "mountain.obj");
         _ = try gfx_loader.loadMesh("Cube", "cube.obj");
+        _ = try gfx_loader.loadMesh("Cottage", "cottage_obj.obj");
 
         _ = try gfx_loader.createOriginMesh();
         _ = try gfx_loader.createDefaultMaterial();
@@ -154,36 +157,51 @@ fn load(self: *const ZEngine) !bool {
         .rotation = .{ pi, -pi / 4.0, -pi / 3.0 },
     });
 
-    const objects = try self.scene.createRootNode("Objects", .node(), &.{
-        .order = .trs,
+    const environment = try self.scene.createRootNode("Environment", .node(), &.{
+        .translation = .{ 712, -54, 542 },
+        .rotation = .{ 0, 4, 0 },
     });
-    const ground = try self.scene.createRootNode("Ground", .node(), &.{
+    const cottage = try self.scene.createChildNode(environment, "Cottage", .node(), &.{
+        .translation = .{ -346, -334, 1540 },
+        .rotation = .{ -0.35, 2.45, -0.2 },
+    });
+    const ground = try self.scene.createChildNode(environment, "Ground", .node(), &.{
         .translation = .{ 0, -450, 0 },
-        .scale = .{ 250, 250, 250 },
-    });
-    const lights = try self.scene.createRootNode("Cubes", .node(), &.{});
-
-    const cat = try self.scene.createChildNode(objects, "Cat", .object("Cat"), &.{
-        .translation = .{ 200, 0, 0 },
-        .rotation = .{ -pi / 2.0, 0, 0 },
+        .scale = .{ 500, 250, 500 },
     });
 
-    _ = try self.scene.createRootNode("Black Cat", .object("Black Cat"), &.{
-        .translation = .{ 100, 0, 0 },
-        .rotation = .{ -pi / 2.0, 0, 0 },
-    });
-
-    _ = try self.scene.createChildNode(objects, "Cow", .object("Cow"), &.{
-        .translation = .{ 0, 0, 0 },
-        .rotation = .{ 0, -pi / 2.0, 0 },
-        .scale = .{ 10, 10, 10 },
+    _ = try self.scene.createChildNode(cottage, "Cottage", .object("Cottage"), &.{
+        .scale = .{ 20, 20, 20 },
     });
 
     _ = try self.scene.createChildNode(ground, "Plane", .object("Plane"), &.{});
     _ = try self.scene.createChildNode(ground, "Landscape", .object("Landscape"), &.{});
 
+    const objects = try self.scene.createRootNode("Objects", .node(), &.{});
+    const lights = try self.scene.createRootNode("Cubes", .node(), &.{
+        .translation = .{ -58, -83, 18 },
+        .scale = .{ 2.5, 2.5, 2.5 },
+        .order = .trs,
+    });
+
+    const cat = try self.scene.createChildNode(objects, "Cat", .object("Cat"), &.{
+        .translation = .{ -294, -176, 44 },
+        .rotation = .{ -1.671, 0.4, 0.4 },
+    });
+    _ = try self.scene.createChildNode(objects, "Black Cat", .object("Black Cat"), &.{
+        .translation = .{ -304, -176, 90 },
+        .rotation = .{ -1.971, 2.1, 0 },
+    });
+    _ = try self.scene.createChildNode(objects, "Cow", .object("Cow"), &.{
+        .translation = .{ -174, -237, -196 },
+        .rotation = .{ 5.95, -1.721, 0 },
+        .scale = .{ 10, 10, 10 },
+        .euler_order = .zyx,
+    });
+
     const cube_r = try self.scene.createChildNode(lights, "Red", .node(), &.{
         .translation = .{ 100, 0, 0 },
+        .euler_order = .yxz,
     });
     _ = try self.scene.createChildNode(cube_r, "Light", .light("Cube Red"), &.{});
     _ = try self.scene.createChildNode(cube_r, "Mesh", .object("Cube Red"), &.{
@@ -192,6 +210,7 @@ fn load(self: *const ZEngine) !bool {
 
     const cube_g = try self.scene.createChildNode(lights, "Green", .node(), &.{
         .translation = .{ 0, 100, 0 },
+        .euler_order = .yxz,
     });
     _ = try self.scene.createChildNode(cube_g, "Light", .light("Cube Green"), &.{});
     _ = try self.scene.createChildNode(cube_g, "Mesh", .object("Cube Green"), &.{
@@ -200,6 +219,7 @@ fn load(self: *const ZEngine) !bool {
 
     const cube_b = try self.scene.createChildNode(lights, "Blue", .node(), &.{
         .translation = .{ -100, 0, 0 },
+        .euler_order = .yxz,
     });
     _ = try self.scene.createChildNode(cube_b, "Light", .light("Cube Blue"), &.{});
     _ = try self.scene.createChildNode(cube_b, "Mesh", .object("Cube Blue"), &.{
@@ -232,6 +252,8 @@ fn load(self: *const ZEngine) !bool {
     const main_node = try property_editor.appendNode(@typeName(@This()), "main");
     _ = try property_editor.appendChild(main_node, config.propertyEditor(), @typeName(Config), "config");
 
+    self.engine.main_win.setRelativeMouseMode(config.flags.mouse_captured);
+
     ZEngine.sections.sub(.load).sub(.ui).end();
     allocators.scratchRelease();
     return true;
@@ -258,11 +280,14 @@ fn input(self: *const ZEngine) !bool {
                 .key_down => {
                     if (event.sdl.key.repeat) break;
                     switch (event.sdl.key.key) {
-                        c.SDLK_F1 => self.ui.show_ui = !self.ui.show_ui,
-                        c.SDLK_F2 => self.engine.main_win.setRelativeMouseMode(
-                            !self.engine.main_win.is_relative_mouse_mode_enabled,
-                        ),
-                        c.SDLK_ESCAPE => self.ui.show_ui = !self.ui.show_ui,
+                        c.SDLK_F1 => {
+                            self.ui.show_ui = !self.ui.show_ui;
+                            self.engine.main_win.setRelativeMouseMode(!self.ui.show_ui and config.flags.mouse_captured);
+                        },
+                        c.SDLK_ESCAPE => {
+                            self.ui.show_ui = !self.ui.show_ui;
+                            self.engine.main_win.setRelativeMouseMode(!self.ui.show_ui and config.flags.mouse_captured);
+                        },
                         else => {},
                     }
                 },
@@ -276,12 +301,12 @@ fn input(self: *const ZEngine) !bool {
             .key_down => {
                 if (event.sdl.key.repeat) break;
                 switch (event.sdl.key.key) {
-                    c.SDLK_C => controls.set(.yaw_neg),
-                    c.SDLK_V => controls.set(.yaw_pos),
-                    c.SDLK_F => controls.set(.pitch_neg),
-                    c.SDLK_R => controls.set(.pitch_pos),
-                    c.SDLK_Q => controls.set(.roll_neg),
-                    c.SDLK_E => controls.set(.roll_pos),
+                    c.SDLK_Q => controls.set(if (config.flags.mouse_captured) .x_neg else .yaw_neg),
+                    c.SDLK_E => controls.set(if (config.flags.mouse_captured) .x_pos else .yaw_pos),
+                    c.SDLK_F => controls.set(if (config.flags.mouse_captured) .y_neg else .pitch_neg),
+                    c.SDLK_R => controls.set(if (config.flags.mouse_captured) .y_pos else .pitch_pos),
+                    c.SDLK_C => controls.set(.roll_neg),
+                    c.SDLK_V => controls.set(.roll_pos),
 
                     c.SDLK_S => controls.set(.z_neg),
                     c.SDLK_W => controls.set(.z_pos),
@@ -297,22 +322,26 @@ fn input(self: *const ZEngine) !bool {
                     c.SDLK_RIGHTBRACKET => controls.set(.custom(1)),
                     c.SDLK_EQUALS => controls.set(.custom(2)),
 
-                    c.SDLK_F1 => self.ui.show_ui = !self.ui.show_ui,
-                    c.SDLK_F2 => self.engine.main_win.setRelativeMouseMode(
-                        !self.engine.main_win.is_relative_mouse_mode_enabled,
-                    ),
+                    c.SDLK_F1 => {
+                        self.ui.show_ui = !self.ui.show_ui;
+                        self.engine.main_win.setRelativeMouseMode(!self.ui.show_ui and config.flags.mouse_captured);
+                    },
+                    c.SDLK_F2 => {
+                        config.flags.mouse_captured = !config.flags.mouse_captured;
+                        self.engine.main_win.setRelativeMouseMode(config.flags.mouse_captured);
+                    },
                     c.SDLK_ESCAPE => return false,
                     else => {},
                 }
             },
             .key_up => {
                 switch (event.sdl.key.key) {
-                    c.SDLK_C => controls.clear(.yaw_neg),
-                    c.SDLK_V => controls.clear(.yaw_pos),
-                    c.SDLK_F => controls.clear(.pitch_neg),
-                    c.SDLK_R => controls.clear(.pitch_pos),
-                    c.SDLK_Q => controls.clear(.roll_neg),
-                    c.SDLK_E => controls.clear(.roll_pos),
+                    c.SDLK_Q => controls.clear(if (config.flags.mouse_captured) .x_neg else .yaw_neg),
+                    c.SDLK_E => controls.clear(if (config.flags.mouse_captured) .x_pos else .yaw_pos),
+                    c.SDLK_F => controls.clear(if (config.flags.mouse_captured) .y_neg else .pitch_neg),
+                    c.SDLK_R => controls.clear(if (config.flags.mouse_captured) .y_pos else .pitch_pos),
+                    c.SDLK_C => controls.clear(.roll_neg),
+                    c.SDLK_V => controls.clear(.roll_pos),
 
                     c.SDLK_S => controls.clear(.z_neg),
                     c.SDLK_W => controls.clear(.z_pos),
@@ -354,25 +383,127 @@ fn input(self: *const ZEngine) !bool {
 }
 
 fn update(self: *const ZEngine) !bool {
-    const camera = self.renderer.cameras.getPtr(self.renderer.camera);
+    const delta = global.timeSinceLastFrame().toFloat().toValue32(.s);
+    switch (config.flags.camera_controls) {
+        inline else => |controls_type| updateCameraControls(self, delta, controls_type),
+    }
+    updateScene(self, delta);
 
+    {
+        errdefer gfx_loader.cancel();
+        flat_scene = try self.scene.flatten();
+        _ = try gfx_loader.createLightsBuffer(&flat_scene);
+        try gfx_loader.commit();
+    }
+
+    return true;
+}
+
+fn render(self: *const ZEngine) !void {
+    self.ui.beginDraw();
+    self.ui.drawMainMenuBar(.{
+        .allocs_open = &allocs_window.is_open,
+        .property_editor_open = &property_editor.is_open,
+        .perf_open = &perf_window.is_open,
+    });
+    self.ui.drawDock();
+
+    self.ui.draw(debug_ui.element(), &debug_ui.is_open);
+    self.ui.draw(property_editor.element(), &property_editor.is_open);
+    self.ui.draw(perf_window.element(), &perf_window.is_open);
+    self.ui.draw(allocs_window.element(), &allocs_window.is_open);
+
+    self.ui.endDraw();
+
+    var items: gfx.Renderer.Items = .init(&flat_scene);
+    _ = try flat_scene.render(self.ui, &items);
+}
+
+fn updateScene(self: *const ZEngine, delta: f32) void {
+    const pi = std.math.pi;
+    const time_s = global.timeSinceStart().toFloat().toValue32(.s);
+    const s = self.scene.nodes.slice();
+
+    // const cat = s.transform(scene_map.get("cat"));
+    // const objects = s.transform(scene_map.get("objects"));
+
+    const cube_r = s.transform(scene_map.get("cube_r"));
+    const cube_g = s.transform(scene_map.get("cube_g"));
+    const cube_b = s.transform(scene_map.get("cube_b"));
+
+    const cos = @cos(1.5 * time_s);
+    const sin = @sin(1.5 * time_s);
+    const x = 150 * cos;
+    const y = 25 * cos;
+    const z = 150 * sin;
+
+    const rx: i64 = @intCast(rnd.next() % 31);
+    const ry: i64 = @intCast(rnd.next() % 31);
+    const rz: i64 = @intCast(rnd.next() % 31);
+    const dx: f32 = @floatFromInt(rx - 15);
+    const dy: f32 = @floatFromInt(ry - 15);
+    const dz: f32 = @floatFromInt(rz - 15);
+
+    var g_pos = cube_g.translation;
+    var axis: math.Vertex = .{ dx, dy, dz };
+    math.vertex.normalize(&axis);
+    math.vertex.rotateDirectionScale(&dir, &axis, 20 * delta);
+    math.vertex.normalize(&dir);
+    math.vertex.translateScale(&g_pos, &dir, 20 * delta);
+    math.vertex.clamp(&g_pos, &.{ -300, 0, -300 }, &.{ 300, 300, 300 });
+
+    const r_pos = .{ x, y + 55, z };
+    const b_pos = .{ -x, -y + 55, -z };
+
+    // objects.translation[1] = 30 * cos + 30;
+    // objects.rotation[0] = 2 * time_s / pi;
+    // objects.rotation[1] = 2 * time_s;
+    // cat.rotation[1] = 20 * time_s;
+    // cat.translation[1] = 25 * @cos(10 * time_s);
+
+    cube_r.translation = r_pos;
+    cube_r.rotation[0] = time_s;
+    cube_r.rotation[1] = 25 * time_s;
+    cube_r.rotation[2] = time_s + pi;
+    cube_g.translation = g_pos;
+    cube_g.rotation[0] = time_s;
+    cube_g.rotation[1] = 25 * time_s;
+    cube_g.rotation[2] = time_s + pi;
+    cube_b.translation = b_pos;
+    cube_b.rotation[0] = time_s;
+    cube_b.rotation[1] = 25 * time_s;
+    cube_b.rotation[2] = time_s + pi;
+}
+
+fn updateCameraControls(self: *const ZEngine, delta: f32, comptime controls_type: Config.CameraControlsType) void {
+    const camera = self.renderer.cameras.getPtr(self.renderer.camera);
     var coords: math.vector3.Coords = undefined;
     camera.coords(&coords);
 
-    const delta = global.timeSinceLastFrame().toFloat().toValue32(.s);
     const rotation_speed = delta;
     const mouse_speed = 0.5;
     const translation_speed = 20 * delta * speed_scale;
     const scale_speed = 15 * delta;
 
-    camera.up = coords.y;
+    camera.up = switch (comptime controls_type) {
+        .y_up => global.cameraUp(),
+        .y_dynamic => coords.y,
+    };
 
     if (mouse_motion[0] != 0) {
-        math.vector3.rotateDirectionScale(&camera.direction, &coords.x, rotation_speed * mouse_speed * mouse_motion[0]);
+        math.vector3.rotateDirectionScale(
+            &camera.direction,
+            &coords.x,
+            rotation_speed * mouse_speed * mouse_motion[0],
+        );
         mouse_motion[0] = 0;
     }
     if (mouse_motion[1] != 0) {
-        math.vector3.rotateDirectionScale(&camera.direction, &coords.y, rotation_speed * mouse_speed * mouse_motion[1]);
+        math.vector3.rotateDirectionScale(
+            &camera.direction,
+            &coords.y,
+            rotation_speed * mouse_speed * mouse_motion[1],
+        );
         mouse_motion[1] = 0;
     }
 
@@ -386,10 +517,12 @@ fn update(self: *const ZEngine) !bool {
     if (controls.has(.pitch_pos))
         math.vector3.rotateDirectionScale(&camera.direction, &coords.y, rotation_speed);
 
-    if (controls.has(.roll_neg))
-        math.vector3.rotateDirectionScale(&camera.up, &coords.x, -rotation_speed);
-    if (controls.has(.roll_pos))
-        math.vector3.rotateDirectionScale(&camera.up, &coords.x, rotation_speed);
+    if (comptime controls_type == .y_dynamic) {
+        if (controls.has(.roll_neg))
+            math.vector3.rotateDirectionScale(&camera.up, &coords.x, -rotation_speed);
+        if (controls.has(.roll_pos))
+            math.vector3.rotateDirectionScale(&camera.up, &coords.x, rotation_speed);
+    }
 
     if (controls.has(.x_neg))
         math.vector3.translateScale(&camera.position, &coords.x, -translation_speed);
@@ -422,8 +555,6 @@ fn update(self: *const ZEngine) !bool {
         speed_scale -= 5 * delta;
     if (controls.has(.custom(1)))
         speed_scale += 5 * delta;
-    _ = &speed_change_timer;
-    // speed_change_timer.update(now);
 
     if (controls.has(.custom(2))) {
         camera.type = switch (camera.type) {
@@ -445,82 +576,4 @@ fn update(self: *const ZEngine) !bool {
         gfx.Camera.fov_min,
         gfx.Camera.fov_max,
     );
-
-    {
-        errdefer gfx_loader.cancel();
-
-        const pi = std.math.pi;
-        const time_s = global.timeSinceStart().toFloat().toValue32(.s);
-        const s = self.scene.nodes.slice();
-
-        const cat = s.transform(scene_map.get("cat"));
-        const objects = s.transform(scene_map.get("objects"));
-
-        const cube_r = s.transform(scene_map.get("cube_r"));
-        const cube_g = s.transform(scene_map.get("cube_g"));
-        const cube_b = s.transform(scene_map.get("cube_b"));
-
-        const cos = @cos(1.5 * time_s);
-        const sin = @sin(1.5 * time_s);
-        const x = 150 * cos;
-        const y = 25 * cos;
-        const z = 150 * sin;
-
-        const rx: i64 = @intCast(rnd.next() % 31);
-        const ry: i64 = @intCast(rnd.next() % 31);
-        const rz: i64 = @intCast(rnd.next() % 31);
-        const dx: f32 = @floatFromInt(rx - 15);
-        const dy: f32 = @floatFromInt(ry - 15);
-        const dz: f32 = @floatFromInt(rz - 15);
-
-        var g_pos = cube_g.translation;
-        var axis: math.Vertex = .{ dx, dy, dz };
-        math.vertex.normalize(&axis);
-        math.vertex.rotateDirectionScale(&dir, &axis, 20 * delta);
-        math.vertex.normalize(&dir);
-        math.vertex.translateScale(&g_pos, &dir, 20 * delta);
-        math.vertex.clamp(&g_pos, &.{ -300, 0, -300 }, &.{ 300, 300, 300 });
-
-        const r_pos = .{ x, y + 55, z };
-        const b_pos = .{ -x, -y + 55, -z };
-
-        objects.translation[1] = 30 * cos + 30;
-        objects.rotation[0] = 2 * time_s / pi;
-        objects.rotation[1] = 2 * time_s;
-        cat.rotation[1] = 20 * time_s;
-        cat.translation[1] = 25 * @cos(10 * time_s);
-
-        cube_r.translation = r_pos;
-        cube_g.translation = g_pos;
-        cube_b.translation = b_pos;
-
-        flat_scene = try self.scene.flatten();
-        _ = try gfx_loader.createLightsBuffer(&flat_scene);
-        try gfx_loader.commit();
-    }
-
-    return true;
 }
-
-fn render(self: *const ZEngine) !void {
-    self.ui.beginDraw();
-    self.ui.drawMainMenuBar(.{
-        .allocs_open = &allocs_window.is_open,
-        .property_editor_open = &property_editor.is_open,
-        .perf_open = &perf_window.is_open,
-    });
-    self.ui.drawDock();
-
-    // if (ui.show_ui) c.igShowDemoWindow(&ui.show_ui);
-    self.ui.draw(debug_ui.element(), &debug_ui.is_open);
-    self.ui.draw(property_editor.element(), &property_editor.is_open);
-    self.ui.draw(perf_window.element(), &perf_window.is_open);
-    self.ui.draw(allocs_window.element(), &allocs_window.is_open);
-
-    self.ui.endDraw();
-
-    var items: gfx.Renderer.Items = .init(&flat_scene);
-    _ = try flat_scene.render(self.ui, &items);
-}
-
-fn updateCameraControls() void {}

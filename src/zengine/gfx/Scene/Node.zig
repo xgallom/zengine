@@ -15,6 +15,7 @@ const log = std.log.scoped(.gfx_scene_camera);
 node: Tree.Node = .{},
 name: [:0]const u8,
 target: Target,
+flags: Flags,
 transform: Transform = .{},
 
 const Self = @This();
@@ -81,6 +82,10 @@ pub const Target = struct {
     }
 };
 
+pub const Flags = packed struct {
+    is_visible: bool = true,
+};
+
 pub fn Flat(comptime T: type) type {
     return struct {
         key: [:0]const u8,
@@ -116,6 +121,10 @@ pub const Tree = struct {
 
         pub fn target(self: Slice, id: Id) *Target {
             return &self.slice.items(.target)[id.idx()];
+        }
+
+        pub fn flags(self: Slice, id: Id) *Flags {
+            return &self.slice.items(.flags)[id.idx()];
         }
 
         pub fn transform(self: Slice, id: Id) *Transform {
@@ -159,6 +168,7 @@ pub const Tree = struct {
         node.* = .{};
         s.namePtr(id).* = name;
         s.target(id).* = target;
+        s.flags(id).* = .{};
         s.transform(id).* = transform.*;
 
         if (self.tail == .invalid) {
@@ -190,6 +200,7 @@ pub const Tree = struct {
         node.* = .{ .parent = parent };
         s.namePtr(id).* = name;
         s.target(id).* = target;
+        s.flags(id).* = .{};
         s.transform(id).* = transform.*;
 
         if (parent_node.child == .invalid) {
@@ -264,6 +275,7 @@ pub const Tree = struct {
             .node = s.node(id),
             .name = s.namePtr(id),
             .target = s.target(id),
+            .flags = s.flags(id),
             .transform = s.transform(id),
         });
     }

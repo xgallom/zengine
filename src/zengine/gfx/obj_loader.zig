@@ -207,8 +207,6 @@ fn parseLine(self: *Self, line: []const u8) !void {
 
             if (obj.face_type == .invalid) obj.face_type = face.face_type;
             if (obj.attrs_present.eql(.initEmpty())) obj.attrs_present = face.attrs_present;
-            assert(obj.face_type == face.face_type);
-            assert(obj.attrs_present.eql(face.attrs_present));
 
             var attr_iter = face.attrs_present.iterator();
             while (attr_iter.next()) |attr| {
@@ -472,9 +470,14 @@ fn ProcessFaces(comptime config: struct {
             }
 
             const faces = self.faces.items[faces_offset .. faces_offset + faces_len];
-            const vert_orders = face_vert_orders.get(obj.face_type);
             const face_vert_count = MeshObject.face_vert_counts.get(config.face_type);
-            const face_count = faces.len * vert_orders.len;
+
+            var face_count: usize = 0;
+            for (faces) |*face| {
+                const vert_orders = face_vert_orders.get(face.face_type);
+                face_count += vert_orders.len;
+            }
+
             const vert_offset = state.vert_idx;
             const vert_count = face_count * face_vert_count;
 
@@ -483,6 +486,7 @@ fn ProcessFaces(comptime config: struct {
             try state.face_angles.ensureUnusedCapacity(self.allocator, vert_count);
 
             for (faces) |*face| {
+                const vert_orders = face_vert_orders.get(face.face_type);
                 while (state.node_n < self.nodes.items.len) {
                     if (self.nodes.items[state.node_n].offset == state.face_n) {
                         const node = self.nodes.items[state.node_n];

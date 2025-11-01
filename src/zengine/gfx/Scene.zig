@@ -114,6 +114,9 @@ fn flattenWalk(
 
     s.transform(node).transform(tr_scratch);
     math.matrix4x4.dot(tr, &transforms.items[tr_parent], tr_scratch);
+
+    if (!s.flags(node).is_visible) return;
+
     switch (s.target(node).type) {
         .empty => try flat.empty.append(allocators.frame(), tr.*),
         .camera => try flat.cameras.append(allocators.frame(), .{

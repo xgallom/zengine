@@ -134,9 +134,12 @@ float3 bumpMap(
     const float3 r1 = cross(dy_wp, vn);
     const float3 r2 = cross(vn, dx_wp);
     const float det = dot(dx_wp, r1);
-    const float h_0 = BumpMap.Sample(SamplerBump, tex_uv).x;
-    const float h_dx = BumpMap.Sample(SamplerBump, tex_uv + ddx(tex_uv)).x;
-    const float h_dy = BumpMap.Sample(SamplerBump, tex_uv + ddy(tex_uv)).x;
+    const float3 h_0_rgb = BumpMap.Sample(SamplerBump, tex_uv);
+    const float3 h_dx_rgb = BumpMap.Sample(SamplerBump, tex_uv + ddx(tex_uv));
+    const float3 h_dy_rgb = BumpMap.Sample(SamplerBump, tex_uv + ddy(tex_uv));
+    const float h_0 = (h_0_rgb.x + h_0_rgb.y + h_0_rgb.z) / 3;
+    const float h_dx = (h_dx_rgb.x + h_dx_rgb.y + h_dx_rgb.z) / 3;
+    const float h_dy = (h_dy_rgb.x + h_dy_rgb.y + h_dy_rgb.z) / 3;
 
     const float3 surf_grad = sign(det) * ( (h_dx - h_0) * r1 + (h_dy - h_0) * r2 );
     const float bump_amt = 0.7;
