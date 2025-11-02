@@ -1,3 +1,6 @@
+#ifndef _ZENGINE_HLSL_
+#define _ZENGINE_HLSL_
+
 #define PI 3.1415926538
 
 float random(float2 uv) {
@@ -109,18 +112,6 @@ float2 normalizeMousePos(float2 mouse_pos) {
     return float2(2, 2) * (mouse_pos - 0.5);
 }
 
-float2 textureUV(float2 uv) {
-    return float2(uv.x, 1 - uv.y);
-}
-
-float2 textureUV(float3 uv) {
-    return float2(uv.x, 1 - uv.y);
-}
-
-float2 textureUV(float4 uv) {
-    return float2(uv.x, 1 - uv.y);
-}
-
 float2 aspectRatio(float wh_ratio) {
      return float2(wh_ratio, 1);
 }
@@ -129,3 +120,5 @@ float2 mixOscillate(float2 a, float2 b, float t) {
     const float c = cos(t), s = sin(t);
     return c * c * a + s * s * b;
 }
+
+#endif

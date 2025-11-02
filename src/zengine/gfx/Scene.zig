@@ -11,6 +11,7 @@ const ArrayPoolMap = @import("../containers.zig").ArrayPoolMap;
 const c = @import("../ext.zig").c;
 const global = @import("../global.zig");
 const math = @import("../math.zig");
+const perf = @import("../perf.zig");
 const ui = @import("../ui.zig");
 const Camera = @import("Camera.zig");
 const Light = @import("Light.zig");
@@ -21,6 +22,7 @@ const Nodes = Node.Tree;
 pub const Transform = @import("Scene/Transform.zig");
 
 const log = std.log.scoped(.gfx_scene);
+pub const sections = perf.sections(@This(), &.{.flatten});
 
 allocator: std.mem.Allocator,
 renderer: *Renderer,
@@ -84,7 +86,16 @@ pub fn createChildNode(
     return try self.nodes.insertChild(self.allocator, parent, name, target, transform);
 }
 
+pub fn copy(self: *Self, node: Node.Id, parent: Node.Id) !Node.Id {
+    _ = self;
+    _ = node;
+    _ = parent;
+}
+
 pub fn flatten(self: *const Self) !Flattened {
+    sections.sub(.flatten).begin();
+    defer sections.sub(.flatten).end();
+
     var transforms: std.ArrayList(math.Matrix4x4) = .empty;
     var flat = Flattened{ .scene = self };
 
@@ -171,7 +182,6 @@ pub fn propertyEditorNode(
 
 const walkPropertyEditorNode = struct {
     var buf: [64]u8 = undefined;
-    var n: usize = 0;
     fn walkFn(
         self: *Self,
         editor: *ui.PropertyEditorWindow,
@@ -179,11 +189,10 @@ const walkPropertyEditorNode = struct {
         s: *const Nodes.Slice,
         node: Node.Id,
     ) !void {
-        n += 1;
         const id = try std.fmt.bufPrint(
             &buf,
-            "{s}#node_{}",
-            .{ @typeName(Node), n },
+            "{s}#{f}",
+            .{ @typeName(Node), node },
         );
         const editor_node = try editor.appendChild(
             parent,

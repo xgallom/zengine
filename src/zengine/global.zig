@@ -146,10 +146,10 @@ pub inline fn spaces(count: usize) []const u8 {
     return global_state.spaces_buf[0..count];
 }
 
-pub inline fn up() math.Vertex {
+pub inline fn up() math.Vector3 {
     return .{ 0, 1, 0 };
 }
 
-pub inline fn cameraUp() math.Vertex {
+pub inline fn cameraUp() math.Vector3 {
     return .{ 0, 1, 0 };
 }

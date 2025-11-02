@@ -46,6 +46,8 @@ cameras: Cameras,
 lights: Lights,
 textures: Textures,
 samplers: Samplers,
+stencil_format: GPUTexture.Format,
+settings: Settings = .{},
 
 camera: [:0]const u8 = "default",
 
@@ -98,6 +100,18 @@ pub const Items = struct {
     }
 };
 
+pub const Settings = struct {
+    gamma: f32 = 1.9,
+
+    pub const gamma_min = 0.1;
+    pub const gamma_max = 4;
+    pub const gamma_speed = 0.05;
+
+    pub fn propertyEditor(self: *@This()) ui_mod.Element {
+        return ui_mod.PropertyEditor(@This()).init(self).element();
+    }
+};
+
 pub fn create(engine: *const Engine) !*Self {
     defer allocators.scratchFree();
 
@@ -105,6 +119,8 @@ pub fn create(engine: *const Engine) !*Self {
     try sections.sub(.render)
         .sections(&.{ .acquire, .init, .items, .origin, .ui, .submit })
         .register();
+
+    try Scene.sections.register();
 
     sections.sub(.init).begin();
 
@@ -116,163 +132,10 @@ pub fn create(engine: *const Engine) !*Self {
     }
     try self.setPresentMode();
 
-    const stencil_format = self.stencilFormat();
+    try self.createTextures();
+    try self.createSamplers();
+    try self.createPipelines();
 
-    _ = try self.createTexture("stencil", &.{
-        .type = .@"2D",
-        .format = stencil_format,
-        .usage = .initOne(.depth_stencil_target),
-        .size = engine.main_win.pixelSize(),
-    });
-
-    _ = try self.createSampler("default", &.{
-        .min_filter = .linear,
-        .mag_filter = .linear,
-        .mipmap_mode = .nearest,
-        .address_mode_u = .clamp_to_edge,
-        .address_mode_v = .clamp_to_edge,
-        .address_mode_w = .clamp_to_edge,
-    });
-
-    var triangle_vert = shader_loader.loadFile(&.{
-        .allocator = self.allocator,
-        .gpu_device = self.gpu_device,
-        .shader_path = "triangle_vert.vert",
-        .stage = .vertex,
-    }) catch |err| {
-        log.err("failed creating vertex shader: {t}", .{err});
-        return Error.ShaderFailed;
-    };
-    defer triangle_vert.deinit(self.gpu_device);
-
-    var full_vert = shader_loader.loadFile(&.{
-        .allocator = self.allocator,
-        .gpu_device = self.gpu_device,
-        .shader_path = "full.vert",
-        .stage = .vertex,
-    }) catch |err| {
-        log.err("failed creating full vertex shader: {t}", .{err});
-        return Error.ShaderFailed;
-    };
-    defer full_vert.deinit(self.gpu_device);
-
-    var sampler_texture_frag = shader_loader.loadFile(&.{
-        .allocator = self.allocator,
-        .gpu_device = self.gpu_device,
-        .shader_path = "sampler_texture.frag",
-        .stage = .fragment,
-    }) catch |err| {
-        log.err("failed creating fragment shader: {t}", .{err});
-        return Error.ShaderFailed;
-    };
-    defer sampler_texture_frag.deinit(self.gpu_device);
-
-    var rgb_color_frag = shader_loader.loadFile(&.{
-        .allocator = self.allocator,
-        .gpu_device = self.gpu_device,
-        .shader_path = "rgb_color.frag",
-        .stage = .fragment,
-    }) catch |err| {
-        log.err("failed creating origin fragment shader: {t}", .{err});
-        return Error.ShaderFailed;
-    };
-    defer rgb_color_frag.deinit(self.gpu_device);
-
-    var full_frag = shader_loader.loadFile(&.{
-        .allocator = self.allocator,
-        .gpu_device = self.gpu_device,
-        .shader_path = "full.frag",
-        .stage = .fragment,
-    }) catch |err| {
-        log.err("failed creating full fragment shader: {t}", .{err});
-        return Error.ShaderFailed;
-    };
-    defer full_frag.deinit(self.gpu_device);
-
-    var pipeline_create_info: GPUGraphicsPipeline.CreateInfo = .{
-        .vertex_shader = triangle_vert,
-        .fragment_shader = sampler_texture_frag,
-        .vertex_input_state = .{
-            .vertex_buffer_descriptions = &.{
-                .{
-                    .slot = 0,
-                    .pitch = 3 * @sizeOf(math.Vertex),
-                    .input_rate = .vertex,
-                    .instance_step_rate = 0,
-                },
-            },
-            .vertex_attributes = &.{
-                .{
-                    .location = 0,
-                    .buffer_slot = 0,
-                    .format = .f32_3,
-                    .offset = 0,
-                },
-                .{
-                    .location = 1,
-                    .buffer_slot = 0,
-                    .format = .f32_3,
-                    .offset = @sizeOf(math.Vertex),
-                },
-                .{
-                    .location = 2,
-                    .buffer_slot = 0,
-                    .format = .f32_3,
-                    .offset = 2 * @sizeOf(math.Vertex),
-                },
-            },
-        },
-        .primitive_type = .triangle_list,
-        .rasterizer_state = .{
-            .fill_mode = .fill,
-            .cull_mode = .none,
-            .front_face = .clockwise,
-            .enable_depth_clip = true,
-        },
-        .depth_stencil_state = .{
-            .compare_op = .less,
-            .compare_mask = 0xff,
-            .write_mask = 0xff,
-            .enable_depth_test = true,
-            .enable_depth_write = true,
-        },
-        .target_info = .{
-            .color_target_descriptions = &.{
-                .{
-                    .format = self.swapchainFormat(),
-                    .blend_state = .{
-                        .src_color_blendfactor = .src_alpha,
-                        .dst_color_blendfactor = .one_minus_src_alpha,
-                        .color_blend_op = .add,
-                        .src_alpha_blendfactor = .one,
-                        .dst_alpha_blendfactor = .one,
-                        .alpha_blend_op = .max,
-                        .color_write_mask = 0x00,
-                        .enable_blend = true,
-                        .enable_color_write_mask = false,
-                    },
-                },
-            },
-            .has_depth_stencil_target = true,
-            .depth_stencil_format = stencil_format,
-        },
-    };
-
-    _ = try self.createGraphicsPipeline("default", &pipeline_create_info);
-
-    pipeline_create_info.fragment_shader = rgb_color_frag;
-    pipeline_create_info.primitive_type = .line_list;
-    pipeline_create_info.rasterizer_state.fill_mode = .line;
-
-    _ = try self.createGraphicsPipeline("origin", &pipeline_create_info);
-
-    pipeline_create_info.vertex_shader = full_vert;
-    pipeline_create_info.fragment_shader = full_frag;
-    pipeline_create_info.vertex_input_state = .{};
-    pipeline_create_info.primitive_type = .triangle_list;
-    pipeline_create_info.rasterizer_state.fill_mode = .fill;
-
-    _ = try self.createGraphicsPipeline("screen", &pipeline_create_info);
     sections.sub(.init).end();
     return self;
 }
@@ -304,20 +167,6 @@ pub fn deinit(self: *Self) void {
     self.gpu_device.deinit();
 }
 
-fn stencilFormat(self: *const Self) GPUTexture.Format {
-    if (self.gpu_device.textureSupportsFormat(
-        .D24_unorm_S8_u,
-        .@"2D",
-        .initOne(.depth_stencil_target),
-    )) return .D24_unorm_S8_u;
-    if (self.gpu_device.textureSupportsFormat(
-        .D32_f_S8_u,
-        .@"2D",
-        .initOne(.depth_stencil_target),
-    )) return .D32_f_S8_u;
-    return .D32_f;
-}
-
 pub fn swapchainFormat(self: *const Self) GPUTexture.Format {
     return @enumFromInt(c.SDL_GetGPUSwapchainTextureFormat(self.gpu_device.ptr, self.engine.main_win.ptr));
 }
@@ -325,7 +174,7 @@ pub fn swapchainFormat(self: *const Self) GPUTexture.Format {
 pub fn setPresentMode(self: *Self) !void {
     var present_mode: types.PresentMode = .vsync;
     if (self.gpu_device.supportsPresentMode(self.engine.main_win, .mailbox)) present_mode = .mailbox;
-    try self.gpu_device.setSwapchainParameters(self.engine.main_win, .SDR, present_mode);
+    try self.gpu_device.setSwapchainParameters(self.engine.main_win, .HDR_extended_linear, present_mode);
 }
 
 fn createSelf(allocator: std.mem.Allocator, engine: *const Engine) !*Self {
@@ -357,8 +206,221 @@ fn createSelf(allocator: std.mem.Allocator, engine: *const Engine) !*Self {
         .lights = try .init(allocator, 16),
         .textures = try .init(allocator, 128),
         .samplers = try .init(allocator, 128),
+        .stencil_format = gpu_device.stencilFormat(),
     };
     return self;
+}
+
+fn createTextures(self: *Self) !void {
+    const win_size = self.engine.main_win.pixelSize();
+
+    _ = try self.createTexture("screen_buffer", &.{
+        .type = .@"2D",
+        .format = self.swapchainFormat(),
+        .usage = .initMany(&.{ .sampler, .color_target }),
+        .size = win_size,
+    });
+
+    _ = try self.createTexture("bloom", &.{
+        .type = .@"2D",
+        .format = self.swapchainFormat(),
+        .usage = .initMany(&.{ .sampler, .color_target }),
+        .size = win_size,
+    });
+
+    _ = try self.createTexture("stencil", &.{
+        .type = .@"2D",
+        .format = self.stencil_format,
+        .usage = .initOne(.depth_stencil_target),
+        .size = win_size,
+    });
+}
+
+const sampler_configs = struct {
+    const Config = struct {
+        filter_mode: GPUSampler.FilterMode,
+        address_mode: GPUSampler.AddressMode,
+    };
+
+    const configs: []const Config = &.{
+        .{ .filter_mode = .nearest, .address_mode = .repeat },
+        .{ .filter_mode = .nearest, .address_mode = .mirrored_repeat },
+        .{ .filter_mode = .nearest, .address_mode = .clamp_to_edge },
+        .{ .filter_mode = .linear, .address_mode = .repeat },
+        .{ .filter_mode = .linear, .address_mode = .mirrored_repeat },
+        .{ .filter_mode = .linear, .address_mode = .clamp_to_edge },
+        .{ .filter_mode = .bilinear, .address_mode = .repeat },
+        .{ .filter_mode = .bilinear, .address_mode = .mirrored_repeat },
+        .{ .filter_mode = .bilinear, .address_mode = .clamp_to_edge },
+        .{ .filter_mode = .trilinear, .address_mode = .repeat },
+        .{ .filter_mode = .trilinear, .address_mode = .mirrored_repeat },
+        .{ .filter_mode = .trilinear, .address_mode = .clamp_to_edge },
+    };
+};
+
+fn createSamplers(self: *Self) !void {
+    inline for (sampler_configs.configs) |config| {
+        const filter_config = comptime config.filter_mode.config();
+        _ = try self.createSampler(@tagName(config.filter_mode) ++ "_" ++ @tagName(config.address_mode), &.{
+            .min_filter = filter_config.filter,
+            .mag_filter = filter_config.filter,
+            .mipmap_mode = filter_config.mipmap_mode,
+            .address_mode_u = config.address_mode,
+            .address_mode_v = config.address_mode,
+            .address_mode_w = config.address_mode,
+        });
+    }
+}
+
+fn createPipelines(self: *Self) !void {
+    var screen_vert = shader_loader.loadFile(&.{
+        .allocator = self.allocator,
+        .gpu_device = self.gpu_device,
+        .shader_path = "screen.vert",
+        .stage = .vertex,
+    }) catch |err| {
+        log.err("failed creating screen shader: {t}", .{err});
+        return Error.ShaderFailed;
+    };
+    defer screen_vert.deinit(self.gpu_device);
+
+    var position_vert = shader_loader.loadFile(&.{
+        .allocator = self.allocator,
+        .gpu_device = self.gpu_device,
+        .shader_path = "position.vert",
+        .stage = .vertex,
+    }) catch |err| {
+        log.err("failed creating position shader: {t}", .{err});
+        return Error.ShaderFailed;
+    };
+    defer position_vert.deinit(self.gpu_device);
+
+    var vertex_vert = shader_loader.loadFile(&.{
+        .allocator = self.allocator,
+        .gpu_device = self.gpu_device,
+        .shader_path = "vertex.vert",
+        .stage = .vertex,
+    }) catch |err| {
+        log.err("failed creating vertex shader: {t}", .{err});
+        return Error.ShaderFailed;
+    };
+    defer vertex_vert.deinit(self.gpu_device);
+
+    var color_frag = shader_loader.loadFile(&.{
+        .allocator = self.allocator,
+        .gpu_device = self.gpu_device,
+        .shader_path = "color.frag",
+        .stage = .fragment,
+    }) catch |err| {
+        log.err("failed creating color fragment shader: {t}", .{err});
+        return Error.ShaderFailed;
+    };
+    defer color_frag.deinit(self.gpu_device);
+
+    var material_frag = shader_loader.loadFile(&.{
+        .allocator = self.allocator,
+        .gpu_device = self.gpu_device,
+        .shader_path = "material.frag",
+        .stage = .fragment,
+    }) catch |err| {
+        log.err("failed creating material fragment shader: {t}", .{err});
+        return Error.ShaderFailed;
+    };
+    defer material_frag.deinit(self.gpu_device);
+
+    var blend_frag = shader_loader.loadFile(&.{
+        .allocator = self.allocator,
+        .gpu_device = self.gpu_device,
+        .shader_path = "blend.frag",
+        .stage = .fragment,
+    }) catch |err| {
+        log.err("failed creating blend fragment shader: {t}", .{err});
+        return Error.ShaderFailed;
+    };
+    defer blend_frag.deinit(self.gpu_device);
+
+    var gamma_frag = shader_loader.loadFile(&.{
+        .allocator = self.allocator,
+        .gpu_device = self.gpu_device,
+        .shader_path = "gamma.frag",
+        .stage = .fragment,
+    }) catch |err| {
+        log.err("failed creating gamma fragment shader: {t}", .{err});
+        return Error.ShaderFailed;
+    };
+    defer gamma_frag.deinit(self.gpu_device);
+
+    var pipeline: GPUGraphicsPipeline.CreateInfo = .{
+        .target_info = .{
+            .color_target_descriptions = &.{
+                .{
+                    .format = self.swapchainFormat(),
+                    .blend_state = .{
+                        .src_color_blendfactor = .src_alpha,
+                        .dst_color_blendfactor = .one_minus_src_alpha,
+                        .color_blend_op = .add,
+                        .src_alpha_blendfactor = .one,
+                        .dst_alpha_blendfactor = .one,
+                        .alpha_blend_op = .max,
+                        .enable_blend = true,
+                    },
+                },
+            },
+        },
+    };
+
+    pipeline.vertex_shader = screen_vert;
+    pipeline.fragment_shader = blend_frag;
+    _ = try self.createGraphicsPipeline("blend", &pipeline);
+
+    pipeline.vertex_shader = screen_vert;
+    pipeline.fragment_shader = gamma_frag;
+    _ = try self.createGraphicsPipeline("gamma", &pipeline);
+
+    pipeline.rasterizer_state.front_face = .clockwise;
+    pipeline.rasterizer_state.cull_mode = .back;
+    pipeline.rasterizer_state.enable_depth_clip = true;
+    pipeline.depth_stencil_state = .{
+        .compare_op = .less,
+        .compare_mask = 0xff,
+        .write_mask = 0xff,
+        .enable_depth_test = true,
+        .enable_depth_write = true,
+    };
+    pipeline.target_info.has_depth_stencil_target = true;
+    pipeline.target_info.depth_stencil_format = self.stencil_format;
+
+    pipeline.vertex_shader = position_vert;
+    pipeline.fragment_shader = color_frag;
+    pipeline.vertex_input_state = .{
+        .vertex_buffer_descriptions = &.{
+            .{ .slot = 0, .pitch = @sizeOf(math.Vector3), .input_rate = .vertex, .instance_step_rate = 0 },
+        },
+        .vertex_attributes = &.{
+            .{ .location = 0, .buffer_slot = 0, .format = .f32_3, .offset = 0 },
+        },
+    };
+    pipeline.primitive_type = .line_list;
+    pipeline.rasterizer_state.fill_mode = .line;
+    _ = try self.createGraphicsPipeline("line", &pipeline);
+
+    pipeline.vertex_shader = vertex_vert;
+    pipeline.fragment_shader = material_frag;
+    pipeline.vertex_input_state = .{
+        .vertex_buffer_descriptions = &.{
+            .{ .slot = 0, .pitch = @sizeOf(math.Vertex), .input_rate = .vertex, .instance_step_rate = 0 },
+        },
+        .vertex_attributes = &.{
+            .{ .location = 0, .buffer_slot = 0, .format = .f32_3, .offset = 0 },
+            .{ .location = 1, .buffer_slot = 0, .format = .f32_3, .offset = @sizeOf(math.Vector3) },
+            .{ .location = 2, .buffer_slot = 0, .format = .f32_3, .offset = 2 * @sizeOf(math.Vector3) },
+            .{ .location = 3, .buffer_slot = 0, .format = .f32_3, .offset = 3 * @sizeOf(math.Vector3) },
+            .{ .location = 4, .buffer_slot = 0, .format = .f32_3, .offset = 4 * @sizeOf(math.Vector3) },
+        },
+    };
+    pipeline.primitive_type = .triangle_list;
+    pipeline.rasterizer_state.fill_mode = .fill;
+    _ = try self.createGraphicsPipeline("material", &pipeline);
 }
 
 pub fn createMeshObject(self: *Self, key: []const u8, face_type: MeshObject.FaceType) !*MeshObject {
@@ -467,6 +529,22 @@ pub fn insertGraphicsPipeline(self: *Self, key: []const u8, pipeline: *c.SDL_GPU
     return .fromOwned(pipeline);
 }
 
+const render_scene_config = struct {
+    const line_mesh_types: []const MeshObject.MeshBufferType = &.{
+        .tex_coords, .normals, .tangents, .binormals,
+    };
+
+    const line_mesh_colors: std.EnumArray(MeshObject.MeshBufferType, math.RGBf32) = .initDefault(
+        math.rgb_f32.zero,
+        .{
+            .tex_coords = .{ 1, 0, 1 },
+            .normals = .{ 0, 0, 1 },
+            .tangents = .{ 1, 0, 0 },
+            .binormals = .{ 0, 1, 0 },
+        },
+    );
+};
+
 pub fn renderScene(
     self: *const Self,
     flat: *const Scene.Flattened,
@@ -479,23 +557,27 @@ pub fn renderScene(
 
     section.sub(.acquire).begin();
 
-    const default_pipeline = self.pipelines.get("default");
-    const origin_pipeline = self.pipelines.get("origin");
+    const material_pipeline = self.pipelines.get("material");
+    const line_pipeline = self.pipelines.get("line");
+    // const blend_pipeline = self.pipelines.get("blend");
+    const gamma_pipeline = self.pipelines.get("gamma");
     const origin_mesh = self.mesh_bufs.get("origin");
+    const screen_buffer = self.textures.get("screen_buffer");
     const stencil = self.textures.get("stencil");
     const camera = self.cameras.getPtr(self.camera);
     const default_texture = self.textures.get("default");
-    const default_sampler = self.samplers.get("default");
+    const texture_sampler = self.samplers.get("trilinear_mirrored_repeat");
+    const screen_sampler = self.samplers.get("nearest_clamp_to_edge");
     const lights_buffer = self.storage_bufs.getPtr("lights");
 
     const fa = allocators.frame();
 
     log.debug("command buffer", .{});
-    var command_buffer = self.gpu_device.commandBuffer() catch return Error.DrawFailed;
+    var command_buffer = try self.gpu_device.commandBuffer();
     errdefer command_buffer.cancel() catch {};
 
     log.debug("swapchain texture", .{});
-    const swapchain = command_buffer.swapchainTexture(self.engine.main_win) catch return Error.DrawFailed;
+    const swapchain = try command_buffer.swapchainTexture(self.engine.main_win);
 
     section.sub(.acquire).end();
 
@@ -541,70 +623,25 @@ pub fn renderScene(
 
     const light_counts = flat.lightCounts();
 
-    // var frag_uniform_buffer: [4]f32 = .{ time_s, aspect_ratio, mouse_x, mouse_y };
-    // var origin_frag_uniform_buffer: [4]f32 = .{ 1, 0, 1, 1 };
-
-    // {
-    //     const render_pass = c.SDL_BeginGPURenderPass(
-    //         command_buffer,
-    //         &c.SDL_GPUColorTargetInfo{
-    //             .texture = swapchain_texture,
-    //             .clear_color = c.SDL_FColor{ .r = 0.025, .g = 0, .b = 0.05, .a = 1 },
-    //             .load_op = c.SDL_GPU_LOADOP_CLEAR,
-    //             .store_op = c.SDL_GPU_STOREOP_STORE,
-    //         },
-    //         1,
-    //         &c.SDL_GPUDepthStencilTargetInfo{
-    //             .texture = self.stencil_texture,
-    //             .clear_depth = 1,
-    //             .load_op = c.SDL_GPU_LOADOP_CLEAR,
-    //             .store_op = c.SDL_GPU_STOREOP_STORE,
-    //             .stencil_load_op = c.SDL_GPU_LOADOP_DONT_CARE,
-    //             .stencil_store_op = c.SDL_GPU_STOREOP_DONT_CARE,
-    //             // .cycle = true,
-    //         },
-    //     );
-    //     if (render_pass == null) {
-    //         log.err("failed to begin render_pass: {s}", .{c.SDL_GetError()});
-    //         return Error.DrawFailed;
-    //     }
-    //
-    //     c.SDL_PushGPUVertexUniformData(command_buffer, 0, uniform_buffer, @sizeOf(@TypeOf(uniform_buffer)));
-    //     c.SDL_PushGPUFragmentUniformData(command_buffer, 0, &frag_uniform_buffer, @sizeOf(@TypeOf(frag_uniform_buffer)));
-    //     c.SDL_BindGPUGraphicsPipeline(render_pass, full_graphics_pipeline);
-    //     log.debug("draw cow", .{});
-    //     c.SDL_DrawGPUPrimitives(render_pass, 6, 1, 0, 0);
-    //
-    //     log.debug("end render_pass", .{});
-    //     c.SDL_EndGPURenderPass(render_pass);
-    // }
-
     {
         log.debug("main render pass", .{});
-        var render_pass = command_buffer.renderPass(&.{
-            .{
-                .texture = swapchain,
-                .clear_color = .{ 0.025, 0, 0.05, 1 },
-                .load_op = .clear,
-                .store_op = .store,
-            },
-        }, &.{
+        var render_pass = try command_buffer.renderPass(&.{.{
+            .texture = screen_buffer,
+            .clear_color = .{ 0.025, 0, 0.05, 1 },
+            .load_op = .clear,
+            .store_op = .store,
+        }}, &.{
             .texture = stencil,
             .clear_depth = 1,
             .load_op = .clear,
             .store_op = .store,
             .stencil_load_op = .dont_care,
-        }) catch return Error.DrawFailed;
-
-        // c.SDL_BindGPUFragmentSamplers(render_pass, 0, &c.SDL_GPUTextureSamplerBinding{
-        //     .sampler = self.sampler,
-        //     .texture = self.texture,
-        // }, 1);
+        });
 
         section.sub(.init).end();
         section.sub(.items).begin();
 
-        render_pass.bindGraphicsPipeline(default_pipeline);
+        render_pass.bindGraphicsPipeline(material_pipeline);
         try render_pass.bindFragmentStorageBuffers(0, &.{lights_buffer.gpu_bufs.getPtrConst(.vertex).*});
 
         command_buffer.pushFragmentUniformData(1, &camera.position);
@@ -613,15 +650,16 @@ pub fn renderScene(
         while (items_iter.next()) |_item| {
             const item: Item = _item;
             const mesh_obj = item.mesh_obj;
-            const mesh_buf = mesh_obj.mesh_buf;
 
+            if (!mesh_obj.is_visible.contains(.mesh)) continue;
+
+            const mesh_buf = mesh_obj.mesh_bufs.get(.mesh);
             try render_pass.bindVertexBuffers(0, &.{
                 .{ .buffer = mesh_buf.gpu_bufs.get(.vertex), .offset = 0 },
             });
 
             for (mesh_obj.sections.items) |buf_section| {
                 const mtl = if (buf_section.material) |mtl| mtl else gfx_options.default_material;
-
                 const material = self.materials.getPtr(mtl);
 
                 @memcpy(uniform_buf[16..32], math.matrix4x4.sliceConst(item.transform));
@@ -634,14 +672,13 @@ pub fn renderScene(
                 const bump_map = if (material.bump_map) |tex| self.textures.get(tex) else default_texture;
 
                 try render_pass.bindFragmentSamplers(0, &.{
-                    .{ .texture = texture, .sampler = default_sampler },
-                    .{ .texture = diffuse_map, .sampler = default_sampler },
-                    .{ .texture = bump_map, .sampler = default_sampler },
+                    .{ .texture = texture, .sampler = texture_sampler },
+                    .{ .texture = diffuse_map, .sampler = texture_sampler },
+                    .{ .texture = bump_map, .sampler = texture_sampler },
                 });
 
                 switch (mesh_buf.type) {
-                    .vertex => c.SDL_DrawGPUPrimitives(
-                        render_pass.ptr,
+                    .vertex => render_pass.drawPrimitives(
                         @intCast(buf_section.len),
                         1,
                         @intCast(buf_section.offset),
@@ -653,8 +690,8 @@ pub fn renderScene(
                             .buffer = mesh_buf.gpu_bufs.get(.index),
                             .offset = 0,
                         }, .@"32bit");
-                        c.SDL_DrawGPUIndexedPrimitives(
-                            render_pass.ptr,
+
+                        render_pass.drawIndexedPrimitives(
                             @intCast(buf_section.len),
                             1,
                             @intCast(buf_section.offset),
@@ -666,39 +703,38 @@ pub fn renderScene(
             }
         }
 
-        render_pass.bindGraphicsPipeline(origin_pipeline);
+        render_pass.bindGraphicsPipeline(line_pipeline);
+        for (render_scene_config.line_mesh_types) |mesh_type| {
+            command_buffer.pushFragmentUniformData(0, render_scene_config.line_mesh_colors.getPtrConst(mesh_type));
 
-        command_buffer.pushFragmentUniformData(0, &[_]f32{ 1, 0, 1 });
+            items_iter.reset();
+            while (items_iter.next()) |_item| {
+                const item: Item = _item;
+                const mesh_obj = item.mesh_obj;
 
-        items_iter.reset();
-        while (items_iter.next()) |_item| {
-            const item: Item = _item;
-            const mesh_obj = item.mesh_obj;
+                if (!mesh_obj.is_visible.contains(mesh_type)) continue;
 
-            if (!mesh_obj.has_active.normals) continue;
+                const mesh_buf = mesh_obj.mesh_bufs.get(mesh_type);
+                try render_pass.bindVertexBuffers(0, &.{
+                    .{ .buffer = mesh_buf.gpu_bufs.get(.vertex), .offset = 0 },
+                });
 
-            const mesh_buf = mesh_obj.normals_buf;
+                for (mesh_obj.sections.items) |buf_section| {
+                    @memcpy(uniform_buf[16..32], math.matrix4x4.sliceConst(item.transform));
+                    command_buffer.pushVertexUniformData(0, uniform_buf);
 
-            try render_pass.bindVertexBuffers(0, &.{
-                .{ .buffer = mesh_buf.gpu_bufs.get(.vertex), .offset = 0 },
-            });
-
-            for (mesh_obj.sections.items) |buf_section| {
-                @memcpy(uniform_buf[16..32], math.matrix4x4.sliceConst(item.transform));
-                command_buffer.pushVertexUniformData(0, uniform_buf);
-
-                switch (mesh_buf.type) {
-                    .vertex => c.SDL_DrawGPUPrimitives(
-                        render_pass.ptr,
-                        @intCast(buf_section.len * 2),
-                        1,
-                        @intCast(buf_section.offset * 2),
-                        0,
-                    ),
-                    .index => {
-                        log.err("index buffer normals render", .{});
-                        return Error.DrawFailed;
-                    },
+                    switch (mesh_buf.type) {
+                        .vertex => render_pass.drawPrimitives(
+                            @intCast(buf_section.len * 2),
+                            1,
+                            @intCast(buf_section.offset * 2),
+                            0,
+                        ),
+                        .index => {
+                            log.err("index buffer line render", .{});
+                            return Error.DrawFailed;
+                        },
+                    }
                 }
             }
         }
@@ -711,22 +747,23 @@ pub fn renderScene(
         try render_pass.bindVertexBuffers(0, &.{
             .{ .buffer = origin_mesh.gpu_bufs.get(.vertex), .offset = 0 },
         });
-        render_pass.bindIndexBuffer(&.{
-            .buffer = origin_mesh.gpu_bufs.get(.index),
-            .offset = 0,
-        }, .@"32bit");
+
+        render_pass.bindIndexBuffer(
+            &.{ .buffer = origin_mesh.gpu_bufs.get(.index), .offset = 0 },
+            .@"32bit",
+        );
 
         command_buffer.pushVertexUniformData(0, uniform_buf);
-        render_pass.bindGraphicsPipeline(origin_pipeline);
+        render_pass.bindGraphicsPipeline(line_pipeline);
 
         command_buffer.pushFragmentUniformData(0, &[_]f32{ 1, 0, 0 });
-        c.SDL_DrawGPUIndexedPrimitives(render_pass.ptr, 2, 1, 0, 0, 0);
+        render_pass.drawIndexedPrimitives(2, 1, 0, 0, 0);
 
         command_buffer.pushFragmentUniformData(0, &[_]f32{ 0, 1, 0 });
-        c.SDL_DrawGPUIndexedPrimitives(render_pass.ptr, 2, 1, 2, 0, 0);
+        render_pass.drawIndexedPrimitives(2, 1, 2, 0, 0);
 
         command_buffer.pushFragmentUniformData(0, &[_]f32{ 0, 0, 1 });
-        c.SDL_DrawGPUIndexedPrimitives(render_pass.ptr, 2, 1, 4, 0, 0);
+        render_pass.drawIndexedPrimitives(2, 1, 4, 0, 0);
 
         section.sub(.origin).end();
 
@@ -736,8 +773,22 @@ pub fn renderScene(
 
     if (ui_ptr) |ui| {
         section.sub(.ui).begin();
-        if (ui.render_ui) try ui.submitPass(command_buffer, swapchain);
+        if (ui.render_ui) try ui.submitPass(command_buffer, screen_buffer);
         section.sub(.ui).end();
+    }
+
+    {
+        var render_pass = try command_buffer.renderPass(&.{
+            .{ .texture = swapchain, .load_op = .clear, .store_op = .store },
+        }, null);
+
+        render_pass.bindGraphicsPipeline(gamma_pipeline);
+        command_buffer.pushFragmentUniformData(0, &[_]f32{self.settings.gamma});
+        try render_pass.bindFragmentSamplers(0, &.{
+            .{ .texture = screen_buffer, .sampler = screen_sampler },
+        });
+        render_pass.drawPrimitives(3, 1, 0, 0);
+        render_pass.end();
     }
 
     // {
@@ -774,7 +825,7 @@ pub fn renderScene(
 
     section.sub(.submit).begin();
     log.debug("submit command buffer", .{});
-    command_buffer.submit() catch return Error.DrawFailed;
+    try command_buffer.submit();
     section.sub(.submit).end();
 
     section.end();
@@ -899,7 +950,7 @@ pub fn propertyEditorNode(
         var iter = self.samplers.map.iterator();
         var buf: [64]u8 = undefined;
         while (iter.next()) |entry| {
-            const id = try std.fmt.bufPrint(&buf, "{s}#{s}", .{ @typeName(c.SDL_GPUSampler), entry.key_ptr.* });
+            const id = try std.fmt.bufPrint(&buf, "{s}#{s}", .{ @typeName(GPUSampler), entry.key_ptr.* });
             _ = try editor.appendChild(
                 node,
                 ui_mod.property_editor.PropertyEditorNull.element(),
@@ -908,5 +959,8 @@ pub fn propertyEditorNode(
             );
         }
     }
+
+    _ = try editor.appendChild(root_node, self.settings.propertyEditor(), root_id ++ ".settings", "Settings");
+
     return root_node;
 }

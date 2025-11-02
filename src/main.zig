@@ -20,9 +20,7 @@ const c = zengine.ext.c;
 const scheduler = zengine.scheduler;
 const time = zengine.time;
 const Engine = zengine.Engine;
-const UI = zengine.ui.UI;
-var mouse_motion: math.Point_f32 = math.point_f32.zero;
-
+const ui = zengine.ui;
 const log = std.log.scoped(.main);
 
 pub const std_options: std.Options = .{
@@ -64,28 +62,50 @@ const Config = struct {
         y_dynamic,
     };
 
-    pub fn propertyEditor(self: *Config) UI.Element {
-        return zengine.ui.PropertyEditor(Config).init(self).element();
+    pub fn propertyEditor(self: *Config) ui.Element {
+        return ui.PropertyEditor(Config).init(self).element();
     }
 };
 
-var flat_scene: Scene.Flattened = undefined;
+var config: Config = .{};
+
 var gfx_loader: gfx.Loader = undefined;
+var flat_scene: Scene.Flattened = undefined;
+var scene_map: zengine.containers.ArrayMap(Scene.Node.Id) = .empty;
 
 var controls = zengine.controls.CameraControls{};
-var speed_scale: f32 = 10;
-
-var rnd: std.Random.DefaultPrng = undefined;
-var dir: math.Vertex = .{ 1, 0, 0 };
+var mouse_motion: math.Point_f32 = math.point_f32.zero;
+var speed_scale: f32 = 2.5;
 
 var debug_ui: zengine.ui.DebugUI = undefined;
-var property_editor: zengine.ui.PropertyEditorWindow = undefined;
+var property_editor: ui.PropertyEditorWindow = undefined;
 var allocs_window: zengine.ui.AllocsWindow = undefined;
 var perf_window: zengine.ui.PerfWindow = undefined;
 
-var scene_map: zengine.containers.ArrayMap(Scene.Node.Id) = .empty;
+const rnd = struct {
+    var r: std.Random.DefaultPrng = undefined;
 
-var config: Config = .{};
+    fn next() u64 {
+        return r.next();
+    }
+
+    fn elem(offset: f32) f32 {
+        return @as(f32, @floatFromInt(next() % 5_00)) + offset;
+    }
+
+    fn delta() f32 {
+        return @as(f32, @floatFromInt(next() % 5_00)) / 2 - 125;
+    }
+
+    fn step(ptr: *math.Vector3, delta_s: f32) void {
+        math.vector3.add(ptr, &.{ delta() * delta_s, delta() * delta_s, delta() * delta_s });
+        math.vector3.clamp(ptr, &.{ -500, 0, -500 }, &.{ 500, 50, 500 });
+    }
+
+    fn vector3() math.Vector3 {
+        return .{ elem(-250), elem(-250), elem(-250) };
+    }
+};
 
 pub fn main() !void {
     // memory limit 1GB, SDL allocations are not tracked
@@ -104,7 +124,7 @@ pub fn main() !void {
 }
 
 fn load(self: *const ZEngine) !bool {
-    rnd = .init(@intCast(std.time.milliTimestamp()));
+    rnd.r = .init(@intCast(std.time.milliTimestamp()));
     scene_map = try .init(self.scene.allocator, 128);
     var task_list = try scheduler.TaskScheduler.init(allocators.gpa());
     defer task_list.deinit();
@@ -116,12 +136,12 @@ fn load(self: *const ZEngine) !bool {
     {
         errdefer gfx_loader.cancel();
 
-        _ = try gfx_loader.loadMesh("Cat", "cat.obj");
-        _ = try gfx_loader.loadMesh("Black Cat", "black_cat.obj");
-        _ = try gfx_loader.loadMesh("Cow", "cow_nonormals.obj");
-        _ = try gfx_loader.loadMesh("Mountain", "mountain.obj");
-        _ = try gfx_loader.loadMesh("Cube", "cube.obj");
-        _ = try gfx_loader.loadMesh("Cottage", "cottage_obj.obj");
+        _ = try gfx_loader.loadMesh("cat.obj");
+        _ = try gfx_loader.loadMesh("black_cat.obj");
+        _ = try gfx_loader.loadMesh("cow_nonormals.obj");
+        _ = try gfx_loader.loadMesh("mountain.obj");
+        _ = try gfx_loader.loadMesh("cube.obj");
+        _ = try gfx_loader.loadMesh("cottage.obj");
 
         _ = try gfx_loader.createOriginMesh();
         _ = try gfx_loader.createDefaultMaterial();
@@ -129,8 +149,8 @@ fn load(self: *const ZEngine) !bool {
         _ = try gfx_loader.createDefaultTexture();
 
         {
-            var camera_position: math.Vertex = .{ 4, 8, 10 };
-            var camera_direction: math.Vertex = undefined;
+            var camera_position: math.Vector3 = .{ 4, 8, 10 };
+            var camera_direction: math.Vector3 = undefined;
 
             math.vector3.scale(&camera_position, 50);
             math.vector3.lookAt(&camera_direction, &camera_position, &math.vector3.zero);
@@ -161,29 +181,22 @@ fn load(self: *const ZEngine) !bool {
         .translation = .{ 712, -54, 542 },
         .rotation = .{ 0, 4, 0 },
     });
-    const cottage = try self.scene.createChildNode(environment, "Cottage", .node(), &.{
+
+    const cottage = try self.scene.createChildNode(environment, "Cottage", .node(), &.{});
+    _ = try self.scene.createChildNode(cottage, "Cottage", .object("Cottage"), &.{
         .translation = .{ -346, -334, 1540 },
         .rotation = .{ -0.35, 2.45, -0.2 },
+        .scale = .{ 20, 20, 20 },
     });
+
     const ground = try self.scene.createChildNode(environment, "Ground", .node(), &.{
         .translation = .{ 0, -450, 0 },
         .scale = .{ 500, 250, 500 },
     });
-
-    _ = try self.scene.createChildNode(cottage, "Cottage", .object("Cottage"), &.{
-        .scale = .{ 20, 20, 20 },
-    });
-
     _ = try self.scene.createChildNode(ground, "Plane", .object("Plane"), &.{});
     _ = try self.scene.createChildNode(ground, "Landscape", .object("Landscape"), &.{});
 
     const objects = try self.scene.createRootNode("Objects", .node(), &.{});
-    const lights = try self.scene.createRootNode("Cubes", .node(), &.{
-        .translation = .{ -58, -83, 18 },
-        .scale = .{ 2.5, 2.5, 2.5 },
-        .order = .trs,
-    });
-
     const cat = try self.scene.createChildNode(objects, "Cat", .object("Cat"), &.{
         .translation = .{ -294, -176, 44 },
         .rotation = .{ -1.671, 0.4, 0.4 },
@@ -199,41 +212,43 @@ fn load(self: *const ZEngine) !bool {
         .euler_order = .zyx,
     });
 
-    const cube_r = try self.scene.createChildNode(lights, "Red", .node(), &.{
-        .translation = .{ 100, 0, 0 },
-        .euler_order = .yxz,
-    });
-    _ = try self.scene.createChildNode(cube_r, "Light", .light("Cube Red"), &.{});
-    _ = try self.scene.createChildNode(cube_r, "Mesh", .object("Cube Red"), &.{
-        .scale = .{ 3, 3, 3 },
+    const cubes = try self.scene.createRootNode("Cubes", .node(), &.{
+        .translation = .{ -58, -83, 18 },
+        .scale = .{ 2.5, 2.5, 2.5 },
+        .order = .trs,
     });
 
-    const cube_g = try self.scene.createChildNode(lights, "Green", .node(), &.{
-        .translation = .{ 0, 100, 0 },
-        .euler_order = .yxz,
-    });
-    _ = try self.scene.createChildNode(cube_g, "Light", .light("Cube Green"), &.{});
-    _ = try self.scene.createChildNode(cube_g, "Mesh", .object("Cube Green"), &.{
-        .scale = .{ 3, 3, 3 },
-    });
+    for (0..20) |_| {
+        const cube_r = try self.scene.createChildNode(cubes, "Red", .node(), &.{
+            .translation = rnd.vector3(),
+        });
+        _ = try self.scene.createChildNode(cube_r, "Light", .light("Cube Red"), &.{});
+        _ = try self.scene.createChildNode(cube_r, "Mesh", .object("Cube Red"), &.{
+            .scale = .{ 3, 3, 3 },
+        });
 
-    const cube_b = try self.scene.createChildNode(lights, "Blue", .node(), &.{
-        .translation = .{ -100, 0, 0 },
-        .euler_order = .yxz,
-    });
-    _ = try self.scene.createChildNode(cube_b, "Light", .light("Cube Blue"), &.{});
-    _ = try self.scene.createChildNode(cube_b, "Mesh", .object("Cube Blue"), &.{
-        .scale = .{ 3, 3, 3 },
-    });
+        const cube_g = try self.scene.createChildNode(cubes, "Green", .node(), &.{
+            .translation = rnd.vector3(),
+        });
+        _ = try self.scene.createChildNode(cube_g, "Light", .light("Cube Green"), &.{});
+        _ = try self.scene.createChildNode(cube_g, "Mesh", .object("Cube Green"), &.{
+            .scale = .{ 3, 3, 3 },
+        });
+
+        const cube_b = try self.scene.createChildNode(cubes, "Blue", .node(), &.{
+            .translation = rnd.vector3(),
+        });
+        _ = try self.scene.createChildNode(cube_b, "Light", .light("Cube Blue"), &.{});
+        _ = try self.scene.createChildNode(cube_b, "Mesh", .object("Cube Blue"), &.{
+            .scale = .{ 3, 3, 3 },
+        });
+    }
 
     try scene_map.insert(self.scene.allocator, "dir_light", dir_light);
     try scene_map.insert(self.scene.allocator, "objects", objects);
     try scene_map.insert(self.scene.allocator, "ground", ground);
-    try scene_map.insert(self.scene.allocator, "lights", lights);
+    try scene_map.insert(self.scene.allocator, "cubes", cubes);
     try scene_map.insert(self.scene.allocator, "cat", cat);
-    try scene_map.insert(self.scene.allocator, "cube_r", cube_r);
-    try scene_map.insert(self.scene.allocator, "cube_g", cube_g);
-    try scene_map.insert(self.scene.allocator, "cube_b", cube_b);
 
     ZEngine.sections.sub(.load).sub(.scene).end();
     ZEngine.sections.sub(.load).sub(.ui).begin();
@@ -245,12 +260,9 @@ fn load(self: *const ZEngine) !bool {
 
     const gfx_node = try property_editor.appendNode(@typeName(gfx), "gfx");
     _ = try self.renderer.propertyEditorNode(&property_editor, gfx_node);
+    _ = try self.scene.propertyEditorNode(&property_editor, gfx_node);
 
-    const scene_node = try property_editor.appendNode(@typeName(Scene), "scene");
-    _ = try self.scene.propertyEditorNode(&property_editor, scene_node);
-
-    const main_node = try property_editor.appendNode(@typeName(@This()), "main");
-    _ = try property_editor.appendChild(main_node, config.propertyEditor(), @typeName(Config), "config");
+    _ = try propertyEditorNode(&property_editor);
 
     self.engine.main_win.setRelativeMouseMode(config.flags.mouse_captured);
 
@@ -420,68 +432,26 @@ fn render(self: *const ZEngine) !void {
 }
 
 fn updateScene(self: *const ZEngine, delta: f32) void {
-    const pi = std.math.pi;
-    const time_s = global.timeSinceStart().toFloat().toValue32(.s);
     const s = self.scene.nodes.slice();
+    const cubes = scene_map.get("cubes");
 
-    // const cat = s.transform(scene_map.get("cat"));
-    // const objects = s.transform(scene_map.get("objects"));
-
-    const cube_r = s.transform(scene_map.get("cube_r"));
-    const cube_g = s.transform(scene_map.get("cube_g"));
-    const cube_b = s.transform(scene_map.get("cube_b"));
-
-    const cos = @cos(1.5 * time_s);
-    const sin = @sin(1.5 * time_s);
-    const x = 150 * cos;
-    const y = 25 * cos;
-    const z = 150 * sin;
-
-    const rx: i64 = @intCast(rnd.next() % 31);
-    const ry: i64 = @intCast(rnd.next() % 31);
-    const rz: i64 = @intCast(rnd.next() % 31);
-    const dx: f32 = @floatFromInt(rx - 15);
-    const dy: f32 = @floatFromInt(ry - 15);
-    const dz: f32 = @floatFromInt(rz - 15);
-
-    var g_pos = cube_g.translation;
-    var axis: math.Vertex = .{ dx, dy, dz };
-    math.vertex.normalize(&axis);
-    math.vertex.rotateDirectionScale(&dir, &axis, 20 * delta);
-    math.vertex.normalize(&dir);
-    math.vertex.translateScale(&g_pos, &dir, 20 * delta);
-    math.vertex.clamp(&g_pos, &.{ -300, 0, -300 }, &.{ 300, 300, 300 });
-
-    const r_pos = .{ x, y + 55, z };
-    const b_pos = .{ -x, -y + 55, -z };
-
-    // objects.translation[1] = 30 * cos + 30;
-    // objects.rotation[0] = 2 * time_s / pi;
-    // objects.rotation[1] = 2 * time_s;
-    // cat.rotation[1] = 20 * time_s;
-    // cat.translation[1] = 25 * @cos(10 * time_s);
-
-    cube_r.translation = r_pos;
-    cube_r.rotation[0] = time_s;
-    cube_r.rotation[1] = 25 * time_s;
-    cube_r.rotation[2] = time_s + pi;
-    cube_g.translation = g_pos;
-    cube_g.rotation[0] = time_s;
-    cube_g.rotation[1] = 25 * time_s;
-    cube_g.rotation[2] = time_s + pi;
-    cube_b.translation = b_pos;
-    cube_b.rotation[0] = time_s;
-    cube_b.rotation[1] = 25 * time_s;
-    cube_b.rotation[2] = time_s + pi;
+    var cube = s.node(cubes).child;
+    while (cube != .invalid) : (cube = s.node(cube).next) {
+        rnd.step(&s.transform(cube).translation, delta);
+    }
 }
 
-fn updateCameraControls(self: *const ZEngine, delta: f32, comptime controls_type: Config.CameraControlsType) void {
+fn updateCameraControls(
+    self: *const ZEngine,
+    delta: f32,
+    comptime controls_type: Config.CameraControlsType,
+) void {
     const camera = self.renderer.cameras.getPtr(self.renderer.camera);
     var coords: math.vector3.Coords = undefined;
     camera.coords(&coords);
 
-    const rotation_speed = delta;
-    const mouse_speed = 0.5;
+    const rotation_speed = delta / 2;
+    const mouse_speed = 0.05;
     const translation_speed = 20 * delta * speed_scale;
     const scale_speed = 15 * delta;
 
@@ -576,4 +546,21 @@ fn updateCameraControls(self: *const ZEngine, delta: f32, comptime controls_type
         gfx.Camera.fov_min,
         gfx.Camera.fov_max,
     );
+}
+
+fn propertyEditorNode(editor: *ui.PropertyEditorWindow) !*ui.PropertyEditorWindow.Item {
+    const root_id = @typeName(@This());
+    const root_node = try editor.appendNode(root_id, "main");
+
+    _ = try editor.appendChild(root_node, config.propertyEditor(), root_id ++ ".config", "Config");
+    _ = try editor.appendChild(
+        root_node,
+        ui.property_editor.InputScalar(@TypeOf(speed_scale), 1, .{
+            .speed = 0.1,
+        }).init(&speed_scale).element(),
+        root_id ++ ".speed_scale",
+        "Speed Scale",
+    );
+
+    return root_node;
 }

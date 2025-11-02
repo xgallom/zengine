@@ -143,13 +143,11 @@ pub fn vectorNT(comptime N: comptime_int, comptime T: type) type {
         }
 
         pub fn splat(value: Scalar) Self {
-            var result: Self = undefined;
-            for (0..len) |n| result[n] = value;
-            return result;
+            return @splat(value);
         }
 
         pub fn splatInto(result: *Self, value: Scalar) void {
-            for (0..len) |n| result[n] = value;
+            result.* = @splat(value);
         }
 
         pub fn sliceLen(comptime L: usize, self: *Self) []Scalar {
@@ -241,6 +239,12 @@ pub fn vectorNT(comptime N: comptime_int, comptime T: type) type {
             comptime if (!scalar.is_float) @compileError("normalize not supported for vector of " ++ @typeName(Scalar));
             const vector_length = scalar.one / mag(self);
             for (0..len) |n| self[n] *= vector_length;
+        }
+
+        pub fn normalized(self: *const Self) Self {
+            var result = self.*;
+            normalize(&result);
+            return result;
         }
 
         pub fn dot(lhs: *const Self, rhs: *const Self) Scalar {

@@ -5,7 +5,6 @@
 const std = @import("std");
 const assert = std.debug.assert;
 
-const KeyMap = @import("../containers.zig").KeyMap;
 const c = @import("../ext.zig").c;
 const global = @import("../global.zig");
 const math = @import("../math.zig");
@@ -13,6 +12,14 @@ const ui = @import("../ui.zig");
 const MeshBuffer = @import("MeshBuffer.zig");
 
 const log = std.log.scoped(.gfx_mesh_object);
+
+pub const MeshBufferType = enum {
+    mesh,
+    tex_coords,
+    normals,
+    tangents,
+    binormals,
+};
 
 pub const FaceType = enum {
     invalid,
@@ -29,22 +36,42 @@ pub const face_vert_counts: std.EnumArray(FaceType, usize) = .init(.{
     .triangle = 3,
 });
 
-mesh_buf: *MeshBuffer = undefined,
-normals_buf: *MeshBuffer = undefined,
+mesh_bufs: MeshBuffers = .initUndefined(),
 sections: Sections = .empty,
 groups: Groups = .empty,
 face_type: FaceType,
 has_active: packed struct {
     section: bool = false,
     group: bool = false,
-    normals: bool = false,
 } = .{},
+is_visible: std.EnumSet(MeshBufferType) = .initOne(.mesh),
 
 const Self = @This();
+pub const MeshBuffers = std.EnumArray(MeshBufferType, *MeshBuffer);
 const Sections = std.ArrayList(Section);
 const Groups = std.ArrayList(Group);
 
-pub const exclude_properties: ui.property_editor.PropertyList = &.{ .mesh_buf, .normals_buf, .sections, .groups };
+pub const exclude_properties: ui.property_editor.PropertyList = &.{ .mesh_bufs, .sections, .groups };
+pub const is_visible_input = struct {
+    ptr: *std.EnumSet(MeshBufferType),
+
+    pub fn init(ptr: *std.EnumSet(MeshBufferType)) @This() {
+        return .{ .ptr = ptr };
+    }
+
+    pub fn draw(self: *const @This(), ui_ptr: *const ui.UI, is_open: *bool) void {
+        ui.property_editor.InputFields(
+            packed struct {
+                mesh: bool,
+                tex_coords: bool,
+                normals: bool,
+                tangents: bool,
+                binormals: bool,
+            },
+            .{ .name = "is_visible" },
+        ).init(@ptrCast(&self.ptr.bits.mask)).draw(ui_ptr, is_open);
+    }
+};
 
 pub const Section = struct {
     offset: usize,
@@ -106,6 +133,6 @@ pub fn endGroup(self: *Self, offset: usize) void {
     self.has_active.group = false;
 }
 
-pub fn propertyEditor(self: *Self) ui.UI.Element {
+pub fn propertyEditor(self: *Self) ui.Element {
     return ui.PropertyEditor(Self).init(self).element();
 }

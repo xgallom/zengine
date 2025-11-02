@@ -84,7 +84,7 @@ pub fn flagModified(self: *Self, comptime target: Target, key: []const u8) !void
     return self.modifs.getPtr(target).append(self.renderer.allocator, key);
 }
 
-pub fn loadMesh(self: *Self, key: []const u8, asset_path: []const u8) !*MeshBuffer {
+pub fn loadMesh(self: *Self, asset_path: []const u8) !*MeshBuffer {
     const mesh_path = try global.assetPath(asset_path);
 
     var result = obj_loader.loadFile(self.renderer.allocator, mesh_path) catch |err| {
@@ -97,21 +97,24 @@ pub fn loadMesh(self: *Self, key: []const u8, asset_path: []const u8) !*MeshBuff
     }
 
     if (result.mtl_path) |mtl_path| try self.loadMaterials(mtl_path);
-    const mesh_buf = try self.renderer.insertMeshBuffer(key, &.fromCPUBuffer(&result.mesh_buf));
-    try self.flagModified(.mesh_buffer, key);
-
-    const normals_buf = try self.createNormalIndicators(key);
+    const mesh_bufs: MeshObject.MeshBuffers = .init(.{
+        .mesh = try self.renderer.insertMeshBuffer(asset_path, &.fromCPUBuffer(&result.mesh_buf)),
+        .tex_coords = try self.createTexCoordIndicators(asset_path),
+        .normals = try self.createNormalIndicators(asset_path),
+        .tangents = try self.createTangentIndicators(asset_path),
+        .binormals = try self.createBinormalIndicators(asset_path),
+    });
 
     var iter = result.mesh_objs.iterator();
     while (iter.next()) |e| {
         const mesh_obj = e.value_ptr;
-        mesh_obj.mesh_buf = mesh_buf;
-        mesh_obj.normals_buf = normals_buf;
+        mesh_obj.mesh_bufs = mesh_bufs;
         _ = try self.renderer.insertMeshObject(e.key_ptr.*, mesh_obj);
     }
 
     result.cleanup();
-    return mesh_buf;
+    try self.flagModified(.mesh_buffer, asset_path);
+    return mesh_bufs.get(.mesh);
 }
 
 pub fn loadMaterials(self: *Self, asset_path: []const u8) !void {
@@ -121,11 +124,13 @@ pub fn loadMaterials(self: *Self, asset_path: []const u8) !void {
         return Error.MaterialFailed;
     };
     defer mtl.deinit();
+
     for (mtl.items) |*item| {
         const tex_paths = [_]?[]const u8{ item.texture, item.diffuse_map, item.bump_map };
         for (&tex_paths) |opt_tex_path| {
             if (opt_tex_path) |tex_path| _ = try self.loadTexture(tex_path);
         }
+
         _ = try self.renderer.insertMaterial(item.name, item);
     }
 }
@@ -137,6 +142,7 @@ pub fn loadLights(self: *Self, asset_path: []const u8) !void {
         return Error.LightFailed;
     };
     defer lgh.deinit();
+
     for (lgh.items) |*item| _ = try self.renderer.insertLight(item.name, item);
 }
 
@@ -152,25 +158,29 @@ pub fn loadTexture(self: *Self, asset_path: []const u8) !*SurfaceTexture {
         log.err("failed reading image file: {t}", .{err});
         return Error.TextureFailed;
     };
+
+    try surface.flip(.vertical);
     var texture: SurfaceTexture = .init(surface);
     errdefer texture.deinit(self.renderer.gpu_device);
+
+    const tex = try self.surface_textures.insert(asset_path, texture);
     try self.flagModified(.surface_texture, asset_path);
-    return self.surface_textures.insert(asset_path, texture);
+    return tex;
 }
 
 pub fn createOriginMesh(self: *Self) !*MeshBuffer {
     const origin_mesh = try self.renderer.createMeshBuffer("origin", .index);
-    try self.flagModified(.mesh_buffer, "origin");
 
-    origin_mesh.appendSlice(self.renderer.allocator, .vertex, [3]math.Vertex, 1, &.{
-        .{ .{ 0, 0, 0 }, math.vertex.zero, math.vertex.zero },
-        .{ .{ 1, 0, 0 }, math.vertex.zero, math.vertex.zero },
-        .{ .{ 0, 1, 0 }, math.vertex.zero, math.vertex.zero },
-        .{ .{ 0, 0, 1 }, math.vertex.zero, math.vertex.zero },
+    origin_mesh.appendSlice(self.renderer.allocator, .vertex, math.Vector3, 1, &.{
+        .{ 0, 0, 0 },
+        .{ 1, 0, 0 },
+        .{ 0, 1, 0 },
+        .{ 0, 0, 1 },
     }) catch |err| {
         log.err("failed appending origin mesh vertices: {t}", .{err});
         return Error.BufferFailed;
     };
+
     origin_mesh.appendSlice(self.renderer.allocator, .index, math.LineFaceIndex, 2, &.{
         .{ 0, 1 },
         .{ 0, 2 },
@@ -179,29 +189,51 @@ pub fn createOriginMesh(self: *Self) !*MeshBuffer {
         log.err("failed appending origin mesh faces: {t}", .{err});
         return Error.BufferFailed;
     };
+
+    try self.flagModified(.mesh_buffer, "origin");
     return origin_mesh;
 }
 
-pub fn createNormalIndicators(self: *Self, key: []const u8) !*MeshBuffer {
-    const normals_key = try str.join(&.{ key, "-normals" });
+pub fn createIndicators(
+    self: *Self,
+    key: []const u8,
+    comptime suffix: [:0]const u8,
+    comptime attr: math.VertexAttr,
+) !*MeshBuffer {
+    const new_key = try str.join(&.{ key, "." ++ suffix });
     const mesh = self.renderer.mesh_bufs.getPtr(key);
+    assert(mesh.type == .vertex);
     const scalars = mesh.slice(.vertex);
-    const verts: [][3]math.Vertex = @ptrCast(scalars);
+    const verts: []math.Vertex = @ptrCast(scalars);
 
-    const result = try self.renderer.createMeshBuffer(normals_key, .vertex);
-    try self.flagModified(.mesh_buffer, normals_key);
+    const result = try self.renderer.createMeshBuffer(new_key, .vertex);
 
-    // for every vertex append two vertices
-    try result.ensureUnusedCapacity(self.renderer.allocator, .vertex, [3]math.Vertex, 2 * verts.len);
-    for (verts) |vert| {
-        var dest = vert[0];
-        math.vertex.add(&dest, &vert[2]);
-        result.appendSliceAssumeCapacity(.vertex, [3]math.Vertex, 1, &.{
-            .{ vert[0], math.vertex.zero, vert[2] },
-            .{ dest, math.vertex.zero, vert[2] },
-        });
+    try result.ensureUnusedCapacity(self.renderer.allocator, .vertex, math.Vector3, 2 * verts.len);
+    for (verts) |*_vert| {
+        const vert = math.vertex.cmap(_vert);
+        var dest = vert.get(.position);
+        math.vector3.add(&dest, vert.getPtrConst(attr));
+        result.appendSliceAssumeCapacity(.vertex, math.Vector3, 1, &.{ vert.get(.position), dest });
     }
+
+    try self.flagModified(.mesh_buffer, new_key);
     return result;
+}
+
+pub fn createTexCoordIndicators(self: *Self, key: []const u8) !*MeshBuffer {
+    return self.createIndicators(key, "tex_coords", .tex_coord);
+}
+
+pub fn createNormalIndicators(self: *Self, key: []const u8) !*MeshBuffer {
+    return self.createIndicators(key, "normals", .normal);
+}
+
+pub fn createTangentIndicators(self: *Self, key: []const u8) !*MeshBuffer {
+    return self.createIndicators(key, "tangents", .tangent);
+}
+
+pub fn createBinormalIndicators(self: *Self, key: []const u8) !*MeshBuffer {
+    return self.createIndicators(key, "binormals", .binormal);
 }
 
 pub fn createDefaultMaterial(self: *Self) !*MaterialInfo {
@@ -241,7 +273,6 @@ pub fn createLightsBuffer(self: *Self, flat: ?*const Scene.Flattened) !*MeshBuff
     assert(self.renderer == flat.?.scene.renderer);
 
     const lights = flat.?.lights.slice();
-    try self.flagModified(.storage_buffer, key);
 
     for (lights.items(.target)) |light| {
         if (light.type == .ambient) {
@@ -275,6 +306,7 @@ pub fn createLightsBuffer(self: *Self, flat: ?*const Scene.Flattened) !*MeshBuff
         }
     }
 
+    try self.flagModified(.storage_buffer, key);
     return lights_buf;
 }
 

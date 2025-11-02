@@ -15,7 +15,7 @@ len: usize,
 
 const Self = @This();
 const ArrayList = std.ArrayList(batch.Batch);
-const dims = math.vertex.len;
+const dims = math.vector3.len;
 
 pub fn init(allocator: std.mem.Allocator, w: math.Scalar) !Self {
     const none = &[_]batch.Batch{};
@@ -36,7 +36,7 @@ pub fn deinit(self: *Self) void {
     self.allocator.free(self.items[3][0..1]);
 }
 
-pub fn push(self: *Self, vertices: []const math.Vertex) !void {
+pub fn push(self: *Self, vertices: []const math.Vector3) !void {
     const total_len = self.len + vertices.len;
     const capacity = batch.batch.batchLen(total_len);
     inline for (0..dims) |d| {

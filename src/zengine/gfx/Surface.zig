@@ -11,6 +11,7 @@ const math = @import("../math.zig");
 const ui = @import("../ui.zig");
 const Error = @import("Error.zig").Error;
 const GPUTexture = @import("GPUTexture.zig");
+const types = @import("types.zig");
 
 const log = std.log.scoped(.gfx_surface);
 
@@ -84,6 +85,14 @@ pub fn convert(self: *Self, pixel_format: PixelFormat) !void {
     }
     destroy(self.toOwnedSurface());
     self.ptr = new_surf;
+}
+
+pub fn flip(self: Self, mode: types.FlipMode) !void {
+    assert(self.isValid());
+    if (!c.SDL_FlipSurface(self.ptr, @intFromEnum(mode))) {
+        log.err("failed flipping surface: {s}", .{c.SDL_GetError()});
+        return Error.SurfaceFailed;
+    }
 }
 
 pub fn fromOwnedSurface(ptr: *c.SDL_Surface) Self {

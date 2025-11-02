@@ -163,17 +163,17 @@ pub fn endDraw(self: *Self) void {
     sections.sub(.draw).end();
 }
 
-pub fn submitPass(self: *Self, command_buffer: gfx.GPUCommandBuffer, swapchain: gfx.GPUTexture) !void {
+pub fn submitPass(self: *Self, command_buffer: gfx.GPUCommandBuffer, ui_buffer: gfx.GPUTexture) !void {
     if (!self.show_ui) return;
 
     assert(self.draw_data != null);
     assert(command_buffer.isValid());
-    assert(swapchain.isValid());
+    assert(ui_buffer.isValid());
 
     c.ImGui_ImplSDLGPU3_PrepareDrawData(self.draw_data, command_buffer.ptr);
 
     var render_pass = try command_buffer.renderPass(&.{
-        .{ .texture = swapchain, .load_op = .load, .store_op = .store },
+        .{ .texture = ui_buffer, .load_op = .load, .store_op = .store },
     }, null);
     c.ImGui_ImplSDLGPU3_RenderDrawData(self.draw_data, command_buffer.ptr, render_pass.ptr, null);
     render_pass.end();

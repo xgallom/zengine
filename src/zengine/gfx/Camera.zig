@@ -12,9 +12,9 @@ const ui = @import("../ui.zig");
 const log = std.log.scoped(.gfx_camera);
 
 name: [:0]const u8 = "",
-position: math.Vertex = math.vertex.zero,
-direction: math.Vertex = .{ 1, 0, 0 },
-up: math.Vertex = global.cameraUp(),
+position: math.Vector3 = math.vector3.zero,
+direction: math.Vector3 = .{ 1, 0, 0 },
+up: math.Vector3 = global.cameraUp(),
 fov: f32 = 50,
 orto_scale: f32 = 100,
 type: Type = .perspective,
@@ -78,6 +78,6 @@ pub fn projection(
     }
 }
 
-pub fn propertyEditor(self: *Self) ui.UI.Element {
+pub fn propertyEditor(self: *Self) ui.Element {
     return ui.PropertyEditor(Self).init(self).element();
 }

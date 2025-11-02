@@ -66,7 +66,9 @@ pub fn element(self: *Self) UI.Element {
 
 pub fn toggleOpen(self: *Self, res: Result, depth: ?usize) void {
     if (self.text.len < self.min_len) {
-        if (depth) |d| c.igSetNextItemOpen(d < self.initial_open_depth, c.ImGuiCond_Appearing);
+        if (depth) |d| {
+            c.igSetNextItemOpen(d < self.initial_open_depth, c.ImGuiCond_Appearing);
+        } else c.igSetNextItemOpen(true, c.ImGuiCond_Appearing);
         return;
     }
     switch (res) {

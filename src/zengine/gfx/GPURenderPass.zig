@@ -77,6 +77,29 @@ pub fn bindFragmentStorageBuffers(self: Self, first_slot: u32, buffers: []const 
     c.SDL_BindGPUFragmentStorageBuffers(self.ptr, first_slot, bufs.ptr, @intCast(bufs.len));
 }
 
+pub fn drawPrimitives(
+    self: Self,
+    num_vertices: u32,
+    num_instances: u32,
+    first_vertex: u32,
+    first_instance: u32,
+) void {
+    assert(self.isValid());
+    c.SDL_DrawGPUPrimitives(self.ptr, num_vertices, num_instances, first_vertex, first_instance);
+}
+
+pub fn drawIndexedPrimitives(
+    self: Self,
+    num_indices: u32,
+    num_instances: u32,
+    first_index: u32,
+    vertex_offset: i32,
+    first_instance: u32,
+) void {
+    assert(self.isValid());
+    c.SDL_DrawGPUIndexedPrimitives(self.ptr, num_indices, num_instances, first_index, vertex_offset, first_instance);
+}
+
 pub inline fn isValid(self: Self) bool {
     return self.ptr != null;
 }

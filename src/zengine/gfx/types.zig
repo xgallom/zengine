@@ -13,6 +13,14 @@ const GPUSampler = @import("GPUSampler.zig");
 const GPUTexture = @import("GPUTexture.zig");
 const GPUTransferBuffer = @import("GPUTransferBuffer.zig");
 
+pub const FlipMode = enum(c.SDL_FlipMode) {
+    none = c.SDL_FLIP_NONE,
+    horitontal = c.SDL_FLIP_HORIZONTAL,
+    vertical = c.SDL_FLIP_VERTICAL,
+    horizontal_and_vertical = c.SDL_FLIP_HORIZONTAL_AND_VERTICAL,
+    pub const default = .none;
+};
+
 pub const PrimitiveType = enum(c.SDL_GPUPrimitiveType) {
     triangle_list = c.SDL_GPU_PRIMITIVETYPE_TRIANGLELIST,
     triangle_strip = c.SDL_GPU_PRIMITIVETYPE_TRIANGLESTRIP,

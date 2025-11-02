@@ -11,11 +11,11 @@ const ui = @import("../../ui.zig");
 
 const log = std.log.scoped(.gfx_scene_transform);
 
-translation: math.Vertex = math.vertex.zero,
+translation: math.Vector3 = math.vector3.zero,
 order: math.TransformOrder = .default,
-rotation: math.Euler = math.vertex.zero,
+rotation: math.Euler = math.euler.zero,
 euler_order: math.EulerOrder = .default,
-scale: math.Vertex = math.vertex.one,
+scale: math.Vector3 = math.vector3.one,
 
 const Self = @This();
 

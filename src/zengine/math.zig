@@ -46,12 +46,14 @@ pub const LineFaceIndex = types.LineFaceIndex;
 pub const FaceIndex = types.FaceIndex;
 pub const QuadFaceIndex = types.QuadFaceIndex;
 pub const Color = types.Color;
+pub const VertexAttr = types.VertexAttr;
 pub const Axis3 = types.Axis3;
 pub const Axis4 = types.Axis4;
 pub const TransformOp = types.TransformOp;
 pub const TransformOrder = types.TransformOrder;
 pub const EulerOrder = types.EulerOrder;
 pub const vectorNT = @import("math/vector.zig").vectorNT;
+pub const vertexNT = @import("math/vertex.zig").vertexNT;
 
 pub fn vector2T(comptime T: type) type {
     return vectorNT(2, T);
@@ -98,8 +100,8 @@ pub const rgba_u8 = vector4T(u8);
 pub const rgba_f32 = vector4T(f32);
 pub const rgba_f64 = vector4T(f64);
 
-pub const vertex = vector3T(f32);
-pub const vertex4 = vector4T(f32);
+pub const vertex = vertexNT(3, f32);
+pub const vertex4 = vertexNT(4, f32);
 pub const euler = vector3T(f32);
 pub const quat = quatT(f32);
 

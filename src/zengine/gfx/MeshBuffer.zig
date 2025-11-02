@@ -182,6 +182,6 @@ pub fn releaseGPUBuffers(self: *Self, gpu_device: GPUDevice) void {
     if (self.type == .index) self.gpu_bufs.getPtr(.index).release(gpu_device);
 }
 
-pub fn propertyEditor(self: *Self) ui.UI.Element {
+pub fn propertyEditor(self: *Self) ui.Element {
     return ui.PropertyEditor(Self).init(self).element();
 }

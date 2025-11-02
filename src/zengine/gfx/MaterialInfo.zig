@@ -27,6 +27,14 @@ mode: u8 = 0,
 
 const Self = @This();
 
+const Config = enum {
+    has_texture,
+    has_diffuse_map,
+    has_bump_map,
+    has_normal_map,
+    has_filter,
+};
+
 pub const clr_ambient_min = 0;
 pub const clr_ambient_max = 1;
 pub const clr_ambient_speed = 0.01;
@@ -49,13 +57,24 @@ pub const alpha_max = 1;
 pub const alpha_speed = 0.05;
 
 pub fn config(self: *const Self) u32 {
-    var result: std.bit_set.IntegerBitSet(32) = .initEmpty();
-    if (self.texture != null) result.set(0);
-    if (self.diffuse_map != null) result.set(1);
-    if (self.bump_map != null) result.set(2);
-    result.set(3);
-    // if (!math.rgbf32.eqlExact(&self.clr_filter, &math.rgbf32.zero)) result.set(3);
-    return result.mask;
+    var result: std.EnumSet(Config) = .initEmpty();
+
+    if (self.texture != null) result.insert(.has_texture);
+    if (self.diffuse_map != null) result.insert(.has_diffuse_map);
+    if (self.bump_map) |bump_map| {
+        if (std.mem.indexOf(u8, bump_map, "normal") != null) {
+            result.insert(.has_normal_map);
+        } else {
+            if (std.mem.indexOf(u8, bump_map, "bump") == null) log.warn(
+                "missing bump map type for texture {s}",
+                .{bump_map},
+            );
+            result.insert(.has_bump_map);
+        }
+    }
+    result.insert(.has_filter);
+
+    return result.bits.mask;
 }
 
 pub fn uniformBuffer(self: *const Self) [24]f32 {
@@ -73,6 +92,6 @@ pub fn uniformBuffer(self: *const Self) [24]f32 {
     return result;
 }
 
-pub fn propertyEditor(self: *Self) ui.UI.Element {
+pub fn propertyEditor(self: *Self) ui.Element {
     return ui.PropertyEditor(Self).init(self).element();
 }

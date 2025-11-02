@@ -52,6 +52,14 @@ pub const Id = enum(u64) {
     pub inline fn idx(id: Id) Idx {
         return id.decompose().idx;
     }
+
+    pub fn format(self: @This(), writer: *std.Io.Writer) std.Io.Writer.Error!void {
+        const d = self.decompose();
+        switch (d.meta) {
+            .invalid => _ = try writer.write("invalid"),
+            .valid => try writer.print("{}@{}", .{ d.idx, d.gen }),
+        }
+    }
 };
 
 pub const Type = enum {
@@ -268,7 +276,7 @@ pub const Tree = struct {
         assert(d.gen == self.gens.items[d.idx]);
     }
 
-    pub fn propertyEditor(self: *const Tree, s: *const Slice, id: Id) !ui.UI.Element {
+    pub fn propertyEditor(self: *const Tree, s: *const Slice, id: Id) !ui.Element {
         _ = self;
         try ui.RefPropertyEditor(Self, Id).register();
         return ui.RefPropertyEditor(Self, Id).init(id, .{

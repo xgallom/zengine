@@ -61,11 +61,12 @@ mtl_path: ?[:0]const u8 = null,
 obj_idx: usize = 0,
 
 const Self = @This();
-const VertData = [AttrType.arr_len]math.Vertex;
+const VertData = [AttrType.arr_len]math.Vector3;
 const IndexData = [AttrType.arr_len]math.Index;
 const FaceData = [ObjFaceType.arr_len]IndexData;
-const FaceNormals = [MeshObject.FaceType.arr_len + 2]math.Vertex;
-const Verts = std.ArrayList(math.Vertex);
+const FaceNormals = [MeshObject.FaceType.arr_len + 2]math.Vector3;
+const FaceTangents = [MeshObject.FaceType.arr_len]math.Vector3;
+const Verts = std.ArrayList(math.Vector3);
 const Faces = std.ArrayList(Face);
 const Nodes = std.ArrayList(Node);
 const AttrVerts = std.EnumArray(AttrType, Verts);
@@ -193,13 +194,13 @@ fn parseLine(self: *Self, line: []const u8) !void {
     var iter = str.splitScalar(line, ' ');
     if (iter.next()) |cmd| {
         if (str.eql(cmd, "v")) {
-            const vertex = try parseVertex(&iter);
+            const vertex = try parseVector(&iter);
             try self.attr_verts.getPtr(.position).append(self.allocator, vertex);
         } else if (str.eql(cmd, "vt")) {
-            const vertex = try parseVertex(&iter);
+            const vertex = try parseVector(&iter);
             try self.attr_verts.getPtr(.tex_coord).append(self.allocator, vertex);
         } else if (str.eql(cmd, "vn")) {
-            const vertex = try parseVertex(&iter);
+            const vertex = try parseVector(&iter);
             try self.attr_verts.getPtr(.normal).append(self.allocator, vertex);
         } else if (str.eql(cmd, "f")) {
             const face = try parseFace(&iter);
@@ -207,12 +208,14 @@ fn parseLine(self: *Self, line: []const u8) !void {
 
             if (obj.face_type == .invalid) obj.face_type = face.face_type;
             if (obj.attrs_present.eql(.initEmpty())) obj.attrs_present = face.attrs_present;
+            assert(face_types_from_obj.get(obj.face_type) == face_types_from_obj.get(face.face_type));
 
             var attr_iter = face.attrs_present.iterator();
             while (attr_iter.next()) |attr| {
                 const len = self.attr_verts.getPtrConst(attr).items.len;
                 for (0..@intFromEnum(face.face_type)) |vert_n| {
                     const idx = getFaceIndex(&face.data, @intCast(vert_n), attr);
+                    if (idx >= len) log.err("{} {}: {} >= {}", .{ attr, vert_n, idx, len });
                     assert(idx < len);
                 }
             }
@@ -259,15 +262,15 @@ fn parseLine(self: *Self, line: []const u8) !void {
     }
 }
 
-fn parseVertex(iter: *str.ScalarIterator) !math.Vertex {
-    var result = math.vertex.zero;
+fn parseVector(iter: *str.ScalarIterator) !math.Vector3 {
+    var result = math.vector3.zero;
     var n: usize = 0;
 
     while (iter.next()) |token| {
         if (token.len == 0) continue;
         switch (n) {
             0, 1, 2 => result[n] = std.fmt.parseFloat(math.Scalar, token) catch return error.ParseFloatError,
-            3 => log.warn("loaded 4th component of a 3-element vertex", .{}),
+            3 => log.warn("loaded 4th component of a 3-element vector", .{}),
             else => return error.TooManyArguments,
         }
         n += 1;
@@ -331,8 +334,9 @@ const CreateResultState = struct {
     face_n: usize = 0,
     material_active: ?[:0]const u8 = null,
     smoothing_groups_active: std.bit_set.IntegerBitSet(smoothing_groups_len) = .initEmpty(),
-    vert_data: std.EnumArray(AttrType, []const math.Vertex),
-    face_normals: std.ArrayList(math.Vertex) = .empty,
+    vert_data: std.EnumArray(AttrType, []const math.Vector3),
+    face_normals: std.ArrayList(math.Vector3) = .empty,
+    face_tangents: std.ArrayList([2]math.Vector3) = .empty,
     face_angles: std.ArrayList(math.Scalar) = .empty,
     smoothing_groups: [smoothing_groups_len]std.AutoHashMapUnmanaged(
         math.Index,
@@ -351,6 +355,7 @@ const CreateResultState = struct {
 
     fn deinit(state: *CreateResultState, self: *const Self) void {
         state.face_normals.deinit(self.allocator);
+        state.face_tangents.deinit(self.allocator);
         state.face_angles.deinit(self.allocator);
         for (&state.smoothing_groups) |*group| {
             var iter = group.valueIterator();
@@ -390,24 +395,6 @@ fn createResult(self: *const Self) !ObjResult {
             .material => |material| state.material_active = material,
         }
     }
-
-    // {
-    //     var iter = result.mesh_objs.iterator();
-    //     while (iter.next()) |e| {
-    //         const name = e.key_ptr.*;
-    //         const mesh_obj = e.value_ptr;
-    //         log.info("{s}:", .{name});
-    //         for (mesh_obj.sections.items) |section| {
-    //             log.info("  ({})[{}] {?s}", .{ section.offset, section.len, section.material });
-    //         }
-    //         var g_iter = mesh_obj.groups.iterator();
-    //         while (g_iter.next()) |ge| {
-    //             const group_name = ge.key_ptr.*;
-    //             const group = ge.value_ptr.*;
-    //             log.info("  {s}: ({})[{}]", .{ group_name, group.offset, group.len });
-    //         }
-    //     }
-    // }
 
     if (comptime gfx_options.enable_normal_smoothing) self.applySmoothing(&result, &state);
 
@@ -481,8 +468,9 @@ fn ProcessFaces(comptime config: struct {
             const vert_offset = state.vert_idx;
             const vert_count = face_count * face_vert_count;
 
-            try result.mesh_buf.ensureUnusedCapacity(self.allocator, math.Vertex, vert_count * AttrType.arr_len);
+            try result.mesh_buf.ensureUnusedCapacity(self.allocator, math.Vertex, vert_count);
             try state.face_normals.ensureUnusedCapacity(self.allocator, vert_count);
+            try state.face_tangents.ensureUnusedCapacity(self.allocator, vert_count);
             try state.face_angles.ensureUnusedCapacity(self.allocator, vert_count);
 
             for (faces) |*face| {
@@ -507,11 +495,8 @@ fn ProcessFaces(comptime config: struct {
                 }
 
                 for (vert_orders) |vert_order| {
-                    const vert_normals = computeFaceNormals(
-                        state.vert_data.get(.position),
-                        &face.data,
-                        vert_order,
-                    );
+                    const vert_normals = computeFaceNormals(state.vert_data.get(.position), &face.data, vert_order);
+                    const vert_tangents = computeFaceTangents(state.vert_data, &face.data, vert_order);
 
                     for (vert_order, 0..) |vert_n, n| {
                         if (comptime canComputeNormals()) {
@@ -525,10 +510,18 @@ fn ProcessFaces(comptime config: struct {
                             }
                         }
 
-                        const vertices = getFaceVertices(state.vert_data, &face.data, &vert_normals[3], vert_n);
+                        const face_vert_data = getFaceVertData(state.vert_data, &face.data, &vert_normals[3], vert_n);
                         state.face_normals.appendAssumeCapacity(vert_normals[n]);
+                        state.face_tangents.appendAssumeCapacity(.{ vert_tangents[0], vert_tangents[1] });
                         state.face_angles.appendAssumeCapacity(vert_normals[4][n]);
-                        result.mesh_buf.appendAssumeCapacity([AttrType.arr_len]math.Vertex, 1, &vertices);
+
+                        result.mesh_buf.appendAssumeCapacity(math.Vertex, 1, &.{
+                            face_vert_data[0],
+                            face_vert_data[1],
+                            face_vert_data[2],
+                            vert_tangents[2],
+                            vert_tangents[3],
+                        });
                         state.vert_idx += 1;
                     }
                 }
@@ -537,99 +530,131 @@ fn ProcessFaces(comptime config: struct {
             }
 
             assert(vert_count == state.vert_idx - vert_offset);
-
-            // switch (config.smoothing) {
-            //     0 => {},
-            //     1 => {
-            //         for (vert_indexes.values()) |vert_index| {
-            //             var avg = math.vertex.zero;
-            //             for (vert_index.items) |vert_idx| {
-            //                 const idx = AttrType.arr_len * vert_idx;
-            //                 const face_item = verts[idx .. idx + AttrType.arr_len];
-            //                 math.vertex.add(&avg, &face_item[@intFromEnum(AttrType.normal)]);
-            //             }
-            //             math.vertex.normalize(&avg);
-            //             for (vert_index.items) |vert_idx| {
-            //                 const idx = AttrType.arr_len * vert_idx;
-            //                 const face_item = verts[idx .. idx + AttrType.arr_len];
-            //                 face_item[@intFromEnum(AttrType.normal)] = avg;
-            //             }
-            //         }
-            //     },
-            //     2 => {},
-            //     else => log.warn("ignoring mesh smoothing {}", .{config.smoothing}),
-            // }
         }
 
         fn canComputeNormals() bool {
-            return !config.has_normal and config.face_type == .triangle;
+            comptime return !config.has_normal and config.face_type == .triangle;
+        }
+
+        fn canComputeTangents() bool {
+            comptime return config.has_tex_coord;
         }
 
         inline fn computeFaceNormals(
-            verts: []const math.Vertex,
+            verts: []const math.Vector3,
             face: *const FaceData,
             vert_order: []const u8,
         ) FaceNormals {
             if (comptime canComputeNormals()) {
                 var normals: FaceNormals = undefined;
 
-                const v = [3]*const math.Vertex{
-                    getFaceVertex(verts, face, vert_order[0], .position),
-                    getFaceVertex(verts, face, vert_order[1], .position),
-                    getFaceVertex(verts, face, vert_order[2], .position),
+                const v = [3]*const math.Vector3{
+                    getFaceVector(verts, face, vert_order[0], .position),
+                    getFaceVector(verts, face, vert_order[1], .position),
+                    getFaceVector(verts, face, vert_order[2], .position),
                 };
 
                 var lhs = v[1].*;
                 var rhs = v[2].*;
-                math.vertex.sub(&lhs, v[0]);
-                math.vertex.sub(&rhs, v[0]);
+                math.vector3.sub(&lhs, v[0]);
+                math.vector3.sub(&rhs, v[0]);
 
-                math.vertex.cross(&normals[3], &lhs, &rhs);
-                math.vertex.normalize(&normals[3]);
+                math.vector3.cross(&normals[3], &lhs, &rhs);
+                math.vector3.normalize(&normals[3]);
 
                 normals[0] = normals[3];
                 normals[1] = normals[3];
                 normals[2] = normals[3];
 
-                normals[4][0] = math.vertex.angle(&lhs, &rhs);
-                math.vertex.scale(&normals[0], normals[4][0]);
+                normals[4][0] = math.vector3.angle(&lhs, &rhs);
+                math.vector3.scale(&normals[0], normals[4][0]);
 
                 lhs = v[2].*;
                 rhs = v[0].*;
-                math.vertex.sub(&lhs, v[1]);
-                math.vertex.sub(&rhs, v[1]);
+                math.vector3.sub(&lhs, v[1]);
+                math.vector3.sub(&rhs, v[1]);
 
-                normals[4][1] = math.vertex.angle(&lhs, &rhs);
-                math.vertex.scale(&normals[1], normals[4][1]);
+                normals[4][1] = math.vector3.angle(&lhs, &rhs);
+                math.vector3.scale(&normals[1], normals[4][1]);
 
                 lhs = v[0].*;
                 rhs = v[1].*;
-                math.vertex.sub(&lhs, v[2]);
-                math.vertex.sub(&rhs, v[2]);
+                math.vector3.sub(&lhs, v[2]);
+                math.vector3.sub(&rhs, v[2]);
 
-                normals[4][2] = math.vertex.angle(&lhs, &rhs);
-                math.vertex.scale(&normals[2], normals[4][2]);
+                normals[4][2] = math.vector3.angle(&lhs, &rhs);
+                math.vector3.scale(&normals[2], normals[4][2]);
 
                 return normals;
             } else {
-                return @splat(math.vertex.zero);
+                return @splat(math.vector3.zero);
             }
         }
 
-        inline fn getFaceVertices(
-            vert_data: std.EnumArray(AttrType, []const math.Vertex),
+        inline fn computeFaceTangents(
+            vert_data: std.EnumArray(AttrType, []const math.Vector3),
             face: *const FaceData,
-            normal: *const math.Vertex,
+            vert_order: []const u8,
+        ) [4]math.Vector3 {
+            if (comptime canComputeTangents()) {
+                const v = [3]*const math.Vector3{
+                    getFaceVector(vert_data.get(.position), face, vert_order[0], .position),
+                    getFaceVector(vert_data.get(.position), face, vert_order[1], .position),
+                    getFaceVector(vert_data.get(.position), face, vert_order[2], .position),
+                };
+
+                const uv = [3]*const math.Vector3{
+                    getFaceVector(vert_data.get(.tex_coord), face, vert_order[0], .tex_coord),
+                    getFaceVector(vert_data.get(.tex_coord), face, vert_order[1], .tex_coord),
+                    getFaceVector(vert_data.get(.tex_coord), face, vert_order[2], .tex_coord),
+                };
+
+                var lhs = v[1].*;
+                var rhs = v[2].*;
+                math.vector3.sub(&lhs, v[0]);
+                math.vector3.sub(&rhs, v[0]);
+
+                var uv_lhs = uv[1].*;
+                var uv_rhs = uv[2].*;
+                math.vector3.sub(&uv_lhs, uv[0]);
+                math.vector3.sub(&uv_rhs, uv[0]);
+
+                const det = 1.0 / (uv_lhs[0] * uv_rhs[1] - uv_rhs[0] * uv_lhs[1]);
+                const tangent: math.Vector3 = .{
+                    det * (uv_rhs[1] * lhs[0] - uv_lhs[1] * rhs[0]),
+                    det * (uv_rhs[1] * lhs[1] - uv_lhs[1] * rhs[1]),
+                    det * (uv_rhs[1] * lhs[2] - uv_lhs[1] * rhs[2]),
+                };
+                const binormal: math.Vector3 = .{
+                    det * (-uv_rhs[0] * lhs[0] + uv_lhs[0] * rhs[0]),
+                    det * (-uv_rhs[0] * lhs[1] + uv_lhs[0] * rhs[1]),
+                    det * (-uv_rhs[0] * lhs[2] + uv_lhs[0] * rhs[2]),
+                };
+                return .{
+                    tangent,
+                    binormal,
+                    math.vector3.normalized(&tangent),
+                    math.vector3.normalized(&binormal),
+                };
+            } else {
+                return @splat(math.vector3.zero);
+            }
+        }
+
+        inline fn getFaceVertData(
+            vert_data: std.EnumArray(AttrType, []const math.Vector3),
+            face: *const FaceData,
+            normal: *const math.Vector3,
             vert_n: u8,
         ) VertData {
             return .{
-                getFaceVertex(vert_data.get(.position), face, vert_n, .position).*,
+                getFaceVector(vert_data.get(.position), face, vert_n, .position).*,
                 if (comptime config.has_tex_coord)
-                    getFaceVertex(vert_data.get(.tex_coord), face, vert_n, .tex_coord).*
+                    getFaceVector(vert_data.get(.tex_coord), face, vert_n, .tex_coord).*
                 else
-                    math.vertex.zero,
+                    math.vector3.zero,
                 if (comptime config.has_normal)
-                    getFaceVertex(vert_data.get(.normal), face, vert_n, .normal).*
+                    getFaceVector(vert_data.get(.normal), face, vert_n, .normal).*
                 else
                     normal.*,
             };
@@ -640,60 +665,77 @@ fn ProcessFaces(comptime config: struct {
 fn applySmoothing(self: *const Self, result: *const ObjResult, state: *const CreateResultState) void {
     _ = self;
     const smoothing_angle_limit = comptime std.math.degreesToRadians(gfx_options.normal_smoothing_angle_limit);
-    const verts = result.mesh_buf.slice(math.Vertex);
+    const verts = result.mesh_buf.slice(math.Vector3);
     for (&state.smoothing_groups) |group| {
         var sg_iter = group.valueIterator();
         while (sg_iter.next()) |vert_list| {
             for (vert_list.items) |dst_vert_idx| {
-                const dst_normal = getVertex(verts, dst_vert_idx, .normal);
+                const dst_normal = getVector(verts, dst_vert_idx, .normal);
+                const dst_tangent = getVector(verts, dst_vert_idx, .tangent);
+                const dst_binormal = getVector(verts, dst_vert_idx, .binormal);
 
-                var avg = math.vertex.zero;
+                var avg_normal = math.vector3.zero;
+                var avg_tangent = math.vector3.zero;
+                var avg_binormal = math.vector3.zero;
                 for (vert_list.items) |src_vert_idx| {
                     const src_normal = &state.face_normals.items[src_vert_idx];
-                    const angle = math.vertex.angle(dst_normal, src_normal);
-                    if (angle <= smoothing_angle_limit) math.vertex.add(&avg, src_normal);
+                    const src_tangent = &state.face_tangents.items[src_vert_idx][0];
+                    const src_binormal = &state.face_tangents.items[src_vert_idx][1];
+
+                    const angle = math.vector3.angle(dst_normal, src_normal);
+                    if (angle <= smoothing_angle_limit) {
+                        math.vector3.add(&avg_normal, src_normal);
+                        math.vector3.add(&avg_tangent, src_tangent);
+                        math.vector3.add(&avg_binormal, src_binormal);
+                    }
                 }
 
-                math.vertex.normalize(&avg);
-                dst_normal.* = avg;
+                // Normal smoothing
+                math.vector3.normalize(&avg_normal);
+                dst_normal.* = avg_normal;
+
+                // Gram-Schmidt orthogonalization: T' = normalize(T - N * dot(N, T))
+                dst_tangent.* = avg_normal;
+                math.vector3.scale(dst_tangent, -math.vector3.dot(&avg_normal, &avg_tangent));
+                math.vector3.add(dst_tangent, &avg_tangent);
+                math.vector3.normalize(dst_tangent);
+
+                // Calculate the handedness/direction of the binormal (needed for MikkTSpace compatibility)
+                // Helps fix mirroring issues on some UV seams
+                math.vector3.normalize(&avg_binormal);
+                dst_binormal.* = avg_binormal;
+                var cross: math.Vector3 = undefined;
+                math.vector3.cross(&cross, &avg_normal, &avg_tangent);
+                const handedness: math.Scalar = if (math.vector3.dot(&cross, &avg_binormal) < 0) -1 else 1;
+                math.vector3.scale(dst_tangent, handedness);
             }
         }
     }
 }
 
-inline fn getVertex(
-    verts: []math.Vertex,
+inline fn getVector(
+    verts: []math.Vector3,
     vert_idx: usize,
-    attr: AttrType,
-) *math.Vertex {
-    const idx = getVertIndex(vert_idx, attr);
+    attr: math.VertexAttr,
+) *math.Vector3 {
+    const idx = getVectorIndex(vert_idx, attr);
     assert(idx < verts.len);
     return &verts[idx];
 }
 
-inline fn getVertexConst(
-    verts: []const math.Vertex,
-    vert_idx: usize,
-    attr: AttrType,
-) *const math.Vertex {
-    const idx = getVertIndex(vert_idx, attr);
-    assert(idx < verts.len);
-    return &verts[idx];
-}
-
-inline fn getFaceVertex(
-    verts: []const math.Vertex,
+inline fn getFaceVector(
+    verts: []const math.Vector3,
     face: *const FaceData,
     vert_n: u8,
     attr: AttrType,
-) *const math.Vertex {
+) *const math.Vector3 {
     const idx = getFaceIndex(face, vert_n, attr);
     assert(idx < verts.len);
     return &verts[idx];
 }
 
-inline fn getVertIndex(vert_idx: usize, attr: AttrType) usize {
-    return vert_idx * AttrType.arr_len + @intFromEnum(attr);
+inline fn getVectorIndex(vert_idx: usize, attr: math.VertexAttr) usize {
+    return vert_idx * math.VertexAttr.len + @intFromEnum(attr);
 }
 
 inline fn getFaceIndex(face: *const FaceData, vert_n: u8, attr: AttrType) math.Index {

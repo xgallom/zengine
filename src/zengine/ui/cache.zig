@@ -35,7 +35,7 @@ pub fn Cache(comptime K: type) type {
             const value_ptr: *Value(T) = @ptrCast(entry.value_ptr);
             if (entry.found_existing) return .{ .value = value_ptr.*, .found_existing = true };
             value_ptr.item = allocators.ui().create(T) catch unreachable;
-            log.info("alloc item {} {}", .{ @intFromPtr(self), key });
+            log.info("alloc item {} {any}", .{ @intFromPtr(self), key });
             value_ptr.item.* = value;
             value_ptr.element = value_ptr.item.element();
             return .{ .value = value_ptr.*, .found_existing = false };

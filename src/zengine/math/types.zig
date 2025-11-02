@@ -79,8 +79,8 @@ pub const RGBAu8 = Vector4T(u8);
 pub const RGBAf32 = Vector4T(f32);
 pub const RGBAf64 = Vector4T(f64);
 
-pub const Vertex = Vector3T(f32);
-pub const Vertex4 = Vector4T(f32);
+pub const Vertex = [VertexAttr.len]Vector3T(f32);
+pub const Vertex4 = [VertexAttr.len]Vector4T(f32);
 pub const TexCoord = Vector2T(f32);
 pub const Euler = Vector3T(f32);
 pub const Quat = Vector4T(f32);
@@ -96,6 +96,15 @@ pub const Color = enum(u2) {
     b,
     a,
     pub const len = 4;
+};
+
+pub const VertexAttr = enum {
+    position,
+    tex_coord,
+    normal,
+    tangent,
+    binormal,
+    pub const len = 5;
 };
 
 pub const Axis3 = enum(u2) {

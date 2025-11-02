@@ -47,6 +47,6 @@ pub fn point(src: Source) Self {
     return .{ .src = src, .type = .point };
 }
 
-pub fn propertyEditor(self: *Self) ui.UI.Element {
+pub fn propertyEditor(self: *Self) ui.Element {
     return ui.PropertyEditor(Self).init(self).element();
 }

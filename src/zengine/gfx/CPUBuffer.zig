@@ -17,7 +17,7 @@ vert_count: u32 = 0,
 const Self = @This();
 pub const ArrayList = std.array_list.Aligned(u8, alignment);
 pub const empty: Self = .{};
-pub const alignment: std.mem.Alignment = .max(.of(math.Vertex4), .of(math.batch.Batch));
+pub const alignment: std.mem.Alignment = .max(.of(math.Vector4), .of(math.batch.Batch));
 
 pub fn deinit(self: *Self, gpa: std.mem.Allocator) void {
     self.free(gpa);

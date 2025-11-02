@@ -93,6 +93,29 @@ pub inline fn isValid(self: Self) bool {
     return self.ptr != null;
 }
 
+pub const FilterMode = enum {
+    nearest,
+    linear,
+    bilinear,
+    trilinear,
+
+    const Config = struct {
+        filter: types.Filter,
+        mipmap_mode: MipMapMode,
+    };
+
+    const configs: std.EnumArray(FilterMode, Config) = .init(.{
+        .nearest = .{ .filter = .nearest, .mipmap_mode = .nearest },
+        .linear = .{ .filter = .linear, .mipmap_mode = .nearest },
+        .bilinear = .{ .filter = .nearest, .mipmap_mode = .linear },
+        .trilinear = .{ .filter = .linear, .mipmap_mode = .linear },
+    });
+
+    pub fn config(mode: FilterMode) Config {
+        return configs.get(mode);
+    }
+};
+
 pub const MipMapMode = enum(c.SDL_GPUSamplerMipmapMode) {
     nearest = c.SDL_GPU_SAMPLERMIPMAPMODE_NEAREST,
     linear = c.SDL_GPU_SAMPLERMIPMAPMODE_LINEAR,

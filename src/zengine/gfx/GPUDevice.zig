@@ -179,6 +179,21 @@ pub fn textureSupportsFormat(
     );
 }
 
+pub fn stencilFormat(self: Self) GPUTexture.Format {
+    assert(self.isValid());
+    if (self.textureSupportsFormat(
+        .D24_unorm_S8_u,
+        .@"2D",
+        .initOne(.depth_stencil_target),
+    )) return .D24_unorm_S8_u;
+    if (self.textureSupportsFormat(
+        .D32_f_S8_u,
+        .@"2D",
+        .initOne(.depth_stencil_target),
+    )) return .D32_f_S8_u;
+    return .D32_f;
+}
+
 pub inline fn isValid(self: Self) bool {
     return self.ptr != null;
 }

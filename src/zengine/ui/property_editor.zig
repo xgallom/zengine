@@ -62,7 +62,7 @@ pub const ScalarSpeedType = enum {
 
 pub const Options = struct {
     pub const InputNull = struct {
-        name: [:0]const u8,
+        name: [:0]const u8 = "value",
         show_value: bool = true,
     };
 
@@ -71,21 +71,21 @@ pub const Options = struct {
     };
 
     pub const InputCheckbox = struct {
-        name: [:0]const u8,
+        name: [:0]const u8 = "value",
     };
 
     pub const InputText = struct {
-        name: [:0]const u8,
+        name: [:0]const u8 = "value",
         read_only: bool = false,
     };
 
     pub const InputCombo = struct {
-        name: [:0]const u8,
+        name: [:0]const u8 = "value",
     };
 
     pub fn InputScalar(comptime C: type) type {
         return struct {
-            name: [:0]const u8,
+            name: [:0]const u8 = "value",
             min: ?C = null,
             max: ?C = null,
             speed: ?f32 = null,
@@ -174,6 +174,7 @@ pub const PropertyEditorNull = struct {
 pub fn InputField(comptime C: type, comptime field: StdType.StructField) type {
     comptime assert(@hasField(C, field.name));
     const field_name = field.name ++ "_name";
+    const field_input = field.name ++ "_input";
     const field_min = field.name ++ "_min";
     const field_max = field.name ++ "_max";
     const field_speed = field.name ++ "_speed";
@@ -209,34 +210,40 @@ pub fn InputField(comptime C: type, comptime field: StdType.StructField) type {
             ui: *const UI,
             is_open: *bool,
         ) void {
-            switch (@typeInfo(StripOptional(field.type))) {
-                .bool => inputBool(field_ptr, ui, is_open),
-                .int, .float => inputIntOrFloat(field.type, field_ptr, ui, is_open),
-                .pointer => |field_info| switch (field_info.size) {
-                    .one => switch (@typeInfo(field_info.child)) {
-                        .bool => inputBool(field_ptr.*, ui, is_open),
-                        .int, .float => inputIntOrFloat(field_info.child, field_ptr.*, ui, is_open),
-                        .array => inputArray(field_info.child, field_ptr.*, ui, is_open),
-                        .@"struct" => inputStruct(field_info.child, field_ptr.*, ui, is_open),
-                        .@"enum" => inputEnum(field_info.child, field_ptr.*, ui, is_open),
+            if (comptime field_resolver.has(field_input)) {
+                const Input = field_resolver.required(field_input);
+                Input.init(field_ptr).draw(ui, is_open);
+                return;
+            } else {
+                switch (@typeInfo(StripOptional(field.type))) {
+                    .bool => inputBool(field_ptr, ui, is_open),
+                    .int, .float => inputIntOrFloat(field.type, field_ptr, ui, is_open),
+                    .pointer => |field_info| switch (field_info.size) {
+                        .one => switch (@typeInfo(field_info.child)) {
+                            .bool => inputBool(field_ptr.*, ui, is_open),
+                            .int, .float => inputIntOrFloat(field_info.child, field_ptr.*, ui, is_open),
+                            .array => inputArray(field_info.child, field_ptr.*, ui, is_open),
+                            .@"struct" => inputStruct(field_info.child, field_ptr.*, ui, is_open),
+                            .@"enum" => inputEnum(field_info.child, field_ptr.*, ui, is_open),
+                            inline else => {
+                                @compileLog(field_info);
+                                @compileError("Unsupported pointer property");
+                            },
+                        },
+                        .slice => inputSlice(StripOptional(field.type), field_ptr, ui, is_open),
                         inline else => {
                             @compileLog(field_info);
-                            @compileError("Unsupported pointer property");
+                            @compileError("Unsupported pointer size");
                         },
                     },
-                    .slice => inputSlice(StripOptional(field.type), field_ptr, ui, is_open),
-                    inline else => {
+                    .array => inputArray(field.type, field_ptr, ui, is_open),
+                    .@"struct" => inputStruct(field.type, field_ptr, ui, is_open),
+                    .@"enum" => inputEnum(field.type, field_ptr, ui, is_open),
+                    inline else => |field_info| {
                         @compileLog(field_info);
-                        @compileError("Unsupported pointer size");
+                        @compileError("Unsupported property");
                     },
-                },
-                .array => inputArray(field.type, field_ptr, ui, is_open),
-                .@"struct" => inputStruct(field.type, field_ptr, ui, is_open),
-                .@"enum" => inputEnum(field.type, field_ptr, ui, is_open),
-                inline else => |field_info| {
-                    @compileLog(field_info);
-                    @compileError("Unsupported property");
-                },
+                }
             }
         }
 
@@ -681,14 +688,14 @@ pub fn InputScalar(comptime C: type, comptime count: usize, comptime options: Op
                     9...16 => c.ImGuiDataType_S16,
                     17...32 => c.ImGuiDataType_S32,
                     33...64 => c.ImGuiDataType_S64,
-                    else => @compileError("Unsupported integer width"),
+                    else => @compileError("Unsupported integer width for " ++ options.name),
                 },
                 .unsigned => switch (type_info.bits) {
                     1...8 => c.ImGuiDataType_U8,
                     9...16 => c.ImGuiDataType_U16,
                     17...32 => c.ImGuiDataType_U32,
                     33...64 => c.ImGuiDataType_U64,
-                    else => @compileError("Unsupported integer width"),
+                    else => @compileError("Unsupported integer width for " ++ options.name),
                 },
             },
             .{
@@ -700,14 +707,14 @@ pub fn InputScalar(comptime C: type, comptime count: usize, comptime options: Op
             switch (type_info.bits) {
                 1...32 => c.ImGuiDataType_Float,
                 33...64 => c.ImGuiDataType_Double,
-                else => @compileError("Unsupported float width"),
+                else => @compileError("Unsupported float width for " ++ options.name),
             },
             .{
                 .min = -std.math.inf(C),
                 .max = std.math.inf(C),
             },
         },
-        else => @compileError("Unsupported scalar property"),
+        else => @compileError("Unsupported scalar property " ++ options.name),
     };
 
     const CPtr = if (count == 1) *C else [*]C;
@@ -731,7 +738,7 @@ pub fn InputScalar(comptime C: type, comptime count: usize, comptime options: Op
             drawImpl(self.component, ui, is_open);
         }
 
-        fn drawElement(component: CPtr, ui: *const UI, is_open: bool) void {
+        fn drawElement(component: CPtr, ui: *const UI, is_open: *bool) void {
             _ = drawImpl(component, ui, is_open);
         }
 
@@ -786,11 +793,23 @@ pub fn InputScalar(comptime C: type, comptime count: usize, comptime options: Op
 
 fn FieldResolver(comptime C: type) type {
     return struct {
+        pub fn has(comptime field_name: [:0]const u8) bool {
+            comptime return @hasDecl(C, field_name);
+        }
+
+        pub fn TypeOf(comptime field_name: [:0]const u8) type {
+            return @TypeOf(optional(field_name));
+        }
+
         pub fn default(
             comptime field_name: [:0]const u8,
             comptime default_value: anytype,
         ) if (@hasDecl(C, field_name)) @TypeOf(@field(C, field_name)) else @TypeOf(default_value) {
             comptime return if (@hasDecl(C, field_name)) @field(C, field_name) else default_value;
+        }
+
+        pub fn required(comptime field_name: [:0]const u8) @TypeOf(@field(C, field_name)) {
+            comptime return @field(C, field_name);
         }
 
         pub fn optional(
