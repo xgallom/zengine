@@ -4,6 +4,10 @@ const fatal = std.process.fatal;
 const zengine = @import("zengine");
 const allocators = zengine.allocators;
 const c = zengine.ext.c;
+const str = zengine.str;
+const ComputeMetadata = c.SDL_ShaderCross_ComputePipelineMetadata;
+const GraphicsMetadata = c.SDL_ShaderCross_GraphicsShaderMetadata;
+const GraphicsMetadataIOVar = c.SDL_ShaderCross_IOVarMetadata;
 
 const log = std.log.scoped(.compile_shaders);
 const sections = zengine.perf.sections(@This(), &.{ .init, .read, .compile, .write, .install });
@@ -63,11 +67,11 @@ const ShaderStage = enum(c.SDL_ShaderCross_ShaderStage) {
 
     fn fromFileName(filename: []const u8) ShaderStage {
         const shader_stage_ext = std.fs.path.extension(filename);
-        if (std.mem.eql(u8, ".vert", shader_stage_ext)) {
+        if (str.eql(extension(.vertex), shader_stage_ext)) {
             return .vertex;
-        } else if (std.mem.eql(u8, ".frag", shader_stage_ext)) {
+        } else if (str.eql(extension(.fragment), shader_stage_ext)) {
             return .fragment;
-        } else if (std.mem.eql(u8, ".comp", shader_stage_ext)) {
+        } else if (str.eql(extension(.compute), shader_stage_ext)) {
             return .compute;
         } else {
             fatal("shader {s} missing stage extension", .{filename});
@@ -75,7 +79,6 @@ const ShaderStage = enum(c.SDL_ShaderCross_ShaderStage) {
     }
 };
 
-const ComputeMetadata = c.SDL_ShaderCross_ComputePipelineMetadata;
 const ComputeMetadataJSON = struct {
     num_samplers: u32,
     num_readonly_storage_textures: u32,
@@ -102,8 +105,6 @@ const ComputeMetadataJSON = struct {
     }
 };
 
-const GraphicsMetadata = c.SDL_ShaderCross_GraphicsShaderMetadata;
-const GraphicsMetadataIOVar = c.SDL_ShaderCross_IOVarMetadata;
 const GraphicsMetadataJSON = struct {
     num_samplers: u32,
     num_storage_textures: u32,
@@ -211,136 +212,139 @@ pub fn main() !void {
     var timer = try std.time.Timer.start();
     defer log.info("shader compilation took {D}", .{timer.lap()});
 
-    var iter = input_dir.iterate();
-    // var file_list: std.ArrayList([]const u8) = .init();
-    // while (try iter.next()) |file| try file_list.append(file);
-
-    while (try iter.next()) |file| {
-        defer allocators.scratchRelease();
-
-        const input_filename = file.name;
-        const input_extension = std.fs.path.extension(input_filename);
-        const input_basename = input_filename[0 .. input_filename.len - input_extension.len];
-
-        if (!std.mem.eql(u8, FileFormat.extension(.hlsl), input_extension)) {
-            log.info("skipping {s}", .{input_filename});
-            continue;
+    var iter = try input_dir.walk(allocators.gpa());
+    defer iter.deinit();
+    while (try iter.next()) |entry| {
+        switch (entry.kind) {
+            .file => try processFile(&arguments, output_dir, entry),
+            .directory => {
+                log.info("creating output directory {s}", .{entry.path});
+                try output_dir.makePath(entry.path);
+            },
+            else => log.info("skipping {t} {s}", .{ entry.kind, entry.path }),
         }
+    }
+}
 
-        const shader_stage = ShaderStage.fromFileName(input_basename);
+const ProcessState = struct {
+    arguments: *const Arguments,
+    output_dir: std.fs.Dir,
+};
 
-        log.info("processing input file {s}", .{input_filename});
+fn processFile(arguments: *const Arguments, output_dir: std.fs.Dir, entry: std.fs.Dir.Walker.Entry) !void {
+    defer allocators.scratchRelease();
 
-        const output_filenames = std.EnumArray(FileFormat, [:0]const u8).init(.{
-            .spirv = try std.fmt.allocPrintSentinel(
-                allocators.scratch(),
-                "{s}" ++ FileFormat.extension(.spirv),
-                .{input_basename},
-                0,
-            ),
-            .dxil = try std.fmt.allocPrintSentinel(
-                allocators.scratch(),
-                "{s}" ++ FileFormat.extension(.dxil),
-                .{input_basename},
-                0,
-            ),
-            .metal = try std.fmt.allocPrintSentinel(
-                allocators.global(),
-                "{s}" ++ FileFormat.extension(.metal),
-                .{input_basename},
-                0,
-            ),
-            .hlsl = try std.fmt.allocPrintSentinel(
-                allocators.global(),
-                "{s}" ++ FileFormat.extension(.hlsl),
-                .{input_basename},
-                0,
-            ),
-            .json = try std.fmt.allocPrintSentinel(
-                allocators.global(),
-                "{s}" ++ FileFormat.extension(.json),
-                .{input_basename},
-                0,
-            ),
-        });
+    const input_extension = std.fs.path.extension(entry.basename);
+    const input_basename = entry.path[0 .. entry.path.len - input_extension.len];
 
-        const hlsl_code = readInputFileZ(
-            allocators.gpa(),
-            input_filename,
-            &input_dir,
-        ) catch |err| {
-            fatal("failed reading input file: {t}", .{err});
-        };
-        defer allocators.gpa().free(hlsl_code);
+    if (!str.eql(FileFormat.extension(.hlsl), input_extension)) {
+        log.info("skipping {s}", .{entry.path});
+        return;
+    }
 
-        const hlsl_info: c.SDL_ShaderCross_HLSL_Info = .{
-            .source = hlsl_code.ptr,
-            .entrypoint = "main",
-            .include_dir = if (arguments.include_directory) |dir| dir.ptr else null,
-            .shader_stage = @intFromEnum(shader_stage),
-            .enable_debug = std.debug.runtime_safety,
-            .name = input_filename.ptr,
-        };
+    const shader_stage = ShaderStage.fromFileName(input_basename);
 
-        {
-            var dxil_code: []u8 = undefined;
-            const ptr = c.SDL_ShaderCross_CompileDXILFromHLSL(&hlsl_info, &dxil_code.len);
-            if (ptr == null) fatal("failed compiling dxil from hlsl: {s}", .{c.SDL_GetError()});
-            dxil_code.ptr = @ptrCast(@alignCast(ptr));
-            defer allocators.sdl().free(dxil_code.ptr);
+    log.info("processing input file {s}", .{entry.path});
 
-            const output_filename = output_filenames.get(.dxil);
-            try writeOutputFile(dxil_code, output_filename, &output_dir);
-            try installFile(&arguments, output_filename);
-        }
+    const output_filenames = std.EnumArray(FileFormat, [:0]const u8).init(.{
+        .spirv = try str.allocPrintZ(
+            "{s}" ++ FileFormat.extension(.spirv),
+            .{input_basename},
+        ),
+        .dxil = try str.allocPrintZ(
+            "{s}" ++ FileFormat.extension(.dxil),
+            .{input_basename},
+        ),
+        .metal = try str.allocPrintZ(
+            "{s}" ++ FileFormat.extension(.metal),
+            .{input_basename},
+        ),
+        .hlsl = try str.allocPrintZ(
+            "{s}" ++ FileFormat.extension(.hlsl),
+            .{input_basename},
+        ),
+        .json = try str.allocPrintZ(
+            "{s}" ++ FileFormat.extension(.json),
+            .{input_basename},
+        ),
+    });
 
-        var spirv_code: []u8 = undefined;
-        {
-            const ptr = c.SDL_ShaderCross_CompileSPIRVFromHLSL(&hlsl_info, &spirv_code.len);
-            if (ptr == null) fatal("failed compiling spirv from hlsl: {s}", .{c.SDL_GetError()});
-            spirv_code.ptr = @ptrCast(@alignCast(ptr));
-        }
-        defer allocators.sdl().free(spirv_code.ptr);
+    const hlsl_code = readInputFileZ(
+        allocators.gpa(),
+        entry.basename,
+        entry.dir,
+    ) catch |err| {
+        fatal("failed reading input file: {t}", .{err});
+    };
+    defer allocators.gpa().free(hlsl_code);
 
-        {
-            const output_filename = output_filenames.get(.spirv);
-            try writeOutputFile(spirv_code, output_filename, &output_dir);
-            try installFile(&arguments, output_filename);
-        }
+    const hlsl_info: c.SDL_ShaderCross_HLSL_Info = .{
+        .source = hlsl_code.ptr,
+        .entrypoint = "main",
+        .include_dir = if (arguments.include_directory) |dir| dir.ptr else null,
+        .shader_stage = @intFromEnum(shader_stage),
+        .enable_debug = std.debug.runtime_safety,
+        .name = entry.path.ptr,
+    };
 
-        const spirv_info: c.SDL_ShaderCross_SPIRV_Info = .{
-            .bytecode = spirv_code.ptr,
-            .bytecode_size = spirv_code.len,
-            .entrypoint = "main",
-            .shader_stage = @intFromEnum(shader_stage),
-            .enable_debug = std.debug.runtime_safety,
-            .name = output_filenames.get(.spirv).ptr,
-        };
+    {
+        var dxil_code: []u8 = undefined;
+        const ptr = c.SDL_ShaderCross_CompileDXILFromHLSL(&hlsl_info, &dxil_code.len);
+        if (ptr == null) fatal("failed compiling dxil from hlsl: {s}", .{c.SDL_GetError()});
+        dxil_code.ptr = @ptrCast(@alignCast(ptr));
+        defer allocators.sdl().free(dxil_code.ptr);
 
-        {
-            var metal_code: [:0]u8 = undefined;
-            const ptr = c.SDL_ShaderCross_TranspileMSLFromSPIRV(&spirv_info);
-            if (ptr == null) fatal("failed transpiling metal from spirv: {s}", .{c.SDL_GetError()});
-            metal_code.ptr = @ptrCast(@alignCast(ptr));
-            metal_code.len = std.mem.len(metal_code.ptr);
-            defer allocators.sdl().free(metal_code.ptr);
+        const output_filename = output_filenames.get(.dxil);
+        try writeOutputFile(dxil_code, output_filename, output_dir);
+        try installFile(arguments, output_filename);
+    }
 
-            const output_filename = output_filenames.get(.metal);
-            try writeOutputFile(metal_code, output_filename, &output_dir);
-            try installFile(&arguments, output_filename);
-        }
+    var spirv_code: []u8 = undefined;
+    {
+        const ptr = c.SDL_ShaderCross_CompileSPIRVFromHLSL(&hlsl_info, &spirv_code.len);
+        if (ptr == null) fatal("failed compiling spirv from hlsl: {s}", .{c.SDL_GetError()});
+        spirv_code.ptr = @ptrCast(@alignCast(ptr));
+    }
+    defer allocators.sdl().free(spirv_code.ptr);
 
-        if (shader_stage == .compute) {
-            const info = c.SDL_ShaderCross_ReflectComputeSPIRV(spirv_code.ptr, spirv_code.len, 0);
-            if (info == null) fatal("failed to reflect spirv: {s}", .{c.SDL_GetError()});
-            const output_filename = output_filenames.get(.json);
-            try writeComputeJsonFile(info, output_filename, &output_dir);
-        } else {
-            const info = c.SDL_ShaderCross_ReflectGraphicsSPIRV(spirv_code.ptr, spirv_code.len, 0);
-            if (info == null) fatal("failed to reflect spirv: {s}", .{c.SDL_GetError()});
-            const output_filename = output_filenames.get(.json);
-            try writeGraphicsJsonFile(info, output_filename, &output_dir);
-        }
+    {
+        const output_filename = output_filenames.get(.spirv);
+        try writeOutputFile(spirv_code, output_filename, output_dir);
+        try installFile(arguments, output_filename);
+    }
+
+    const spirv_info: c.SDL_ShaderCross_SPIRV_Info = .{
+        .bytecode = spirv_code.ptr,
+        .bytecode_size = spirv_code.len,
+        .entrypoint = "main",
+        .shader_stage = @intFromEnum(shader_stage),
+        .enable_debug = std.debug.runtime_safety,
+        .name = output_filenames.get(.spirv).ptr,
+    };
+
+    {
+        var metal_code: [:0]u8 = undefined;
+        const ptr = c.SDL_ShaderCross_TranspileMSLFromSPIRV(&spirv_info);
+        if (ptr == null) fatal("failed transpiling metal from spirv: {s}", .{c.SDL_GetError()});
+        metal_code.ptr = @ptrCast(@alignCast(ptr));
+        metal_code.len = std.mem.len(metal_code.ptr);
+        defer allocators.sdl().free(metal_code.ptr);
+
+        const output_filename = output_filenames.get(.metal);
+        try writeOutputFile(metal_code, output_filename, output_dir);
+        try installFile(arguments, output_filename);
+    }
+
+    if (shader_stage == .compute) {
+        const info = c.SDL_ShaderCross_ReflectComputeSPIRV(spirv_code.ptr, spirv_code.len, 0);
+        if (info == null) fatal("failed to reflect spirv: {s}", .{c.SDL_GetError()});
+        const output_filename = output_filenames.get(.json);
+        try writeComputeJsonFile(info, output_filename, output_dir);
+    } else {
+        const info = c.SDL_ShaderCross_ReflectGraphicsSPIRV(spirv_code.ptr, spirv_code.len, 0);
+        if (info == null) fatal("failed to reflect spirv: {s}", .{c.SDL_GetError()});
+        const output_filename = output_filenames.get(.json);
+        try writeGraphicsJsonFile(info, output_filename, output_dir);
     }
 }
 
@@ -356,7 +360,7 @@ fn parseArguments(allocator: std.mem.Allocator) !?Arguments {
         var n: usize = 1;
         while (n < args.len) : (n += 1) {
             const arg = args[n];
-            if (std.mem.eql(u8, "-h", arg) or std.mem.eql(u8, "--help", arg)) {
+            if (str.eql("-h", arg) or str.eql("--help", arg)) {
                 const stdout_buf = try allocators.scratch().alloc(u8, 256);
                 defer allocators.scratchRelease();
                 var stdout_writer = std.fs.File.stdout().writer(stdout_buf);
@@ -364,22 +368,22 @@ fn parseArguments(allocator: std.mem.Allocator) !?Arguments {
                 try stdout.writeAll(usage);
                 try stdout.flush();
                 return null;
-            } else if (std.mem.eql(u8, "--input-dir", arg)) {
+            } else if (str.eql("--input-dir", arg)) {
                 n += 1;
                 if (n >= args.len) fatal("expected argument after '{s}'", .{arg});
                 if (input_directory != null) fatal("duplicated argument {s}", .{arg});
                 input_directory = try allocator.dupeZ(u8, args[n]);
-            } else if (std.mem.eql(u8, "--output-dir", arg)) {
+            } else if (str.eql("--output-dir", arg)) {
                 n += 1;
                 if (n >= args.len) fatal("expected argument after '{s}'", .{arg});
                 if (output_directory != null) fatal("duplicated argument {s}", .{arg});
                 output_directory = try allocator.dupeZ(u8, args[n]);
-            } else if (std.mem.eql(u8, "--install-dir", arg)) {
+            } else if (str.eql("--install-dir", arg)) {
                 n += 1;
                 if (n >= args.len) fatal("expected argument after '{s}'", .{arg});
                 if (install_directory != null) fatal("duplicated argument {s}", .{arg});
                 install_directory = try allocator.dupeZ(u8, args[n]);
-            } else if (std.mem.eql(u8, "--include-dir", arg)) {
+            } else if (str.eql("--include-dir", arg)) {
                 n += 1;
                 if (n >= args.len) fatal("expected argument after '{s}'", .{arg});
                 if (include_directory != null) fatal("duplicated argument {s}", .{arg});
@@ -398,7 +402,7 @@ fn parseArguments(allocator: std.mem.Allocator) !?Arguments {
     };
 }
 
-fn readInputFileZ(allocator: std.mem.Allocator, filename: []const u8, dir: *std.fs.Dir) ![:0]const u8 {
+fn readInputFileZ(allocator: std.mem.Allocator, filename: []const u8, dir: std.fs.Dir) ![:0]const u8 {
     const file = try dir.openFile(filename, .{ .lock = .shared });
     defer file.close();
 
@@ -414,7 +418,7 @@ fn readInputFileZ(allocator: std.mem.Allocator, filename: []const u8, dir: *std.
     return buf;
 }
 
-fn writeOutputFile(data: []const u8, filename: []const u8, dir: *std.fs.Dir) !void {
+fn writeOutputFile(data: []const u8, filename: []const u8, dir: std.fs.Dir) !void {
     const file = try dir.createFile(filename, .{ .lock = .exclusive });
     defer file.close();
 
@@ -427,7 +431,7 @@ fn writeOutputFile(data: []const u8, filename: []const u8, dir: *std.fs.Dir) !vo
     log.info("processed output file {s}", .{filename});
 }
 
-fn writeComputeJsonFile(info: *const ComputeMetadata, filename: []const u8, dir: *std.fs.Dir) !void {
+fn writeComputeJsonFile(info: *const ComputeMetadata, filename: []const u8, dir: std.fs.Dir) !void {
     const file = try dir.createFile(filename, .{ .lock = .exclusive });
     defer file.close();
 
@@ -440,7 +444,7 @@ fn writeComputeJsonFile(info: *const ComputeMetadata, filename: []const u8, dir:
     log.info("processed output file {s}", .{filename});
 }
 
-fn writeGraphicsJsonFile(info: *const GraphicsMetadata, filename: []const u8, dir: *std.fs.Dir) !void {
+fn writeGraphicsJsonFile(info: *const GraphicsMetadata, filename: []const u8, dir: std.fs.Dir) !void {
     const file = try dir.createFile(filename, .{ .lock = .exclusive });
     defer file.close();
 

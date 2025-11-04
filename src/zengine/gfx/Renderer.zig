@@ -276,7 +276,7 @@ fn createPipelines(self: *Self) !void {
     var screen_vert = shader_loader.loadFile(&.{
         .allocator = self.allocator,
         .gpu_device = self.gpu_device,
-        .shader_path = "screen.vert",
+        .shader_path = "system/screen.vert",
         .stage = .vertex,
     }) catch |err| {
         log.err("failed creating screen shader: {t}", .{err});
@@ -287,7 +287,7 @@ fn createPipelines(self: *Self) !void {
     var position_vert = shader_loader.loadFile(&.{
         .allocator = self.allocator,
         .gpu_device = self.gpu_device,
-        .shader_path = "position.vert",
+        .shader_path = "system/position.vert",
         .stage = .vertex,
     }) catch |err| {
         log.err("failed creating position shader: {t}", .{err});
@@ -298,7 +298,7 @@ fn createPipelines(self: *Self) !void {
     var vertex_vert = shader_loader.loadFile(&.{
         .allocator = self.allocator,
         .gpu_device = self.gpu_device,
-        .shader_path = "vertex.vert",
+        .shader_path = "system/vertex.vert",
         .stage = .vertex,
     }) catch |err| {
         log.err("failed creating vertex shader: {t}", .{err});
@@ -309,7 +309,7 @@ fn createPipelines(self: *Self) !void {
     var color_frag = shader_loader.loadFile(&.{
         .allocator = self.allocator,
         .gpu_device = self.gpu_device,
-        .shader_path = "color.frag",
+        .shader_path = "system/color.frag",
         .stage = .fragment,
     }) catch |err| {
         log.err("failed creating color fragment shader: {t}", .{err});
@@ -320,7 +320,7 @@ fn createPipelines(self: *Self) !void {
     var material_frag = shader_loader.loadFile(&.{
         .allocator = self.allocator,
         .gpu_device = self.gpu_device,
-        .shader_path = "material.frag",
+        .shader_path = "system/material.frag",
         .stage = .fragment,
     }) catch |err| {
         log.err("failed creating material fragment shader: {t}", .{err});
@@ -331,7 +331,7 @@ fn createPipelines(self: *Self) !void {
     var blend_frag = shader_loader.loadFile(&.{
         .allocator = self.allocator,
         .gpu_device = self.gpu_device,
-        .shader_path = "blend.frag",
+        .shader_path = "system/blend.frag",
         .stage = .fragment,
     }) catch |err| {
         log.err("failed creating blend fragment shader: {t}", .{err});
@@ -342,7 +342,7 @@ fn createPipelines(self: *Self) !void {
     var gamma_frag = shader_loader.loadFile(&.{
         .allocator = self.allocator,
         .gpu_device = self.gpu_device,
-        .shader_path = "gamma.frag",
+        .shader_path = "system/gamma.frag",
         .stage = .fragment,
     }) catch |err| {
         log.err("failed creating gamma fragment shader: {t}", .{err});
