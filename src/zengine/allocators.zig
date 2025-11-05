@@ -16,7 +16,7 @@ const log = std.log.scoped(.alloc);
 pub const GPA = std.heap.DebugAllocator(.{
     .enable_memory_limit = true,
 });
-const LogAllocator = log_allocator.LogAllocator(.debug, .alloc, std.debug.runtime_safety);
+const LogAllocator = log_allocator.LogAllocator(.debug, .alloc, options.log_allocations);
 
 pub const ArenaKey = enum {
     global,

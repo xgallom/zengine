@@ -26,7 +26,7 @@ var mouse_motion: math.Point_f32 = math.point_f32.zero;
 const log = std.log.scoped(.main);
 
 pub const std_options: std.Options = .{
-    .log_level = .info,
+    .log_level = .debug,
     .log_scope_levels = &.{
         // .{ .scope = .alloc, .level = .debug },
         // .{ .scope = .engine, .level = .debug },
@@ -46,6 +46,7 @@ pub const std_options: std.Options = .{
 
 pub const zengine_options: zengine.Options = .{
     .has_debug_ui = false,
+    .log_allocations = false,
     .gfx = .{
         .enable_normal_smoothing = true,
         .normal_smoothing_angle_limit = 89.9,

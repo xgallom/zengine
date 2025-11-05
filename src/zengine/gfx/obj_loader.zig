@@ -148,7 +148,9 @@ pub fn loadFile(allocator: std.mem.Allocator, path: []const u8) !ObjResult {
         .meta = .{ .object = .{ .name = "" } },
     });
 
-    while (reader.interface.takeDelimiterExclusive('\n')) |line| {
+    log.debug("reader: {}", .{try reader.getSize()});
+    log.debug("started parsing {s}", .{path});
+    while (reader.interface.takeDelimiterInclusive('\n')) |line| {
         try self.parseLine(str.trim(line));
     } else |err| switch (err) {
         error.EndOfStream => {},
@@ -195,17 +197,19 @@ fn parseLine(self: *Self, line: []const u8) !void {
     if (iter.next()) |cmd| {
         if (str.eql(cmd, "v")) {
             const vertex = try parseVector(&iter);
+            // log.debug("parsed position {}", .{self.attr_verts.getPtr(.position).items.len});
             try self.attr_verts.getPtr(.position).append(self.allocator, vertex);
         } else if (str.eql(cmd, "vt")) {
             const vertex = try parseVector(&iter);
+            // log.debug("parsed tex coord {}", .{self.attr_verts.getPtr(.tex_coord).items.len});
             try self.attr_verts.getPtr(.tex_coord).append(self.allocator, vertex);
         } else if (str.eql(cmd, "vn")) {
             const vertex = try parseVector(&iter);
+            // log.debug("parsed normal {}", .{self.attr_verts.getPtr(.normal).items.len});
             try self.attr_verts.getPtr(.normal).append(self.allocator, vertex);
         } else if (str.eql(cmd, "f")) {
             const face = try parseFace(&iter);
             const obj = self.activeObject();
-
             if (obj.face_type == .invalid) obj.face_type = face.face_type;
             if (obj.attrs_present.eql(.initEmpty())) obj.attrs_present = face.attrs_present;
             assert(face_types_from_obj.get(obj.face_type) == face_types_from_obj.get(face.face_type));
@@ -219,18 +223,24 @@ fn parseLine(self: *Self, line: []const u8) !void {
                     assert(idx < len);
                 }
             }
+
+            // log.debug("parsed face {}", .{self.faces.items.len});
             try self.faces.append(self.allocator, face);
         } else if (str.eql(cmd, "s")) {
+            const smoothing = try parseSmoothing(&iter);
+            log.debug("parsed smoothing group {x}", .{smoothing});
             try self.nodes.append(self.allocator, .{
                 .offset = self.faces.items.len,
-                .meta = .{ .smoothing = try parseSmoothing(&iter) },
+                .meta = .{ .smoothing = smoothing },
             });
         } else if (str.eql(cmd, "o")) {
             const obj = self.activeObject();
+            const name = try str.dupeZ(str.trimRest(&iter));
+            log.debug("parsed object {s}", .{name});
             if (obj.isDefault()) {
                 @branchHint(.cold);
                 assert(self.faces.items.len == 0);
-                obj.name = try str.dupeZ(str.trimRest(&iter));
+                obj.name = name;
             } else {
                 const obj_node = self.activeObjectNode();
 
@@ -239,22 +249,28 @@ fn parseLine(self: *Self, line: []const u8) !void {
 
                 try self.nodes.append(self.allocator, .{
                     .offset = self.faces.items.len,
-                    .meta = .{ .object = .{ .name = try str.dupeZ(str.trimRest(&iter)) } },
+                    .meta = .{ .object = .{ .name = name } },
                 });
             }
         } else if (str.eql(cmd, "g")) {
+            const name = try str.dupeZ(str.trimRest(&iter));
+            log.debug("parsed group {s}", .{name});
             try self.nodes.append(self.allocator, .{
                 .offset = self.faces.items.len,
-                .meta = .{ .group = try str.dupeZ(str.trimRest(&iter)) },
+                .meta = .{ .group = name },
             });
         } else if (str.eql(cmd, "usemtl")) {
+            const material = try str.dupeZ(str.trimRest(&iter));
+            log.debug("parsed use material {s}", .{material});
             try self.nodes.append(self.allocator, .{
                 .offset = self.faces.items.len,
-                .meta = .{ .material = try str.dupeZ(str.trimRest(&iter)) },
+                .meta = .{ .material = material },
             });
         } else if (str.eql(cmd, "mtllib")) {
+            const mtl_path = try str.dupeZ(str.trimRest(&iter));
+            log.debug("parsed material library {s}", .{mtl_path});
             if (self.mtl_path != null) return error.DuplicateCommand;
-            self.mtl_path = try str.dupeZ(str.trimRest(&iter));
+            self.mtl_path = mtl_path;
         } else {
             log.err("\"{s}\"", .{line});
             return error.SyntaxError;

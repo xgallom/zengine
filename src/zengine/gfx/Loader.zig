@@ -85,6 +85,7 @@ pub fn flagModified(self: *Self, comptime target: Target, key: []const u8) !void
 }
 
 pub fn loadMesh(self: *Self, asset_path: []const u8) !*MeshBuffer {
+    log.debug("loading mesh {s}", .{asset_path});
     const mesh_path = try global.assetPath(asset_path);
 
     var result = obj_loader.loadFile(self.renderer.allocator, mesh_path) catch |err| {

@@ -9,6 +9,7 @@ const math = @import("math.zig");
 
 pub const Options = struct {
     has_debug_ui: bool = std.debug.runtime_safety,
+    log_allocations: bool = std.debug.runtime_safety,
     gfx: Gfx = .{},
 
     pub const Gfx = struct {

@@ -37,7 +37,7 @@ pub fn loadFile(gpa: std.mem.Allocator, path: []const u8) !Result {
     defer lights.deinit(gpa);
 
     var lgh_ptr: ?*Light = null;
-    while (reader.interface.takeDelimiterExclusive('\n')) |full_line| {
+    while (reader.interface.takeDelimiterInclusive('\n')) |full_line| {
         const line = str.trim(full_line);
         if (line.len == 0) continue;
         if (line[0] == '#') continue;

@@ -31,6 +31,13 @@ pub const Value = *Section;
 pub const KeyIndex = struct {
     key: []const u8,
     value: Value,
+
+    pub fn format(
+        self: @This(),
+        writer: *std.Io.Writer,
+    ) std.Io.Writer.Error!void {
+        return writer.print("{s}", .{self.key});
+    }
 };
 pub const SectionsTree = containers.KeyTreeMap(KeyIndex, .{
     .has_depth = true,
@@ -288,6 +295,7 @@ const Section = struct {
         self.clock.start(time.getNano());
         self.pause_clock.reset();
         self.flags.state = .began;
+        log.debug("begin {s}", .{self.tag});
     }
 
     pub fn beginPaused(self: *Section) void {
