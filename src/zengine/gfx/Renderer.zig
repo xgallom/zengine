@@ -49,8 +49,6 @@ samplers: Samplers,
 stencil_format: GPUTexture.Format,
 settings: Settings = .{},
 
-camera: [:0]const u8 = "default",
-
 const Self = @This();
 
 const Pipelines = ArrayMap(GPUGraphicsPipeline);
@@ -101,6 +99,7 @@ pub const Items = struct {
 };
 
 pub const Settings = struct {
+    camera: [:0]const u8 = "default",
     gamma: f32 = 1.9,
 
     pub const gamma_min = 0.1;
@@ -174,7 +173,7 @@ pub fn swapchainFormat(self: *const Self) GPUTexture.Format {
 pub fn setPresentMode(self: *Self) !void {
     var present_mode: types.PresentMode = .vsync;
     if (self.gpu_device.supportsPresentMode(self.engine.main_win, .mailbox)) present_mode = .mailbox;
-    try self.gpu_device.setSwapchainParameters(self.engine.main_win, .HDR_extended_linear, present_mode);
+    try self.gpu_device.setSwapchainParameters(self.engine.main_win, .SDR_linear, present_mode);
 }
 
 fn createSelf(allocator: std.mem.Allocator, engine: *const Engine) !*Self {
@@ -531,13 +530,14 @@ pub fn insertGraphicsPipeline(self: *Self, key: []const u8, pipeline: *c.SDL_GPU
 
 const render_scene_config = struct {
     const line_mesh_types: []const MeshObject.MeshBufferType = &.{
-        .tex_coords, .normals, .tangents, .binormals,
+        .tex_coords_u, .tex_coords_v, .normals, .tangents, .binormals,
     };
 
     const line_mesh_colors: std.EnumArray(MeshObject.MeshBufferType, math.RGBf32) = .initDefault(
         math.rgb_f32.zero,
         .{
-            .tex_coords = .{ 1, 0, 1 },
+            .tex_coords_u = .{ 0, 1, 1 },
+            .tex_coords_v = .{ 1, 0, 1 },
             .normals = .{ 0, 0, 1 },
             .tangents = .{ 1, 0, 0 },
             .binormals = .{ 0, 1, 0 },
@@ -564,7 +564,7 @@ pub fn renderScene(
     const origin_mesh = self.mesh_bufs.get("origin");
     const screen_buffer = self.textures.get("screen_buffer");
     const stencil = self.textures.get("stencil");
-    const camera = self.cameras.getPtr(self.camera);
+    const camera = self.cameras.getPtr(self.settings.camera);
     const default_texture = self.textures.get("default");
     const texture_sampler = self.samplers.get("trilinear_mirrored_repeat");
     const screen_sampler = self.samplers.get("nearest_clamp_to_edge");
@@ -627,7 +627,6 @@ pub fn renderScene(
         log.debug("main render pass", .{});
         var render_pass = try command_buffer.renderPass(&.{.{
             .texture = screen_buffer,
-            .clear_color = .{ 0.025, 0, 0.05, 1 },
             .load_op = .clear,
             .store_op = .store,
         }}, &.{
@@ -641,11 +640,11 @@ pub fn renderScene(
         section.sub(.init).end();
         section.sub(.items).begin();
 
-        render_pass.bindGraphicsPipeline(material_pipeline);
-        try render_pass.bindFragmentStorageBuffers(0, &.{lights_buffer.gpu_bufs.getPtrConst(.vertex).*});
+        render_pass.bindPipeline(material_pipeline);
+        try render_pass.bindStorageBuffers(.fragment, 0, &.{lights_buffer.gpu_bufs.get(.vertex)});
 
-        command_buffer.pushFragmentUniformData(1, &camera.position);
-        command_buffer.pushFragmentUniformData(2, &light_counts.values);
+        command_buffer.pushUniformData(.fragment, 1, &camera.position);
+        command_buffer.pushUniformData(.fragment, 2, &light_counts.values);
 
         while (items_iter.next()) |_item| {
             const item: Item = _item;
@@ -664,14 +663,14 @@ pub fn renderScene(
 
                 @memcpy(uniform_buf[16..32], math.matrix4x4.sliceConst(item.transform));
 
-                command_buffer.pushVertexUniformData(0, uniform_buf);
-                command_buffer.pushFragmentUniformData(0, &material.uniformBuffer());
+                command_buffer.pushUniformData(.vertex, 0, uniform_buf);
+                command_buffer.pushUniformData(.fragment, 0, &material.uniformBuffer());
 
                 const texture = if (material.texture) |tex| self.textures.get(tex) else default_texture;
                 const diffuse_map = if (material.diffuse_map) |tex| self.textures.get(tex) else default_texture;
                 const bump_map = if (material.bump_map) |tex| self.textures.get(tex) else default_texture;
 
-                try render_pass.bindFragmentSamplers(0, &.{
+                try render_pass.bindSamplers(.fragment, 0, &.{
                     .{ .texture = texture, .sampler = texture_sampler },
                     .{ .texture = diffuse_map, .sampler = texture_sampler },
                     .{ .texture = bump_map, .sampler = texture_sampler },
@@ -703,9 +702,9 @@ pub fn renderScene(
             }
         }
 
-        render_pass.bindGraphicsPipeline(line_pipeline);
+        render_pass.bindPipeline(line_pipeline);
         for (render_scene_config.line_mesh_types) |mesh_type| {
-            command_buffer.pushFragmentUniformData(0, render_scene_config.line_mesh_colors.getPtrConst(mesh_type));
+            command_buffer.pushUniformData(.fragment, 0, render_scene_config.line_mesh_colors.getPtrConst(mesh_type));
 
             items_iter.reset();
             while (items_iter.next()) |_item| {
@@ -721,7 +720,7 @@ pub fn renderScene(
 
                 for (mesh_obj.sections.items) |buf_section| {
                     @memcpy(uniform_buf[16..32], math.matrix4x4.sliceConst(item.transform));
-                    command_buffer.pushVertexUniformData(0, uniform_buf);
+                    command_buffer.pushUniformData(.vertex, 0, uniform_buf);
 
                     switch (mesh_buf.type) {
                         .vertex => render_pass.drawPrimitives(
@@ -753,16 +752,16 @@ pub fn renderScene(
             .@"32bit",
         );
 
-        command_buffer.pushVertexUniformData(0, uniform_buf);
-        render_pass.bindGraphicsPipeline(line_pipeline);
+        command_buffer.pushUniformData(.vertex, 0, uniform_buf);
+        render_pass.bindPipeline(line_pipeline);
 
-        command_buffer.pushFragmentUniformData(0, &[_]f32{ 1, 0, 0 });
+        command_buffer.pushUniformData(.fragment, 0, &[_]f32{ 1, 0, 0 });
         render_pass.drawIndexedPrimitives(2, 1, 0, 0, 0);
 
-        command_buffer.pushFragmentUniformData(0, &[_]f32{ 0, 1, 0 });
+        command_buffer.pushUniformData(.fragment, 0, &[_]f32{ 0, 1, 0 });
         render_pass.drawIndexedPrimitives(2, 1, 2, 0, 0);
 
-        command_buffer.pushFragmentUniformData(0, &[_]f32{ 0, 0, 1 });
+        command_buffer.pushUniformData(.fragment, 0, &[_]f32{ 0, 0, 1 });
         render_pass.drawIndexedPrimitives(2, 1, 4, 0, 0);
 
         section.sub(.origin).end();
@@ -782,46 +781,14 @@ pub fn renderScene(
             .{ .texture = swapchain, .load_op = .clear, .store_op = .store },
         }, null);
 
-        render_pass.bindGraphicsPipeline(gamma_pipeline);
-        command_buffer.pushFragmentUniformData(0, &[_]f32{self.settings.gamma});
-        try render_pass.bindFragmentSamplers(0, &.{
+        render_pass.bindPipeline(gamma_pipeline);
+        command_buffer.pushUniformData(.fragment, 0, &[_]f32{self.settings.gamma});
+        try render_pass.bindSamplers(.fragment, 0, &.{
             .{ .texture = screen_buffer, .sampler = screen_sampler },
         });
         render_pass.drawPrimitives(3, 1, 0, 0);
         render_pass.end();
     }
-
-    // {
-    //     log.debug("render_pass 2", .{});
-    //     const render_pass = c.SDL_BeginGPURenderPass(
-    //         command_buffer,
-    //         &c.SDL_GPUColorTargetInfo{
-    //             .texture = swapchain_texture,
-    //             .load_op = c.SDL_GPU_LOADOP_LOAD,
-    //             .store_op = c.SDL_GPU_STOREOP_STORE,
-    //         },
-    //         1,
-    //         &c.SDL_GPUDepthStencilTargetInfo{
-    //             .texture = self.stencil_texture,
-    //             .load_op = c.SDL_GPU_LOADOP_LOAD,
-    //             .store_op = c.SDL_GPU_STOREOP_STORE,
-    //             .stencil_load_op = c.SDL_GPU_LOADOP_DONT_CARE,
-    //             .stencil_store_op = c.SDL_GPU_STOREOP_DONT_CARE,
-    //             // .cycle = true,
-    //         },
-    //     );
-    //     if (render_pass == null) {
-    //         log.err("failed to begin render_pass: {s}", .{c.SDL_GetError()});
-    //         return Error.DrawFailed;
-    //     }
-    //
-    //     // c.SDL_BindGPUFragmentSamplers(render_pass, 0, &c.SDL_GPUTextureSamplerBinding{
-    //     //     .sampler = self.sampler,
-    //     //     .texture = self.texture,
-    //     // }, 1);
-    //
-    //     c.SDL_EndGPURenderPass(render_pass);
-    // }
 
     section.sub(.submit).begin();
     log.debug("submit command buffer", .{});

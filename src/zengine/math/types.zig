@@ -5,9 +5,14 @@
 //!
 
 const std = @import("std");
+const assert = std.debug.assert;
 
 pub const Scalar = f32;
 pub const Scalar64 = f64;
+
+pub fn ParamT(comptime T: type) type {
+    return fn (x: T) T;
+}
 
 pub fn VectorNT(comptime N: comptime_int, comptime T: type) type {
     return [N]T;
@@ -48,6 +53,9 @@ pub fn Coords3T(comptime T: type) type {
 pub fn Coords4T(comptime T: type) type {
     return CoordsNT(4, T);
 }
+
+pub const Param = ParamT(Scalar);
+pub const Param64 = ParamT(Scalar64);
 
 pub const Vector2 = VectorNT(2, Scalar);
 pub const Vector2f64 = VectorNT(2, Scalar64);
@@ -90,14 +98,43 @@ pub const LineFaceIndex = Vector2T(Index);
 pub const FaceIndex = Vector3T(Index);
 pub const QuadFaceIndex = Vector4T(Index);
 
-pub const Color = enum(u2) {
+pub const Ease = enum(u2) {
+    in,
+    out,
+    in_out,
+
+    pub const start = .in;
+    pub const end = .out;
+    pub const both = .in_out;
+};
+
+/// Components of an RGB vector
+pub const RGB = enum(u2) {
+    r,
+    g,
+    b,
+    pub const len = 3;
+
+    pub fn toRGBA(x: RGB) RGBA {
+        return @enumFromInt(@intFromEnum(x));
+    }
+};
+
+/// Components of an RGBA vector
+pub const RGBA = enum(u2) {
     r,
     g,
     b,
     a,
     pub const len = 4;
+
+    pub fn toRGB(x: RGBA) RGB {
+        assert(@intFromEnum(x) < RGB.len);
+        return @enumFromInt(@intFromEnum(x));
+    }
 };
 
+// Components of a vertex
 pub const VertexAttr = enum {
     position,
     tex_coord,
@@ -107,20 +144,33 @@ pub const VertexAttr = enum {
     pub const len = 5;
 };
 
+/// Axes of a 3D space
 pub const Axis3 = enum(u2) {
     x,
     y,
     z,
     pub const len = 3;
+
+    pub fn toAxis4(x: Axis3) Axis4 {
+        return @enumFromInt(@intFromEnum(x));
+    }
 };
+
+/// Axes of a 4D space
 pub const Axis4 = enum(u2) {
     x,
     y,
     z,
     w,
     pub const len = 4;
+
+    pub fn toAxis3(x: Axis4) Axis3 {
+        assert(@intFromEnum(x) < Axis3.len);
+        return @enumFromInt(@intFromEnum(x));
+    }
 };
 
+/// Enum describing one of 3D transforms
 pub const TransformOp = enum {
     translate,
     rotate,
@@ -128,6 +178,7 @@ pub const TransformOp = enum {
     pub const len = 3;
 };
 
+/// Enum describing order of 3D transforms
 pub const TransformOrder = enum {
     srt, // scale, rotate, translate
     str, // scale, translate, rotate
@@ -150,6 +201,7 @@ pub const TransformOrder = enum {
     }
 };
 
+/// Enum describing order of 3D axis rotations
 pub const EulerOrder = enum {
     xyz,
     xzy,

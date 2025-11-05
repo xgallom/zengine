@@ -6,8 +6,8 @@ const std = @import("std");
 const assert = std.debug.assert;
 
 const allocators = @import("allocators.zig");
-const global = @import("global.zig");
 const containers = @import("containers.zig");
+const global = @import("global.zig");
 const math = @import("math.zig");
 const SwapWrapper = @import("containers.zig").SwapWrapper;
 const time = @import("time.zig");

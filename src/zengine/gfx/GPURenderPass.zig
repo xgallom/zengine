@@ -16,7 +16,6 @@ const Error = @import("Error.zig").Error;
 const GPUBuffer = @import("GPUBuffer.zig");
 const GPUDevice = @import("GPUDevice.zig");
 const GPUGraphicsPipeline = @import("GPUGraphicsPipeline.zig");
-const GPURenderPass = @import("GPURenderPass.zig");
 const GPUTexture = @import("GPUTexture.zig");
 const types = @import("types.zig");
 
@@ -41,7 +40,7 @@ pub fn end(self: *Self) void {
     c.SDL_EndGPURenderPass(self.toOwned());
 }
 
-pub fn bindGraphicsPipeline(self: Self, pipeline: GPUGraphicsPipeline) void {
+pub fn bindPipeline(self: Self, pipeline: GPUGraphicsPipeline) void {
     assert(self.isValid());
     assert(pipeline.isValid());
     c.SDL_BindGPUGraphicsPipeline(self.ptr, pipeline.ptr);
@@ -61,20 +60,58 @@ pub fn bindIndexBuffer(self: Self, buffer: *const GPUBuffer.Binding, size: types
     c.SDL_BindGPUIndexBuffer(self.ptr, &buf, @intFromEnum(size));
 }
 
-pub fn bindFragmentSamplers(self: Self, first_slot: u32, bindings: []const types.TextureSamplerBinding) !void {
+pub fn bindSamplers(
+    self: Self,
+    comptime target: BindingTarget,
+    first_slot: u32,
+    bindings: []const types.TextureSamplerBinding,
+) !void {
+    const call = comptime switch (target) {
+        .vertex => c.SDL_BindGPUVertexSamplers,
+        .fragment => c.SDL_BindGPUFragmentSamplers,
+    };
+
     assert(self.isValid());
     var arena = allocators.initArena();
     defer arena.deinit();
     const bufs = try sdl.sliceFrom(arena.allocator(), bindings);
-    c.SDL_BindGPUFragmentSamplers(self.ptr, first_slot, bufs.ptr, @intCast(bufs.len));
+    call(self.ptr, first_slot, bufs.ptr, @intCast(bufs.len));
 }
 
-pub fn bindFragmentStorageBuffers(self: Self, first_slot: u32, buffers: []const GPUBuffer) !void {
+pub fn bindStorageTextures(
+    self: Self,
+    comptime target: BindingTarget,
+    first_slot: u32,
+    textures: []const GPUTexture,
+) !void {
+    const call = comptime switch (target) {
+        .vertex => c.SDL_BindGPUVertexStorageTextures,
+        .fragment => c.SDL_BindGPUFragmentStorageTextures,
+    };
+
+    assert(self.isValid());
+    var arena = allocators.initArena();
+    defer arena.deinit();
+    const texes = try sdl.sliceFrom(arena.allocator(), textures);
+    call(self.ptr, first_slot, texes.ptr, @intCast(texes.len));
+}
+
+pub fn bindStorageBuffers(
+    self: Self,
+    comptime target: BindingTarget,
+    first_slot: u32,
+    buffers: []const GPUBuffer,
+) !void {
+    const call = comptime switch (target) {
+        .vertex => c.SDL_BindGPUVertexStorageBuffers,
+        .fragment => c.SDL_BindGPUFragmentStorageBuffers,
+    };
+
     assert(self.isValid());
     var arena = allocators.initArena();
     defer arena.deinit();
     const bufs = try sdl.sliceFrom(arena.allocator(), buffers);
-    c.SDL_BindGPUFragmentStorageBuffers(self.ptr, first_slot, bufs.ptr, @intCast(bufs.len));
+    call(self.ptr, first_slot, bufs.ptr, @intCast(bufs.len));
 }
 
 pub fn drawPrimitives(
@@ -85,7 +122,13 @@ pub fn drawPrimitives(
     first_instance: u32,
 ) void {
     assert(self.isValid());
-    c.SDL_DrawGPUPrimitives(self.ptr, num_vertices, num_instances, first_vertex, first_instance);
+    c.SDL_DrawGPUPrimitives(
+        self.ptr,
+        num_vertices,
+        num_instances,
+        first_vertex,
+        first_instance,
+    );
 }
 
 pub fn drawIndexedPrimitives(
@@ -97,9 +140,21 @@ pub fn drawIndexedPrimitives(
     first_instance: u32,
 ) void {
     assert(self.isValid());
-    c.SDL_DrawGPUIndexedPrimitives(self.ptr, num_indices, num_instances, first_index, vertex_offset, first_instance);
+    c.SDL_DrawGPUIndexedPrimitives(
+        self.ptr,
+        num_indices,
+        num_instances,
+        first_index,
+        vertex_offset,
+        first_instance,
+    );
 }
 
 pub inline fn isValid(self: Self) bool {
     return self.ptr != null;
 }
+
+pub const BindingTarget = enum {
+    vertex,
+    fragment,
+};

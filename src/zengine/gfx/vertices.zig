@@ -7,6 +7,7 @@ const assert = std.debug.assert;
 
 const math = @import("../math.zig");
 const batch = math.batch;
+const dims = math.vector3.len;
 
 allocator: std.mem.Allocator,
 items: [math.vector4.len][*]batch.Batch,
@@ -15,8 +16,6 @@ len: usize,
 
 const Self = @This();
 const ArrayList = std.ArrayList(batch.Batch);
-const dims = math.vector3.len;
-
 pub fn init(allocator: std.mem.Allocator, w: math.Scalar) !Self {
     const none = &[_]batch.Batch{};
     const wp = try allocator.create(batch.Batch);

@@ -1,7 +1,8 @@
 const std = @import("std");
 const simd = std.simd;
-const math = @import("zengine").math;
 const gpu = std.gpu;
+
+const math = @import("zengine").math;
 
 const Vec3 = @Vector(3, f32);
 const Vec4 = @Vector(4, f32);

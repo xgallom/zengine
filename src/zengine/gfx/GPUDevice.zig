@@ -13,6 +13,7 @@ const Window = @import("../Window.zig");
 const Error = @import("Error.zig").Error;
 const GPUBuffer = @import("GPUBuffer.zig");
 const GPUCommandBuffer = @import("GPUCommandBuffer.zig");
+const GPUComputePipeline = @import("GPUComputePipeline.zig");
 const GPUGraphcisPipeline = @import("GPUGraphicsPipeline.zig");
 const GPUSampler = @import("GPUSampler.zig");
 const GPUShader = @import("GPUShader.zig");
@@ -81,6 +82,10 @@ pub fn texture(self: Self, info: *const GPUTexture.CreateInfo) !GPUTexture {
 }
 
 pub fn sampler(self: Self, info: *const GPUSampler.CreateInfo) !GPUSampler {
+    return .init(self, info);
+}
+
+pub fn computePipeline(self: Self, info: *const GPUComputePipeline.CreateInfo) !GPUComputePipeline {
     return .init(self, info);
 }
 

@@ -6,10 +6,10 @@ const std = @import("std");
 const assert = std.debug.assert;
 pub const Arena = std.heap.ArenaAllocator;
 
-const options = @import("zengine.zig").options;
-const log_allocator = @import("log_allocator.zig");
-const sdl_allocator = @import("sdl_allocator.zig");
 const c = @import("ext.zig").c;
+const log_allocator = @import("log_allocator.zig");
+const options = @import("zengine.zig").options;
+const sdl_allocator = @import("sdl_allocator.zig");
 
 const log = std.log.scoped(.alloc);
 
@@ -92,7 +92,7 @@ pub fn deinit() void {
     const result = global_state.deinit();
     is_init = false;
     if (global_state.max_alloc != 0) log.info(
-        "max allocated: {Bi:.3}",
+        "max allocated: {Bi:.3}\n",
         .{global_state.max_alloc},
     );
     assert(result == .ok);

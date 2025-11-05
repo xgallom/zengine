@@ -15,7 +15,8 @@ const log = std.log.scoped(.gfx_mesh_object);
 
 pub const MeshBufferType = enum {
     mesh,
-    tex_coords,
+    tex_coords_u,
+    tex_coords_v,
     normals,
     tangents,
     binormals,
@@ -44,26 +45,28 @@ has_active: packed struct {
     section: bool = false,
     group: bool = false,
 } = .{},
-is_visible: std.EnumSet(MeshBufferType) = .initOne(.mesh),
+is_visible: MeshBufferFlags = .initOne(.mesh),
 
 const Self = @This();
 pub const MeshBuffers = std.EnumArray(MeshBufferType, *MeshBuffer);
+pub const MeshBufferFlags = std.EnumSet(MeshBufferType);
 const Sections = std.ArrayList(Section);
 const Groups = std.ArrayList(Group);
 
 pub const exclude_properties: ui.property_editor.PropertyList = &.{ .mesh_bufs, .sections, .groups };
 pub const is_visible_input = struct {
-    ptr: *std.EnumSet(MeshBufferType),
+    ptr: *MeshBufferFlags,
 
-    pub fn init(ptr: *std.EnumSet(MeshBufferType)) @This() {
+    pub fn init(ptr: *MeshBufferFlags) @This() {
         return .{ .ptr = ptr };
     }
 
     pub fn draw(self: *const @This(), ui_ptr: *const ui.UI, is_open: *bool) void {
         ui.property_editor.InputFields(
-            packed struct {
+            packed struct(std.bit_set.IntegerBitSet(MeshBufferFlags.len).MaskInt) {
                 mesh: bool,
-                tex_coords: bool,
+                tex_coords_u: bool,
+                tex_coords_v: bool,
                 normals: bool,
                 tangents: bool,
                 binormals: bool,

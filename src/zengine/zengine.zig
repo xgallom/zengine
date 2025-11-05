@@ -15,19 +15,19 @@ pub const fs = @import("fs.zig");
 pub const gfx = @import("gfx.zig");
 pub const global = @import("global.zig");
 pub const math = @import("math.zig");
-pub const Module = @import("Module.zig");
 pub const Options = @import("options.zig").Options;
 pub const options = @import("options.zig").options;
 pub const perf = @import("perf.zig");
 pub const scheduler = @import("scheduler.zig");
 pub const sdl_allocator = @import("sdl_allocator.zig");
+pub const str = @import("str.zig");
 pub const time = @import("time.zig");
 pub const TypeId = @import("type_id.zig").TypeId;
 pub const typeId = @import("type_id.zig").typeId;
 pub const ui = @import("ui.zig");
 pub const Window = @import("Window.zig");
 
-pub const ZEngine = struct {
+pub const Zengine = struct {
     engine: *Engine,
     scene: *gfx.Scene,
     renderer: *gfx.Renderer,
@@ -96,10 +96,11 @@ pub const ZEngine = struct {
 
     pub fn run(self: *const Self) !void {
         sections.sub(.load).begin();
-        if (self.handlers.load) |load| if (!try load(self)) return;
-        sections.sub(.load).end();
-
+        if (self.handlers.load) |load| {
+            if (!try load(self)) return;
+        }
         defer if (self.handlers.unload) |unload| unload(self);
+        sections.sub(.load).end();
 
         return while (true) {
             defer perf.reset();
@@ -152,11 +153,11 @@ pub const ZEngine = struct {
     }
 
     pub const Handlers = struct {
-        load: ?*const fn (self: *const ZEngine) anyerror!bool = null,
-        unload: ?*const fn (self: *const ZEngine) void = null,
-        input: ?*const fn (self: *const ZEngine) anyerror!bool = null,
-        update: ?*const fn (self: *const ZEngine) anyerror!bool = null,
-        render: ?*const fn (self: *const ZEngine) anyerror!void = null,
+        load: ?*const fn (self: *const Self) anyerror!bool = null,
+        unload: ?*const fn (self: *const Self) void = null,
+        input: ?*const fn (self: *const Self) anyerror!bool = null,
+        update: ?*const fn (self: *const Self) anyerror!bool = null,
+        render: ?*const fn (self: *const Self) anyerror!void = null,
     };
 };
 

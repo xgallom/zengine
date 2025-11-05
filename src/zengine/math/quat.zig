@@ -6,8 +6,8 @@ const std = @import("std");
 const assert = std.debug.assert;
 
 const scalarT = @import("scalar.zig").scalarT;
-const vectorNT = @import("vector.zig").vectorNT;
 const types = @import("types.zig");
+const vectorNT = @import("vector.zig").vectorNT;
 
 pub fn quatT(comptime T: type) type {
     return struct {

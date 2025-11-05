@@ -8,11 +8,11 @@ const assert = std.debug.assert;
 const c = @import("../ext.zig").c;
 const math = @import("../math.zig");
 const Error = @import("Error.zig").Error;
-const GPUDevice = @import("GPUDevice.zig");
-const MeshBuffer = @import("MeshBuffer.zig");
-const GPUTransferBuffer = @import("GPUTransferBuffer.zig");
-const SurfaceTexture = @import("SurfaceTexture.zig");
 const GPUCopyPass = @import("GPUCopyPass.zig");
+const GPUDevice = @import("GPUDevice.zig");
+const GPUTransferBuffer = @import("GPUTransferBuffer.zig");
+const MeshBuffer = @import("MeshBuffer.zig");
+const SurfaceTexture = @import("SurfaceTexture.zig");
 
 const log = std.log.scoped(.gfx_upload_transfer_buffer);
 

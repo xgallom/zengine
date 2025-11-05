@@ -7,8 +7,8 @@ const assert = std.debug.assert;
 
 const allocators = @import("allocators.zig");
 const c = @import("ext.zig").c;
-const math = @import("math.zig");
 const Engine = @import("Engine.zig");
+const math = @import("math.zig");
 
 const log = std.log.scoped(.window);
 

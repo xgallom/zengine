@@ -77,9 +77,34 @@ pub fn toOwned(self: *Self) *c.SDL_GPUTexture {
     return self.ptr.?;
 }
 
+pub fn toSDL(self: *const Self) *c.SDL_GPUTexture {
+    assert(self.isValid());
+    return self.ptr.?;
+}
+
 pub inline fn isValid(self: Self) bool {
     return self.ptr != null;
 }
+
+pub const Location = struct {
+    texture: Self = .invalid,
+    mip_level: u32 = 0,
+    layer: u32 = 0,
+    x: u32 = 0,
+    y: u32 = 0,
+    z: u32 = 0,
+
+    pub fn toSDL(self: *const @This()) c.SDL_GPUTextureLocation {
+        return .{
+            .texture = self.texture.ptr,
+            .mip_level = self.mip_level,
+            .layer = self.layer,
+            .x = self.x,
+            .y = self.y,
+            .z = self.z,
+        };
+    }
+};
 
 pub const Region = struct {
     texture: Self = .invalid,
@@ -103,6 +128,28 @@ pub const Region = struct {
             .w = self.w,
             .h = self.h,
             .d = self.d,
+        };
+    }
+};
+
+pub const BlitRegion = struct {
+    texture: Self = .invalid,
+    mip_level: u32 = 0,
+    layer_or_depth_plane: u32 = 0,
+    x: u32 = 0,
+    y: u32 = 0,
+    w: u32 = 0,
+    h: u32 = 0,
+
+    pub fn toSDL(self: *const @This()) c.SDL_GPUBlitRegion {
+        return .{
+            .texture = self.texture.ptr,
+            .mip_level = self.mip_level,
+            .layer_or_depth_plane = self.layer_or_depth_plane,
+            .x = self.x,
+            .y = self.y,
+            .w = self.w,
+            .h = self.h,
         };
     }
 };

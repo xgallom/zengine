@@ -191,30 +191,22 @@ pub const SwapchainComposition = enum(c.SDL_GPUSwapchainComposition) {
     HDR10_ST2084 = c.SDL_GPU_SWAPCHAINCOMPOSITION_HDR10_ST2084,
 };
 
-pub const TextureTransferInfo = struct {
-    transfer_buffer: GPUTransferBuffer = .invalid,
-    offset: u32 = 0,
-    pixels_per_row: u32 = 0,
-    rows_per_layer: u32 = 0,
+pub const Viewport = struct {
+    x: f32 = 0,
+    y: f32 = 0,
+    w: f32 = 0,
+    h: f32 = 0,
+    min_depth: f32 = 0,
+    max_depth: f32 = 0,
 
-    pub fn toSDL(self: *const @This()) c.SDL_GPUTextureTransferInfo {
+    pub fn toSDL(self: *const @This()) c.SDL_GPUViewport {
         return .{
-            .transfer_buffer = self.transfer_buffer.ptr,
-            .offset = self.offset,
-            .pixels_per_row = self.pixels_per_row,
-            .rows_per_layer = self.rows_per_layer,
-        };
-    }
-};
-
-pub const TransferBufferLocation = struct {
-    transfer_buffer: GPUTransferBuffer = .invalid,
-    offset: u32 = 0,
-
-    pub fn toSDL(self: *const @This()) c.SDL_GPUTransferBufferLocation {
-        return .{
-            .transfer_buffer = self.transfer_buffer.ptr,
-            .offset = self.offset,
+            .x = self.x,
+            .y = self.y,
+            .w = self.w,
+            .h = self.h,
+            .min_depth = self.min_depth,
+            .max_depth = self.max_depth,
         };
     }
 };
@@ -444,6 +436,33 @@ pub const DepthStencilTargetInfo = struct {
     }
 };
 
+pub const BlitInfo = struct {
+    source: GPUTexture.BlitRegion = .{},
+    destination: GPUTexture.BlitRegion = .{},
+    load_op: LoadOp = .default,
+    clear_color: math.RGBAf32 = math.rgba_f32.zero,
+    flip_mode: FlipMode = .default,
+    filter: Filter = .default,
+    cycle: bool = false,
+
+    pub fn toSDL(self: *const @This()) c.SDL_GPUBlitInfo {
+        return .{
+            .source = self.source.toSDL(),
+            .destination = self.destination.toSDL(),
+            .load_op = @intFromEnum(self.load_op),
+            .clear_color = .{
+                .r = self.clear_color[0],
+                .g = self.clear_color[1],
+                .b = self.clear_color[2],
+                .a = self.clear_color[3],
+            },
+            .flip_mode = @intFromEnum(self.flip_mode),
+            .filter = @intFromEnum(self.filter),
+            .cycle = self.cycle,
+        };
+    }
+};
+
 pub const TextureSamplerBinding = struct {
     texture: GPUTexture = .invalid,
     sampler: GPUSampler = .invalid,
@@ -452,6 +471,34 @@ pub const TextureSamplerBinding = struct {
         return .{
             .texture = self.texture.ptr,
             .sampler = self.sampler.ptr,
+        };
+    }
+};
+
+pub const StorageBufferReadWriteBinding = struct {
+    buffer: GPUBuffer = .invalid,
+    cycle: bool = false,
+
+    pub fn toSDL(self: *const @This()) c.SDL_GPUStorageBufferReadWriteBinding {
+        return .{
+            .buffer = self.buffer.ptr,
+            .cycle = self.cycle,
+        };
+    }
+};
+
+pub const StorageTextureReadWriteBinding = struct {
+    texture: GPUTexture = .invalid,
+    mip_level: u32 = 0,
+    layer: u32 = 0,
+    cycle: bool = false,
+
+    pub fn toSDL(self: *const @This()) c.SDL_GPUStorageTextureReadWriteBinding {
+        return .{
+            .texture = self.texture.ptr,
+            .mip_level = self.mip_level,
+            .layer = self.layer,
+            .cycle = self.cycle,
         };
     }
 };

@@ -46,7 +46,7 @@ pub fn initMainWindow(self: *Self) !void {
     self.main_win = try .init(&.{
         .title = "zeng - Zengine 0.1.0",
         .size = .{ 1920, 1080 },
-        .flags = .initOne(.high_pixel_density),
+        .flags = .initMany(&.{.high_pixel_density}),
     });
 
     const props = try self.main_win.properties();

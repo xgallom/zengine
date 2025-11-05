@@ -13,6 +13,7 @@ const sdl = @import("../sdl.zig");
 const ui = @import("../ui.zig");
 const Window = @import("../Window.zig");
 const Error = @import("Error.zig").Error;
+const GPUComputePass = @import("GPUComputePass.zig");
 const GPUCopyPass = @import("GPUCopyPass.zig");
 const GPUDevice = @import("GPUDevice.zig");
 const GPURenderPass = @import("GPURenderPass.zig");
@@ -83,6 +84,31 @@ pub fn renderPass(
     return .fromOwned(ptr.?);
 }
 
+pub fn computePass(
+    self: Self,
+    storage_texture_bindings: []const types.StorageTextureReadWriteBinding,
+    storage_buffer_bindings: []const types.StorageBufferReadWriteBinding,
+) !GPUComputePass {
+    assert(self.isValid());
+    var arena = allocators.initArena();
+    defer arena.deinit();
+    const gpa = arena.allocator();
+    const st_bindings = try sdl.sliceFrom(gpa, storage_texture_bindings);
+    const sb_bindings = try sdl.sliceFrom(gpa, storage_buffer_bindings);
+    const ptr = c.SDL_BeginGPUComputePass(
+        self.ptr,
+        st_bindings.ptr,
+        @intCast(st_bindings.len),
+        sb_bindings.ptr,
+        @intCast(sb_bindings.len),
+    );
+    if (ptr == null) {
+        log.err("failed to begin gpu compute pass: {s}", .{c.SDL_GetError()});
+        return Error.ComputePassFailed;
+    }
+    return .fromOwned(ptr.?);
+}
+
 pub fn copyPass(self: Self) !GPUCopyPass {
     assert(self.isValid());
     const ptr = c.SDL_BeginGPUCopyPass(self.ptr);
@@ -93,18 +119,24 @@ pub fn copyPass(self: Self) !GPUCopyPass {
     return .fromOwned(ptr.?);
 }
 
-pub fn pushVertexUniformData(self: Self, slot_index: u32, data: anytype) void {
-    assert(self.isValid());
-    const bytes = std.mem.sliceAsBytes(data);
-    c.SDL_PushGPUVertexUniformData(self.ptr, slot_index, bytes.ptr, @intCast(bytes.len));
-}
+pub fn pushUniformData(self: Self, comptime target: BindingTarget, slot_index: u32, data: anytype) void {
+    const call = comptime switch (target) {
+        .vertex => c.SDL_PushGPUVertexUniformData,
+        .fragment => c.SDL_PushGPUFragmentUniformData,
+        .compute => c.SDL_PushGPUComputeUniformData,
+    };
 
-pub fn pushFragmentUniformData(self: Self, slot_index: u32, data: anytype) void {
     assert(self.isValid());
     const bytes = std.mem.sliceAsBytes(data);
-    c.SDL_PushGPUFragmentUniformData(self.ptr, slot_index, bytes.ptr, @intCast(bytes.len));
+    call(self.ptr, slot_index, bytes.ptr, @intCast(bytes.len));
 }
 
 pub inline fn isValid(self: Self) bool {
     return self.ptr != null;
 }
+
+pub const BindingTarget = enum {
+    vertex,
+    fragment,
+    compute,
+};

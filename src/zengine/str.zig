@@ -35,6 +35,14 @@ pub inline fn trim(str: []const u8) []const u8 {
     return std.mem.trim(u8, str, " \t\n\r");
 }
 
+pub fn allocPrint(comptime fmt: []const u8, args: anytype) ![]const u8 {
+    return std.fmt.allocPrint(allocators.string(), fmt, args);
+}
+
+pub fn allocPrintZ(comptime fmt: []const u8, args: anytype) ![:0]const u8 {
+    return std.fmt.allocPrintSentinel(allocators.string(), fmt, args, 0);
+}
+
 pub fn join(strs: []const []const u8) ![]const u8 {
     var len: usize = 0;
     for (strs) |str| len += str.len;

@@ -40,7 +40,7 @@ pub fn createGPUTexture(self: *Self, gpu_device: GPUDevice) !void {
     assert(self.surf.isValid());
     self.gpu_tex = try .init(gpu_device, &.{
         .type = .default,
-        .format = .default,
+        .format = .R8G8B8A8_unorm_sRGB,
         .usage = .initOne(.sampler),
         .size = .{ self.surf.width(), self.surf.height() },
     });

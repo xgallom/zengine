@@ -87,6 +87,34 @@ pub const Mapping = struct {
     }
 };
 
+pub const TextureTransferInfo = struct {
+    transfer_buffer: Self = .invalid,
+    offset: u32 = 0,
+    pixels_per_row: u32 = 0,
+    rows_per_layer: u32 = 0,
+
+    pub fn toSDL(self: *const @This()) c.SDL_GPUTextureTransferInfo {
+        return .{
+            .transfer_buffer = self.transfer_buffer.ptr,
+            .offset = self.offset,
+            .pixels_per_row = self.pixels_per_row,
+            .rows_per_layer = self.rows_per_layer,
+        };
+    }
+};
+
+pub const Location = struct {
+    transfer_buffer: Self = .invalid,
+    offset: u32 = 0,
+
+    pub fn toSDL(self: *const @This()) c.SDL_GPUTransferBufferLocation {
+        return .{
+            .transfer_buffer = self.transfer_buffer.ptr,
+            .offset = self.offset,
+        };
+    }
+};
+
 pub const Usage = enum(c.SDL_GPUTransferBufferUsage) {
     upload = c.SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD,
     download = c.SDL_GPU_TRANSFERBUFFERUSAGE_DOWNLOAD,

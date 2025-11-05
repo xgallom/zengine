@@ -6,8 +6,8 @@ const std = @import("std");
 const assert = std.debug.assert;
 
 const scalarT = @import("scalar.zig").scalarT;
-const vectorNT = @import("vector.zig").vectorNT;
 const types = @import("types.zig");
+const vectorNT = @import("vector.zig").vectorNT;
 
 pub fn vertexNT(comptime N: comptime_int, comptime T: type) type {
     return struct {

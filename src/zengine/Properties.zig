@@ -6,10 +6,10 @@ const std = @import("std");
 const assert = std.debug.assert;
 
 const allocators = @import("allocators.zig");
-const c = @import("ext.zig").c;
-const math = @import("math.zig");
 const ArrayPoolMap = @import("containers.zig").ArrayPoolMap;
 const AutoArrayPoolMap = @import("containers.zig").AutoArrayPoolMap;
+const c = @import("ext.zig").c;
+const math = @import("math.zig");
 const str = @import("str.zig");
 
 const log = std.log.scoped(.properties);

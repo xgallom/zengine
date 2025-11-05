@@ -25,7 +25,8 @@ pub const Source = struct {
     pub const color_max = 1;
     pub const color_min = 0;
     pub const color_speed = 0.05;
-    pub const intensity_speed = 0.05;
+    pub const power_min = 0;
+    pub const power_speed = 0.05;
 };
 
 pub const Type = enum {

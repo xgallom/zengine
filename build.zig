@@ -95,7 +95,7 @@ pub fn build(b: *std.Build) !void {
     // b.getInstallStep().dependOn(&install_header.step);
 
     const exe = b.addExecutable(.{
-        .name = "zeng",
+        .name = "zengine",
         .root_module = b.createModule(.{
             .root_source_file = b.path("src/main.zig"),
             .imports = &.{

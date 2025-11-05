@@ -86,6 +86,18 @@ pub inline fn isnNotEmpty(self: Self) bool {
     return self.ptr != null and self.byte_len > 0;
 }
 
+pub const Location = struct {
+    buffer: Self,
+    offset: u32,
+
+    pub fn toSDL(self: *const @This()) c.SDL_GPUBufferLocation {
+        return .{
+            .buffer = self.buffer.ptr,
+            .offset = self.offset,
+        };
+    }
+};
+
 pub const Region = struct {
     buffer: Self = .invalid,
     offset: u32 = 0,

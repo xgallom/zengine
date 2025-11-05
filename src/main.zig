@@ -7,7 +7,7 @@ const assert = std.debug.assert;
 const builtin = @import("builtin");
 
 const zengine = @import("zengine");
-const ZEngine = zengine.ZEngine;
+const Zengine = zengine.Zengine;
 const allocators = zengine.allocators;
 const ecs = zengine.ecs;
 const Event = zengine.Event;
@@ -21,6 +21,8 @@ const scheduler = zengine.scheduler;
 const time = zengine.time;
 const Engine = zengine.Engine;
 const ui = zengine.ui;
+var mouse_motion: math.Point_f32 = math.point_f32.zero;
+
 const log = std.log.scoped(.main);
 
 pub const std_options: std.Options = .{
@@ -51,6 +53,8 @@ pub const zengine_options: zengine.Options = .{
 };
 
 const Config = struct {
+    mouse_speed: f32 = 0.25,
+    speed_scale: f32 = 15,
     flags: packed struct {
         mouse_captured: bool = true,
         mouse_y_inverted: bool = true,
@@ -74,9 +78,6 @@ var flat_scene: Scene.Flattened = undefined;
 var scene_map: zengine.containers.ArrayMap(Scene.Node.Id) = .empty;
 
 var controls = zengine.controls.CameraControls{};
-var mouse_motion: math.Point_f32 = math.point_f32.zero;
-var speed_scale: f32 = 2.5;
-
 var debug_ui: zengine.ui.DebugUI = undefined;
 var property_editor: ui.PropertyEditorWindow = undefined;
 var allocs_window: zengine.ui.AllocsWindow = undefined;
@@ -112,7 +113,7 @@ pub fn main() !void {
     allocators.init(1_000_000_000);
     defer allocators.deinit();
 
-    var engine: ZEngine = try .init(.{
+    var engine: Zengine = try .init(.{
         .load = &load,
         .unload = &unload,
         .input = &input,
@@ -123,13 +124,13 @@ pub fn main() !void {
     return engine.run();
 }
 
-fn load(self: *const ZEngine) !bool {
+fn load(self: *const Zengine) !bool {
     rnd.r = .init(@intCast(std.time.milliTimestamp()));
     scene_map = try .init(self.scene.allocator, 128);
     var task_list = try scheduler.TaskScheduler.init(allocators.gpa());
     defer task_list.deinit();
 
-    ZEngine.sections.sub(.load).sub(.gfx).begin();
+    Zengine.sections.sub(.load).sub(.gfx).begin();
 
     gfx_loader = try .init(self.renderer);
     errdefer gfx_loader.deinit();
@@ -167,8 +168,8 @@ fn load(self: *const ZEngine) !bool {
         try gfx_loader.commit();
     }
 
-    ZEngine.sections.sub(.load).sub(.gfx).end();
-    ZEngine.sections.sub(.load).sub(.scene).begin();
+    Zengine.sections.sub(.load).sub(.gfx).end();
+    Zengine.sections.sub(.load).sub(.scene).begin();
 
     const pi = std.math.pi;
 
@@ -193,7 +194,6 @@ fn load(self: *const ZEngine) !bool {
         .translation = .{ 0, -450, 0 },
         .scale = .{ 500, 250, 500 },
     });
-    _ = try self.scene.createChildNode(ground, "Plane", .object("Plane"), &.{});
     _ = try self.scene.createChildNode(ground, "Landscape", .object("Landscape"), &.{});
 
     const objects = try self.scene.createRootNode("Objects", .node(), &.{});
@@ -218,7 +218,7 @@ fn load(self: *const ZEngine) !bool {
         .order = .trs,
     });
 
-    for (0..20) |_| {
+    for (0..10) |_| {
         const cube_r = try self.scene.createChildNode(cubes, "Red", .node(), &.{
             .translation = rnd.vector3(),
         });
@@ -250,8 +250,8 @@ fn load(self: *const ZEngine) !bool {
     try scene_map.insert(self.scene.allocator, "cubes", cubes);
     try scene_map.insert(self.scene.allocator, "cat", cat);
 
-    ZEngine.sections.sub(.load).sub(.scene).end();
-    ZEngine.sections.sub(.load).sub(.ui).begin();
+    Zengine.sections.sub(.load).sub(.scene).end();
+    Zengine.sections.sub(.load).sub(.ui).begin();
 
     debug_ui = .init();
     property_editor = .init(allocators.global());
@@ -266,12 +266,12 @@ fn load(self: *const ZEngine) !bool {
 
     self.engine.main_win.setRelativeMouseMode(config.flags.mouse_captured);
 
-    ZEngine.sections.sub(.load).sub(.ui).end();
+    Zengine.sections.sub(.load).sub(.ui).end();
     allocators.scratchRelease();
     return true;
 }
 
-fn unload(self: *const ZEngine) void {
+fn unload(self: *const Zengine) void {
     scene_map.deinit(self.scene.allocator);
     gfx_loader.deinit();
     debug_ui.deinit();
@@ -280,7 +280,7 @@ fn unload(self: *const ZEngine) void {
     perf_window.deinit();
 }
 
-fn input(self: *const ZEngine) !bool {
+fn input(self: *const Zengine) !bool {
     if (self.ui.show_ui) {
         controls.reset();
     }
@@ -394,7 +394,7 @@ fn input(self: *const ZEngine) !bool {
     return true;
 }
 
-fn update(self: *const ZEngine) !bool {
+fn update(self: *const Zengine) !bool {
     const delta = global.timeSinceLastFrame().toFloat().toValue32(.s);
     switch (config.flags.camera_controls) {
         inline else => |controls_type| updateCameraControls(self, delta, controls_type),
@@ -411,7 +411,7 @@ fn update(self: *const ZEngine) !bool {
     return true;
 }
 
-fn render(self: *const ZEngine) !void {
+fn render(self: *const Zengine) !void {
     self.ui.beginDraw();
     self.ui.drawMainMenuBar(.{
         .allocs_open = &allocs_window.is_open,
@@ -431,7 +431,7 @@ fn render(self: *const ZEngine) !void {
     _ = try flat_scene.render(self.ui, &items);
 }
 
-fn updateScene(self: *const ZEngine, delta: f32) void {
+fn updateScene(self: *const Zengine, delta: f32) void {
     const s = self.scene.nodes.slice();
     const cubes = scene_map.get("cubes");
 
@@ -442,17 +442,16 @@ fn updateScene(self: *const ZEngine, delta: f32) void {
 }
 
 fn updateCameraControls(
-    self: *const ZEngine,
+    self: *const Zengine,
     delta: f32,
     comptime controls_type: Config.CameraControlsType,
 ) void {
-    const camera = self.renderer.cameras.getPtr(self.renderer.camera);
+    const camera = self.renderer.cameras.getPtr(self.renderer.settings.camera);
     var coords: math.vector3.Coords = undefined;
     camera.coords(&coords);
 
     const rotation_speed = delta / 2;
-    const mouse_speed = 0.05;
-    const translation_speed = 20 * delta * speed_scale;
+    const translation_speed = 20 * delta * config.speed_scale;
     const scale_speed = 15 * delta;
 
     camera.up = switch (comptime controls_type) {
@@ -464,7 +463,7 @@ fn updateCameraControls(
         math.vector3.rotateDirectionScale(
             &camera.direction,
             &coords.x,
-            rotation_speed * mouse_speed * mouse_motion[0],
+            rotation_speed * config.mouse_speed * mouse_motion[0],
         );
         mouse_motion[0] = 0;
     }
@@ -472,7 +471,7 @@ fn updateCameraControls(
         math.vector3.rotateDirectionScale(
             &camera.direction,
             &coords.y,
-            rotation_speed * mouse_speed * mouse_motion[1],
+            rotation_speed * config.mouse_speed * mouse_motion[1],
         );
         mouse_motion[1] = 0;
     }
@@ -522,9 +521,9 @@ fn updateCameraControls(
     }
 
     if (controls.has(.custom(0)))
-        speed_scale -= 5 * delta;
+        config.speed_scale -= 5 * delta;
     if (controls.has(.custom(1)))
-        speed_scale += 5 * delta;
+        config.speed_scale += 5 * delta;
 
     if (controls.has(.custom(2))) {
         camera.type = switch (camera.type) {
@@ -553,14 +552,6 @@ fn propertyEditorNode(editor: *ui.PropertyEditorWindow) !*ui.PropertyEditorWindo
     const root_node = try editor.appendNode(root_id, "main");
 
     _ = try editor.appendChild(root_node, config.propertyEditor(), root_id ++ ".config", "Config");
-    _ = try editor.appendChild(
-        root_node,
-        ui.property_editor.InputScalar(@TypeOf(speed_scale), 1, .{
-            .speed = 0.1,
-        }).init(&speed_scale).element(),
-        root_id ++ ".speed_scale",
-        "Speed Scale",
-    );
 
     return root_node;
 }

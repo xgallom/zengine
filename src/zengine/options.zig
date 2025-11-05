@@ -4,6 +4,7 @@
 
 const std = @import("std");
 const root = @import("root");
+
 const math = @import("math.zig");
 
 pub const Options = struct {

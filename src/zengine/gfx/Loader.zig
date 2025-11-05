@@ -99,7 +99,8 @@ pub fn loadMesh(self: *Self, asset_path: []const u8) !*MeshBuffer {
     if (result.mtl_path) |mtl_path| try self.loadMaterials(mtl_path);
     const mesh_bufs: MeshObject.MeshBuffers = .init(.{
         .mesh = try self.renderer.insertMeshBuffer(asset_path, &.fromCPUBuffer(&result.mesh_buf)),
-        .tex_coords = try self.createTexCoordIndicators(asset_path),
+        .tex_coords_u = try self.createTexCoordUIndicators(asset_path),
+        .tex_coords_v = try self.createTexCoordVIndicators(asset_path),
         .normals = try self.createNormalIndicators(asset_path),
         .tangents = try self.createTangentIndicators(asset_path),
         .binormals = try self.createBinormalIndicators(asset_path),
@@ -199,6 +200,7 @@ pub fn createIndicators(
     key: []const u8,
     comptime suffix: [:0]const u8,
     comptime attr: math.VertexAttr,
+    comptime components: enum { x, y, z, all },
 ) !*MeshBuffer {
     const new_key = try str.join(&.{ key, "." ++ suffix });
     const mesh = self.renderer.mesh_bufs.getPtr(key);
@@ -211,29 +213,40 @@ pub fn createIndicators(
     try result.ensureUnusedCapacity(self.renderer.allocator, .vertex, math.Vector3, 2 * verts.len);
     for (verts) |*_vert| {
         const vert = math.vertex.cmap(_vert);
-        var dest = vert.get(.position);
-        math.vector3.add(&dest, vert.getPtrConst(attr));
-        result.appendSliceAssumeCapacity(.vertex, math.Vector3, 1, &.{ vert.get(.position), dest });
+        const pos = vert.get(.position);
+        var dest = pos;
+        const offset: math.Vector3 = switch (comptime components) {
+            .x => .{ vert.getPtrConst(attr)[0], 0, 0 },
+            .y => .{ 0, vert.getPtrConst(attr)[1], 0 },
+            .z => .{ 0, 0, vert.getPtrConst(attr)[2] },
+            .all => vert.get(attr),
+        };
+        math.vector3.add(&dest, &offset);
+        result.appendSliceAssumeCapacity(.vertex, math.Vector3, 1, &.{ pos, dest });
     }
 
     try self.flagModified(.mesh_buffer, new_key);
     return result;
 }
 
-pub fn createTexCoordIndicators(self: *Self, key: []const u8) !*MeshBuffer {
-    return self.createIndicators(key, "tex_coords", .tex_coord);
+pub fn createTexCoordUIndicators(self: *Self, key: []const u8) !*MeshBuffer {
+    return self.createIndicators(key, "tex_coords_u", .tex_coord, .x);
+}
+
+pub fn createTexCoordVIndicators(self: *Self, key: []const u8) !*MeshBuffer {
+    return self.createIndicators(key, "tex_coords_v", .tex_coord, .y);
 }
 
 pub fn createNormalIndicators(self: *Self, key: []const u8) !*MeshBuffer {
-    return self.createIndicators(key, "normals", .normal);
+    return self.createIndicators(key, "normals", .normal, .all);
 }
 
 pub fn createTangentIndicators(self: *Self, key: []const u8) !*MeshBuffer {
-    return self.createIndicators(key, "tangents", .tangent);
+    return self.createIndicators(key, "tangents", .tangent, .all);
 }
 
 pub fn createBinormalIndicators(self: *Self, key: []const u8) !*MeshBuffer {
-    return self.createIndicators(key, "binormals", .binormal);
+    return self.createIndicators(key, "binormals", .binormal, .all);
 }
 
 pub fn createDefaultMaterial(self: *Self) !*MaterialInfo {

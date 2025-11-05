@@ -17,8 +17,9 @@ pub const Error = error{
     LightFailed,
     CameraFailed,
     CommandBufferFailed,
-    CopyPassFailed,
     RenderPassFailed,
+    ComputePassFailed,
+    CopyPassFailed,
     DrawFailed,
     OutOfMemory,
 };

@@ -6,12 +6,15 @@ const std = @import("std");
 
 pub const batch = @import("math/batch.zig");
 pub const matrixMxNT = @import("math/matrix.zig").matrixMxNT;
+pub const paramT = @import("math/param.zig").paramT;
 pub const quatT = @import("math/quat.zig").quatT;
 pub const IntMask = @import("math/scalar.zig").IntMask;
 pub const scalarT = @import("math/scalar.zig").scalarT;
 const types = @import("math/types.zig");
 pub const Scalar = types.Scalar;
 pub const Scalar64 = types.Scalar64;
+pub const Param = types.Param;
+pub const Param64 = types.Param64;
 pub const Vector2 = types.Vector2;
 pub const Vector2f64 = types.Vector2f64;
 pub const Vector3 = types.Vector3;
@@ -45,7 +48,9 @@ pub const Index = types.Index;
 pub const LineFaceIndex = types.LineFaceIndex;
 pub const FaceIndex = types.FaceIndex;
 pub const QuadFaceIndex = types.QuadFaceIndex;
-pub const Color = types.Color;
+pub const Ease = types.Ease;
+pub const RGB = types.RGB;
+pub const RGBA = types.RGBA;
 pub const VertexAttr = types.VertexAttr;
 pub const Axis3 = types.Axis3;
 pub const Axis4 = types.Axis4;
@@ -73,7 +78,10 @@ pub fn matrix4x4T(comptime T: type) type {
 }
 
 pub const scalar = scalarT(types.Scalar);
-pub const scalarf64 = scalarT(types.Scalar64);
+pub const scalar64 = scalarT(types.Scalar64);
+
+pub const param = paramT(types.Scalar);
+pub const param64 = paramT(types.Scalar64);
 
 pub const vector2 = vectorNT(2, types.Scalar);
 pub const vector2f64 = vectorNT(2, types.Scalar64);
