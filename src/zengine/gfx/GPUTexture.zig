@@ -9,7 +9,7 @@ const c = @import("../ext.zig").c;
 const global = @import("../global.zig");
 const math = @import("../math.zig");
 const ui = @import("../ui.zig");
-const Error = @import("Error.zig").Error;
+const Error = @import("error.zig").Error;
 const GPUDevice = @import("GPUDevice.zig");
 const types = @import("types.zig");
 
@@ -95,6 +95,7 @@ pub const Location = struct {
     z: u32 = 0,
 
     pub fn toSDL(self: *const @This()) c.SDL_GPUTextureLocation {
+        assert(self.texture.isValid());
         return .{
             .texture = self.texture.ptr,
             .mip_level = self.mip_level,
@@ -118,6 +119,7 @@ pub const Region = struct {
     d: u32 = 0,
 
     pub fn toSDL(self: *const @This()) c.SDL_GPUTextureRegion {
+        assert(self.texture.isValid());
         return .{
             .texture = self.texture.ptr,
             .mip_level = self.mip_level,
@@ -142,6 +144,7 @@ pub const BlitRegion = struct {
     h: u32 = 0,
 
     pub fn toSDL(self: *const @This()) c.SDL_GPUBlitRegion {
+        assert(self.texture.isValid());
         return .{
             .texture = self.texture.ptr,
             .mip_level = self.mip_level,
@@ -280,5 +283,6 @@ pub const Format = enum(c.SDL_GPUTextureFormat) {
     ASTC_10x10_f = c.SDL_GPU_TEXTUREFORMAT_ASTC_10x10_FLOAT,
     ASTC_12x10_f = c.SDL_GPU_TEXTUREFORMAT_ASTC_12x10_FLOAT,
     ASTC_12x12_f = c.SDL_GPU_TEXTUREFORMAT_ASTC_12x12_FLOAT,
-    pub const default = .R8G8B8A8_unorm;
+    pub const default: Format = .R8G8B8A8_unorm;
+    pub const hdr_f: Format = .R16G16B16A16_f;
 };

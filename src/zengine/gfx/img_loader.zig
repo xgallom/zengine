@@ -9,7 +9,7 @@ const allocators = @import("../allocators.zig");
 const c = @import("../ext.zig").c;
 const fs = @import("../fs.zig");
 const global = @import("../global.zig");
-const Error = @import("Error.zig").Error;
+const Error = @import("error.zig").Error;
 const GPUDevice = @import("GPUDevice.zig");
 const Surface = @import("Surface.zig");
 
@@ -40,5 +40,5 @@ fn load(config: *const OpenConfig, buf: []const u8) !Surface {
         log.err("image load failed for \"{s}\": {s}", .{ config.file_path, c.SDL_GetError() });
         return error.ImageFailed;
     }
-    return .fromOwnedSurface(surf);
+    return .fromOwned(surf);
 }

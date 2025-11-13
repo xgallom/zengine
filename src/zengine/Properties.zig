@@ -6,13 +6,23 @@ const std = @import("std");
 const assert = std.debug.assert;
 
 const allocators = @import("allocators.zig");
-const ArrayPoolMap = @import("containers.zig").ArrayPoolMap;
+const Map = @import("containers.zig").Map;
 const AutoArrayPoolMap = @import("containers.zig").AutoArrayPoolMap;
 const c = @import("ext.zig").c;
 const math = @import("math.zig");
 const str = @import("str.zig");
 
 const log = std.log.scoped(.properties);
+
+pub fn registryList(comptime registry_list: []const type) []const type {
+    return registry_list;
+}
+
+pub fn registryLists(comptime registry_list: []const []const type) []const type {
+    var result: []const type = &.{};
+    for (registry_list) |registries| result = result ++ registries;
+    return result;
+}
 
 pub fn GlobalRegistry(comptime registries: []const type) type {
     comptime var inner_fields: []const std.builtin.Type.StructField = &[_]std.builtin.Type.StructField{};
@@ -47,7 +57,15 @@ pub fn GlobalRegistry(comptime registries: []const type) type {
             inline for (inner_fields) |field| @field(ra.inner, field.name).deinit();
         }
 
-        pub inline fn properties(ra: *RA, comptime Registry: type, key: Registry.Key) !*Self {
+        pub inline fn create(ra: *RA, comptime Registry: type, key: Registry.Key) !*Self {
+            return @field(ra.inner, @typeName(Registry)).create(key);
+        }
+
+        pub inline fn destroy(ra: *RA, comptime Registry: type, key: Registry.Key) void {
+            @field(ra.inner, @typeName(Registry)).destroy(key);
+        }
+
+        pub inline fn properties(ra: *RA, comptime Registry: type, key: Registry.Key) ?*Self {
             return @field(ra.inner, @typeName(Registry)).properties(key);
         }
     };
@@ -64,6 +82,7 @@ pub fn AutoRegistry(comptime K: type, comptime options: RegistryOptions) type {
 
         const R = @This();
         pub const Key = K;
+        var empty_properties: Self = .{};
 
         pub fn init() !R {
             return .{ .map = try .init(allocators.gpa(), options.reg_preheat) };
@@ -74,13 +93,20 @@ pub fn AutoRegistry(comptime K: type, comptime options: RegistryOptions) type {
             reg.map.deinit();
         }
 
-        pub fn properties(reg: *R, key: K) !*Self {
-            const ptr = reg.map.getPtrOrNull(key);
-            if (ptr) |p| return p;
+        pub fn create(reg: *R, key: K) !*Self {
             return reg.map.insert(
                 key,
                 &try .init(allocators.gpa(), options.props_preheat),
             );
+        }
+
+        pub fn destroy(reg: *R, key: K) void {
+            reg.map.getPtr(key).deinit();
+            reg.map.remove(key);
+        }
+
+        pub fn properties(reg: *R, key: K) ?*Self {
+            return reg.map.getPtrOrNull(key);
         }
     };
 }
@@ -101,31 +127,40 @@ pub fn StringRegistry(comptime options: RegistryOptions) type {
             reg.map.deinit();
         }
 
-        pub fn properties(reg: *R, key: []const u8) !*Self {
-            const ptr = reg.map.getPtrOrNull(key);
-            if (ptr) |p| return p;
+        pub fn create(reg: *R, key: []const u8) !*Self {
             return reg.map.insert(
                 key,
                 &try .init(allocators.gpa(), options.props_preheat),
             );
         }
+
+        pub fn destroy(reg: *R, key: []const u8) void {
+            reg.map.getPtr(key).deinit();
+            reg.map.remove(key);
+        }
+
+        pub fn properties(reg: *R, key: []const u8) ?*Self {
+            return reg.map.getPtr(key);
+        }
     };
 }
 
-u8: ArrayPoolMap(u8, .{}),
-u16: ArrayPoolMap(u16, .{}),
-u32: ArrayPoolMap(u32, .{}),
-u64: ArrayPoolMap(u64, .{}),
-i8: ArrayPoolMap(i8, .{}),
-i16: ArrayPoolMap(i16, .{}),
-i32: ArrayPoolMap(i32, .{}),
-i64: ArrayPoolMap(i64, .{}),
-f32: ArrayPoolMap(f32, .{}),
-f64: ArrayPoolMap(f64, .{}),
-string: ArrayPoolMap([:0]u8, .{}),
+allocator: std.mem.Allocator,
+bool: Map(bool),
+u8: Map(u8),
+u16: Map(u16),
+u32: Map(u32),
+u64: Map(u64),
+i8: Map(i8),
+i16: Map(i16),
+i32: Map(i32),
+i64: Map(i64),
+f32: Map(f32),
+f64: Map(f64),
+string: Map([:0]u8),
 
 pub const Self = @This();
-pub const Type = enum { u8, u16, u32, u64, i8, i16, i32, i64, f32, f64, string };
+pub const Type = enum { bool, u8, u16, u32, u64, i8, i16, i32, i64, f32, f64, string };
 
 fn Representation(comptime prop_type: Type) type {
     return switch (prop_type) {
@@ -136,6 +171,7 @@ fn Representation(comptime prop_type: Type) type {
 
 fn Value(comptime prop_type: Type) type {
     return switch (prop_type) {
+        .bool => bool,
         .u8 => u8,
         .u16 => u16,
         .u32 => u32,
@@ -144,12 +180,16 @@ fn Value(comptime prop_type: Type) type {
         .i16 => i16,
         .i32 => i32,
         .i64 => i64,
+        .f32 => f32,
+        .f64 => f64,
         .string => []const u8,
     };
 }
 
-pub fn init(gpa: std.mem.Allocator, preheat: usize) !Self {
+pub fn init(gpa: std.mem.Allocator, preheat: u32) !Self {
     return .{
+        .allocator = gpa,
+        .bool = try .init(gpa, preheat),
         .u8 = try .init(gpa, preheat),
         .u16 = try .init(gpa, preheat),
         .u32 = try .init(gpa, preheat),
@@ -165,17 +205,18 @@ pub fn init(gpa: std.mem.Allocator, preheat: usize) !Self {
 }
 
 pub fn deinit(self: *Self) void {
-    self.u8.deinit();
-    self.u16.deinit();
-    self.u32.deinit();
-    self.u64.deinit();
-    self.i8.deinit();
-    self.i16.deinit();
-    self.i32.deinit();
-    self.i64.deinit();
-    self.f32.deinit();
-    self.f64.deinit();
-    self.string.deinit();
+    self.bool.deinit(self.allocator);
+    self.u8.deinit(self.allocator);
+    self.u16.deinit(self.allocator);
+    self.u32.deinit(self.allocator);
+    self.u64.deinit(self.allocator);
+    self.i8.deinit(self.allocator);
+    self.i16.deinit(self.allocator);
+    self.i32.deinit(self.allocator);
+    self.i64.deinit(self.allocator);
+    self.f32.deinit(self.allocator);
+    self.f64.deinit(self.allocator);
+    self.string.deinit(self.allocator);
 }
 
 pub fn get(self: *Self, comptime prop_type: Type, key: []const u8) Representation(prop_type) {
@@ -196,8 +237,8 @@ pub fn getPtrOrNull(self: *Self, comptime prop_type: Type, key: []const u8) ?*Re
 
 pub fn put(self: *Self, comptime prop_type: Type, key: []const u8, value: Value(prop_type)) !void {
     const val = switch (comptime prop_type) {
-        .str => str.dupeZ(value),
+        .string => try str.dupeZ(value),
         else => value,
     };
-    return @field(self, @tagName(prop_type)).put(key, val);
+    try @field(self, @tagName(prop_type)).put(self.allocator, key, val);
 }

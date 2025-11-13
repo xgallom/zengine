@@ -10,21 +10,11 @@ const math = @import("../math.zig");
 const gfx_options = @import("../options.zig").gfx_options;
 const str = @import("../str.zig");
 const CPUBuffer = @import("CPUBuffer.zig");
-const MeshObject = @import("MeshObject.zig");
+const mesh = @import("mesh.zig");
 
 const log = std.log.scoped(.gfx_obj_loader);
 
 // TODO: Implement disjoint mesh smoothing
-
-const ObjFaceType = enum(u8) {
-    invalid,
-    point,
-    line,
-    triangle,
-    quad,
-    const arr_min = 3;
-    const arr_len = 4;
-};
 
 const AttrType = enum {
     position,
@@ -35,47 +25,45 @@ const AttrType = enum {
 };
 
 const smoothing_groups_len = 32;
+// TODO: Implement line and point
+const face_arr_min = 3;
 
-const face_vert_orders: std.EnumArray(ObjFaceType, []const []const u8) = .init(.{
+const face_vert_orders: std.EnumArray(mesh.FaceType, []const []const u8) = .init(.{
     .invalid = &.{},
     .point = &.{&.{0}},
     .line = &.{&.{ 0, 1 }},
     .triangle = &.{&.{ 0, 1, 2 }},
-    .quad = &.{ &.{ 0, 1, 2 }, &.{ 0, 2, 3 } },
-});
-
-const face_types_from_obj: std.EnumArray(ObjFaceType, MeshObject.FaceType) = .init(.{
-    .invalid = .invalid,
-    .point = .invalid,
-    // TODO: Implement line
-    .line = .invalid,
-    .triangle = .triangle,
-    .quad = .triangle,
 });
 
 allocator: std.mem.Allocator,
 attr_verts: AttrVerts,
 faces: Faces,
 nodes: Nodes,
+face_polygon: FacePolygon,
 mtl_path: ?[:0]const u8 = null,
 obj_idx: usize = 0,
 
 const Self = @This();
 const VertData = [AttrType.arr_len]math.Vector3;
 const IndexData = [AttrType.arr_len]math.Index;
-const FaceData = [ObjFaceType.arr_len]IndexData;
-const FaceNormals = [MeshObject.FaceType.arr_len + 2]math.Vector3;
-const FaceTangents = [MeshObject.FaceType.arr_len]math.Vector3;
+const FaceData = [mesh.FaceType.arr_len]IndexData;
+const FaceNormals = [mesh.FaceType.arr_len + 2]math.Vector3;
+const FaceTangents = [mesh.FaceType.arr_len]math.Vector3;
 const Verts = std.ArrayList(math.Vector3);
+const FacePolygon = std.ArrayList(IndexData);
 const Faces = std.ArrayList(Face);
 const Nodes = std.ArrayList(Node);
 const AttrVerts = std.EnumArray(AttrType, Verts);
 const AttrsPresent = std.EnumSet(AttrType);
 
 const Face = struct {
-    face_type: ObjFaceType = .invalid,
-    attrs_present: AttrsPresent = .initEmpty(),
+    info: FaceInfo = .{},
     data: FaceData = @splat(@splat(math.invalid_index)),
+};
+
+const FaceInfo = struct {
+    face_type: mesh.FaceType = .invalid,
+    attrs_present: AttrsPresent = .initEmpty(),
 };
 
 const Index = struct {
@@ -105,11 +93,16 @@ pub const Node = struct {
 
         pub const Object = struct {
             name: [:0]const u8,
-            face_type: ObjFaceType = .invalid,
-            attrs_present: AttrsPresent = .initEmpty(),
+            info: FaceInfo = .{},
 
-            pub fn isDefault(o: *const Object) bool {
-                return o.name.len == 0;
+            pub fn isDefault(obj: *const Object) bool {
+                return obj.name.len == 0;
+            }
+
+            pub fn checkInfo(obj: *Object, info: FaceInfo) void {
+                if (obj.info.face_type == .invalid) obj.info.face_type = info.face_type;
+                if (obj.info.attrs_present.eql(.initEmpty())) obj.info.attrs_present = info.attrs_present;
+                assert(obj.info.face_type == info.face_type);
             }
         };
     };
@@ -118,7 +111,7 @@ pub const Node = struct {
 pub const ObjResult = struct {
     allocator: std.mem.Allocator,
     mesh_buf: CPUBuffer,
-    mesh_objs: std.StringArrayHashMapUnmanaged(MeshObject),
+    mesh_objs: std.StringArrayHashMapUnmanaged(mesh.Object),
     mtl_path: ?[:0]const u8,
 
     pub fn deinit(self: *ObjResult) void {
@@ -136,7 +129,7 @@ pub fn loadFile(allocator: std.mem.Allocator, path: []const u8) !ObjResult {
     var file = try std.fs.openFileAbsolute(path, .{});
     defer file.close();
 
-    const buf = try allocators.scratch().alloc(u8, 1 << 8);
+    const buf = try allocators.scratch().alloc(u8, 1 << 10);
     defer allocators.scratch().free(buf);
     var reader = file.reader(buf);
 
@@ -150,11 +143,18 @@ pub fn loadFile(allocator: std.mem.Allocator, path: []const u8) !ObjResult {
 
     log.debug("reader: {}", .{try reader.getSize()});
     log.debug("started parsing {s}", .{path});
-    while (reader.interface.takeDelimiterInclusive('\n')) |line| {
-        try self.parseLine(str.trim(line));
+    var line_n: usize = 1;
+    while (reader.interface.takeDelimiterInclusive('\n')) |line_full| {
+        const line = str.trim(line_full);
+        log.debug("parsing line {} \"{s}\"", .{ line_n, line });
+        try self.parseLine(line);
+        line_n += 1;
     } else |err| switch (err) {
         error.EndOfStream => {},
-        error.StreamTooLong, error.ReadFailed => |e| return e,
+        error.StreamTooLong, error.ReadFailed => |e| {
+            log.err("failed parsing line {}: {t}", .{ line_n, e });
+            return e;
+        },
     }
 
     const obj_node = self.activeObjectNode();
@@ -171,6 +171,7 @@ fn init(allocator: std.mem.Allocator) !Self {
             .normal = try .initCapacity(allocator, 128),
         }),
         .faces = try .initCapacity(allocator, 128),
+        .face_polygon = try .initCapacity(allocator, 256),
         .nodes = try .initCapacity(allocator, 16),
     };
 }
@@ -179,6 +180,7 @@ fn deinit(self: *Self) void {
     for (&self.attr_verts.values) |*verts| verts.deinit(self.allocator);
     self.faces.deinit(self.allocator);
     self.nodes.deinit(self.allocator);
+    self.face_polygon.deinit(self.allocator);
 }
 
 fn activeObjectNode(self: *const Self) *Node {
@@ -197,35 +199,40 @@ fn parseLine(self: *Self, line: []const u8) !void {
     if (iter.next()) |cmd| {
         if (str.eql(cmd, "v")) {
             const vertex = try parseVector(&iter);
-            // log.debug("parsed position {}", .{self.attr_verts.getPtr(.position).items.len});
+            log.debug("parsed position {}", .{self.attr_verts.getPtr(.position).items.len});
             try self.attr_verts.getPtr(.position).append(self.allocator, vertex);
         } else if (str.eql(cmd, "vt")) {
             const vertex = try parseVector(&iter);
-            // log.debug("parsed tex coord {}", .{self.attr_verts.getPtr(.tex_coord).items.len});
+            log.debug("parsed tex coord {}", .{self.attr_verts.getPtr(.tex_coord).items.len});
             try self.attr_verts.getPtr(.tex_coord).append(self.allocator, vertex);
         } else if (str.eql(cmd, "vn")) {
             const vertex = try parseVector(&iter);
-            // log.debug("parsed normal {}", .{self.attr_verts.getPtr(.normal).items.len});
+            log.debug("parsed normal {}", .{self.attr_verts.getPtr(.normal).items.len});
             try self.attr_verts.getPtr(.normal).append(self.allocator, vertex);
         } else if (str.eql(cmd, "f")) {
-            const face = try parseFace(&iter);
+            const face_info = try parseFace(&iter, &self.face_polygon);
+            log.debug("parsed faces {} {}", .{ self.faces.items.len, self.face_polygon.items.len });
             const obj = self.activeObject();
-            if (obj.face_type == .invalid) obj.face_type = face.face_type;
-            if (obj.attrs_present.eql(.initEmpty())) obj.attrs_present = face.attrs_present;
-            assert(face_types_from_obj.get(obj.face_type) == face_types_from_obj.get(face.face_type));
+            obj.checkInfo(face_info);
 
-            var attr_iter = face.attrs_present.iterator();
-            while (attr_iter.next()) |attr| {
-                const len = self.attr_verts.getPtrConst(attr).items.len;
-                for (0..@intFromEnum(face.face_type)) |vert_n| {
-                    const idx = getFaceIndex(&face.data, @intCast(vert_n), attr);
-                    if (idx >= len) log.err("{} {}: {} >= {}", .{ attr, vert_n, idx, len });
-                    assert(idx < len);
+            var face: Face = .{
+                .info = face_info,
+                .data = undefined,
+            };
+            if (self.face_polygon.items.len > mesh.FaceType.arr_len) {
+                while (self.triangulate()) |face_data| {
+                    face.data = face_data;
+                    self.checkFace(&face);
+                    log.debug("parsed face {}", .{self.faces.items.len});
+                    try self.faces.append(self.allocator, face);
                 }
+            } else {
+                @memcpy(face.data[0..self.face_polygon.items.len], self.face_polygon.items);
+                self.checkFace(&face);
+                log.debug("parsed face {}", .{self.faces.items.len});
+                try self.faces.append(self.allocator, face);
+                self.face_polygon.clearRetainingCapacity();
             }
-
-            // log.debug("parsed face {}", .{self.faces.items.len});
-            try self.faces.append(self.allocator, face);
         } else if (str.eql(cmd, "s")) {
             const smoothing = try parseSmoothing(&iter);
             log.debug("parsed smoothing group {x}", .{smoothing});
@@ -278,6 +285,63 @@ fn parseLine(self: *Self, line: []const u8) !void {
     }
 }
 
+fn checkFace(self: *const Self, face: *const Face) void {
+    var attr_iter = face.info.attrs_present.iterator();
+    while (attr_iter.next()) |attr| {
+        const len = self.attr_verts.getPtrConst(attr).items.len;
+        for (0..@intFromEnum(face.info.face_type)) |vert_n| {
+            const idx = getFaceIndex(&face.data, @intCast(vert_n), attr);
+            if (idx >= len) log.err("{} {}: {} >= {}", .{ attr, vert_n, idx, len });
+            assert(idx < len);
+        }
+    }
+}
+
+fn triangulate(self: *Self) ?FaceData {
+    if (self.face_polygon.items.len == 0) return null;
+    assert(self.face_polygon.items.len >= 3);
+    if (self.face_polygon.items.len == 3) {
+        defer self.face_polygon.clearRetainingCapacity();
+        return .{
+            self.face_polygon.items[0],
+            self.face_polygon.items[1],
+            self.face_polygon.items[2],
+        };
+    }
+
+    const verts = self.attr_verts.getPtrConst(.position).items;
+    all: for (0..self.face_polygon.items.len) |n| {
+        const prev_n = if (n > 0) n - 1 else self.face_polygon.items.len - 1;
+        const next_n = if (n < self.face_polygon.items.len - 1) n + 1 else 0;
+        const tri: [3]*const math.Vector3 = .{
+            getIndexVector(verts, &self.face_polygon.items[prev_n], .position),
+            getIndexVector(verts, &self.face_polygon.items[n], .position),
+            getIndexVector(verts, &self.face_polygon.items[next_n], .position),
+        };
+
+        var normal: math.Vector3 = undefined;
+        math.vector3.triNormal(&normal, tri);
+        const angle = math.vector3.triAbsAngle(1, tri);
+        if (angle >= math.scalar.pi) continue;
+
+        for (0..self.face_polygon.items.len) |ni| {
+            if (ni == prev_n or ni == n or ni == next_n) continue;
+            const p = getIndexVector(verts, &self.face_polygon.items[ni], .position);
+            if (math.vector3.dot(p, &normal) < math.scalar.eps) {
+                if (math.vector3.triContainsPoint(tri, p, &normal)) continue :all;
+            }
+        }
+
+        defer _ = self.face_polygon.orderedRemove(n);
+        return .{
+            self.face_polygon.items[prev_n],
+            self.face_polygon.items[n],
+            self.face_polygon.items[next_n],
+        };
+    }
+    unreachable;
+}
+
 fn parseVector(iter: *str.ScalarIterator) !math.Vector3 {
     var result = math.vector3.zero;
     var n: usize = 0;
@@ -297,22 +361,22 @@ fn parseVector(iter: *str.ScalarIterator) !math.Vector3 {
     return result;
 }
 
-fn parseFace(iter: *str.ScalarIterator) !Face {
-    var result: Face = .{};
+fn parseFace(iter: *str.ScalarIterator, list: *FacePolygon) !FaceInfo {
+    var result: FaceInfo = .{};
     var n: u8 = 0;
 
     while (iter.next()) |token| {
         if (token.len == 0) continue;
-        if (n >= ObjFaceType.arr_len) return error.TooManyArguments;
+        if (n >= list.capacity) return error.TooManyArguments;
         const index = try parseIndex(token);
         if (result.attrs_present.eql(.initEmpty())) result.attrs_present = index.attrs_present;
         assert(result.attrs_present.eql(index.attrs_present));
-        result.data[n] = index.data;
+        list.appendAssumeCapacity(index.data);
         n += 1;
     }
 
-    if (n < ObjFaceType.arr_min) return error.NotEnoughArguments;
-    result.face_type = @enumFromInt(n);
+    if (n < face_arr_min) return error.NotEnoughArguments;
+    result.face_type = if (n > 3) .triangle else @enumFromInt(n);
     return result;
 }
 
@@ -419,11 +483,11 @@ fn createResult(self: *const Self) !ObjResult {
 
 fn processFaces(self: *const Self, result: *ObjResult, state: *CreateResultState, obj_node: Node) !void {
     const obj = obj_node.meta.object;
-    assert(obj.face_type != .invalid);
-    assert(obj.attrs_present.contains(.position));
-    return switch (obj.attrs_present.contains(.tex_coord)) {
-        inline else => |has_tex_coord| switch (obj.attrs_present.contains(.normal)) {
-            inline else => |has_normal| switch (face_types_from_obj.get(obj.face_type)) {
+    assert(obj.info.face_type != .invalid);
+    assert(obj.info.attrs_present.contains(.position));
+    return switch (obj.info.attrs_present.contains(.tex_coord)) {
+        inline else => |has_tex_coord| switch (obj.info.attrs_present.contains(.normal)) {
+            inline else => |has_normal| switch (obj.info.face_type) {
                 .invalid => assert(false),
                 inline else => |face_type| ProcessFaces(.{
                     .has_tex_coord = has_tex_coord,
@@ -445,7 +509,7 @@ fn processFaces(self: *const Self, result: *ObjResult, state: *CreateResultState
 fn ProcessFaces(comptime config: struct {
     has_tex_coord: bool,
     has_normal: bool,
-    face_type: MeshObject.FaceType,
+    face_type: mesh.FaceType,
 }) type {
     return struct {
         fn processFaces(
@@ -473,11 +537,11 @@ fn ProcessFaces(comptime config: struct {
             }
 
             const faces = self.faces.items[faces_offset .. faces_offset + faces_len];
-            const face_vert_count = MeshObject.face_vert_counts.get(config.face_type);
+            const face_vert_count = mesh.Object.face_vert_counts.get(config.face_type);
 
             var face_count: usize = 0;
             for (faces) |*face| {
-                const vert_orders = face_vert_orders.get(face.face_type);
+                const vert_orders = face_vert_orders.get(face.info.face_type);
                 face_count += vert_orders.len;
             }
 
@@ -490,7 +554,7 @@ fn ProcessFaces(comptime config: struct {
             try state.face_angles.ensureUnusedCapacity(self.allocator, vert_count);
 
             for (faces) |*face| {
-                const vert_orders = face_vert_orders.get(face.face_type);
+                const vert_orders = face_vert_orders.get(face.info.face_type);
                 while (state.node_n < self.nodes.items.len) {
                     if (self.nodes.items[state.node_n].offset == state.face_n) {
                         const node = self.nodes.items[state.node_n];
@@ -564,41 +628,22 @@ fn ProcessFaces(comptime config: struct {
             if (comptime canComputeNormals()) {
                 var normals: FaceNormals = undefined;
 
-                const v = [3]*const math.Vector3{
+                const tri = [3]*const math.Vector3{
                     getFaceVector(verts, face, vert_order[0], .position),
                     getFaceVector(verts, face, vert_order[1], .position),
                     getFaceVector(verts, face, vert_order[2], .position),
                 };
 
-                var lhs = v[1].*;
-                var rhs = v[2].*;
-                math.vector3.sub(&lhs, v[0]);
-                math.vector3.sub(&rhs, v[0]);
-
-                math.vector3.cross(&normals[3], &lhs, &rhs);
-                math.vector3.normalize(&normals[3]);
-
+                math.vector3.triNormal(&normals[3], tri);
                 normals[0] = normals[3];
                 normals[1] = normals[3];
                 normals[2] = normals[3];
 
-                normals[4][0] = math.vector3.angle(&lhs, &rhs);
+                normals[4][0] = math.vector3.triAbsAngle(0, tri);
+                normals[4][1] = math.vector3.triAbsAngle(1, tri);
+                normals[4][2] = math.vector3.triAbsAngle(2, tri);
                 math.vector3.scale(&normals[0], normals[4][0]);
-
-                lhs = v[2].*;
-                rhs = v[0].*;
-                math.vector3.sub(&lhs, v[1]);
-                math.vector3.sub(&rhs, v[1]);
-
-                normals[4][1] = math.vector3.angle(&lhs, &rhs);
                 math.vector3.scale(&normals[1], normals[4][1]);
-
-                lhs = v[0].*;
-                rhs = v[1].*;
-                math.vector3.sub(&lhs, v[2]);
-                math.vector3.sub(&rhs, v[2]);
-
-                normals[4][2] = math.vector3.angle(&lhs, &rhs);
                 math.vector3.scale(&normals[2], normals[4][2]);
 
                 return normals;
@@ -698,7 +743,7 @@ fn applySmoothing(self: *const Self, result: *const ObjResult, state: *const Cre
                     const src_tangent = &state.face_tangents.items[src_vert_idx][0];
                     const src_binormal = &state.face_tangents.items[src_vert_idx][1];
 
-                    const angle = math.vector3.angle(dst_normal, src_normal);
+                    const angle = math.vector3.absAngle(dst_normal, src_normal);
                     if (angle <= smoothing_angle_limit) {
                         math.vector3.add(&avg_normal, src_normal);
                         math.vector3.add(&avg_tangent, src_tangent);
@@ -750,11 +795,25 @@ inline fn getFaceVector(
     return &verts[idx];
 }
 
+inline fn getIndexVector(
+    verts: []const math.Vector3,
+    index: *const IndexData,
+    attr: AttrType,
+) *const math.Vector3 {
+    const idx = getIndexIndex(index, attr);
+    assert(idx < verts.len);
+    return &verts[idx];
+}
+
 inline fn getVectorIndex(vert_idx: usize, attr: math.VertexAttr) usize {
     return vert_idx * math.VertexAttr.len + @intFromEnum(attr);
 }
 
 inline fn getFaceIndex(face: *const FaceData, vert_n: u8, attr: AttrType) math.Index {
-    assert(vert_n < ObjFaceType.arr_len);
-    return face[vert_n][@intFromEnum(attr)];
+    assert(vert_n < mesh.FaceType.arr_len);
+    return getIndexIndex(&face[vert_n], attr);
+}
+
+inline fn getIndexIndex(index: *const IndexData, attr: AttrType) math.Index {
+    return index[@intFromEnum(attr)];
 }

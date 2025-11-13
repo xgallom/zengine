@@ -34,9 +34,11 @@ pub const Point_u32 = types.Point_u32;
 pub const Point_f32 = types.Point_f32;
 pub const Point_f64 = types.Point_f64;
 pub const RGBu8 = types.RGBu8;
+pub const RGBf16 = types.RGBf16;
 pub const RGBf32 = types.RGBf32;
 pub const RGBf64 = types.RGBf64;
 pub const RGBAu8 = types.RGBAu8;
+pub const RGBAf16 = types.RGBAf16;
 pub const RGBAf32 = types.RGBAf32;
 pub const RGBAf64 = types.RGBAf64;
 pub const Vertex = types.Vertex;
@@ -82,6 +84,8 @@ pub const scalar64 = scalarT(types.Scalar64);
 
 pub const param = paramT(types.Scalar);
 pub const param64 = paramT(types.Scalar64);
+pub const binom = paramT(comptime_int).binom;
+pub const binoms = paramT(comptime_int).binoms;
 
 pub const vector2 = vectorNT(2, types.Scalar);
 pub const vector2f64 = vectorNT(2, types.Scalar64);

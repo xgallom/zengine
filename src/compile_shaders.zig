@@ -52,6 +52,12 @@ const FileFormat = enum {
     }
 };
 
+const FileEntry = struct {
+    hlsl_code: [:0]const u8,
+    basename: [:0]const u8,
+    path: [:0]const u8,
+};
+
 const ShaderStage = enum(c.SDL_ShaderCross_ShaderStage) {
     vertex = c.SDL_SHADERCROSS_SHADERSTAGE_VERTEX,
     fragment = c.SDL_SHADERCROSS_SHADERSTAGE_FRAGMENT,
@@ -212,16 +218,71 @@ pub fn main() !void {
     var timer = try std.time.Timer.start();
     defer log.info("shader compilation took {D}", .{timer.lap()});
 
+    var m: std.Thread.Mutex = .{};
+    var queue: std.ArrayList(FileEntry) = .empty;
+    var is_running: std.atomic.Value(bool) = .init(true);
+
+    const thread_cnt = @max(try std.Thread.getCpuCount() -| 1, 1);
+    const threads = try allocators.global().alloc(std.Thread, thread_cnt);
+
+    for (threads) |*thread| {
+        thread.* = try .spawn(.{}, spawnThread, .{ &arguments, output_dir, &queue, &m, &is_running });
+    }
+
     var iter = try input_dir.walk(allocators.gpa());
     defer iter.deinit();
     while (try iter.next()) |entry| {
         switch (entry.kind) {
-            .file => try processFile(&arguments, output_dir, entry),
+            .file => {
+                m.lock();
+                defer m.unlock();
+                const hlsl_code = readInputFileZ(
+                    allocators.gpa(),
+                    entry.basename,
+                    entry.dir,
+                ) catch |err| {
+                    fatal("failed reading input file: {t}", .{err});
+                };
+                errdefer allocators.gpa().free(hlsl_code);
+                try queue.append(allocators.global(), .{
+                    .hlsl_code = hlsl_code,
+                    .basename = try str.dupeZ(entry.basename),
+                    .path = try str.dupeZ(entry.path),
+                });
+            },
             .directory => {
                 log.info("creating output directory {s}", .{entry.path});
+                m.lock();
+                defer m.unlock();
                 try output_dir.makePath(entry.path);
             },
             else => log.info("skipping {t} {s}", .{ entry.kind, entry.path }),
+        }
+    }
+
+    is_running.store(false, .monotonic);
+    for (threads) |*thread| thread.join();
+}
+
+fn spawnThread(
+    arguments: *const Arguments,
+    output_dir: std.fs.Dir,
+    queue: *std.ArrayList(FileEntry),
+    m: *std.Thread.Mutex,
+    is_running: *std.atomic.Value(bool),
+) !void {
+    while (true) {
+        const item = blk: {
+            m.lock();
+            defer m.unlock();
+            break :blk queue.pop();
+        };
+        if (item) |i| {
+            try processFile(arguments, output_dir, i, m);
+        } else if (!is_running.load(.monotonic)) {
+            m.lock();
+            defer m.unlock();
+            if (queue.items.len == 0) break;
         }
     }
 }
@@ -231,52 +292,57 @@ const ProcessState = struct {
     output_dir: std.fs.Dir,
 };
 
-fn processFile(arguments: *const Arguments, output_dir: std.fs.Dir, entry: std.fs.Dir.Walker.Entry) !void {
-    defer allocators.scratchRelease();
+fn processFile(
+    arguments: *const Arguments,
+    output_dir: std.fs.Dir,
+    item: FileEntry,
+    m: *std.Thread.Mutex,
+) !void {
+    const hlsl_code = item.hlsl_code;
+    defer {
+        m.lock();
+        defer m.unlock();
+        allocators.gpa().free(hlsl_code);
+    }
 
-    const input_extension = std.fs.path.extension(entry.basename);
-    const input_basename = entry.path[0 .. entry.path.len - input_extension.len];
+    const input_extension = std.fs.path.extension(item.basename);
+    const input_basename = item.path[0 .. item.path.len - input_extension.len];
 
     if (!str.eql(FileFormat.extension(.hlsl), input_extension)) {
-        log.info("skipping {s}", .{entry.path});
+        log.info("skipping {s}", .{item.path});
         return;
     }
 
+    var output_filenames: std.EnumArray(FileFormat, [:0]const u8) = undefined;
+    {
+        m.lock();
+        defer m.unlock();
+        output_filenames = .init(.{
+            .spirv = try str.allocPrintZ(
+                "{s}" ++ FileFormat.extension(.spirv),
+                .{input_basename},
+            ),
+            .dxil = try str.allocPrintZ(
+                "{s}" ++ FileFormat.extension(.dxil),
+                .{input_basename},
+            ),
+            .metal = try str.allocPrintZ(
+                "{s}" ++ FileFormat.extension(.metal),
+                .{input_basename},
+            ),
+            .hlsl = try str.allocPrintZ(
+                "{s}" ++ FileFormat.extension(.hlsl),
+                .{input_basename},
+            ),
+            .json = try str.allocPrintZ(
+                "{s}" ++ FileFormat.extension(.json),
+                .{input_basename},
+            ),
+        });
+    }
+
     const shader_stage = ShaderStage.fromFileName(input_basename);
-
-    log.info("processing input file {s}", .{entry.path});
-
-    const output_filenames = std.EnumArray(FileFormat, [:0]const u8).init(.{
-        .spirv = try str.allocPrintZ(
-            "{s}" ++ FileFormat.extension(.spirv),
-            .{input_basename},
-        ),
-        .dxil = try str.allocPrintZ(
-            "{s}" ++ FileFormat.extension(.dxil),
-            .{input_basename},
-        ),
-        .metal = try str.allocPrintZ(
-            "{s}" ++ FileFormat.extension(.metal),
-            .{input_basename},
-        ),
-        .hlsl = try str.allocPrintZ(
-            "{s}" ++ FileFormat.extension(.hlsl),
-            .{input_basename},
-        ),
-        .json = try str.allocPrintZ(
-            "{s}" ++ FileFormat.extension(.json),
-            .{input_basename},
-        ),
-    });
-
-    const hlsl_code = readInputFileZ(
-        allocators.gpa(),
-        entry.basename,
-        entry.dir,
-    ) catch |err| {
-        fatal("failed reading input file: {t}", .{err});
-    };
-    defer allocators.gpa().free(hlsl_code);
+    log.info("processing input file {s}", .{item.path});
 
     const hlsl_info: c.SDL_ShaderCross_HLSL_Info = .{
         .source = hlsl_code.ptr,
@@ -284,7 +350,7 @@ fn processFile(arguments: *const Arguments, output_dir: std.fs.Dir, entry: std.f
         .include_dir = if (arguments.include_directory) |dir| dir.ptr else null,
         .shader_stage = @intFromEnum(shader_stage),
         .enable_debug = std.debug.runtime_safety,
-        .name = entry.path.ptr,
+        .name = item.path.ptr,
     };
 
     {
@@ -295,8 +361,12 @@ fn processFile(arguments: *const Arguments, output_dir: std.fs.Dir, entry: std.f
         defer allocators.sdl().free(dxil_code.ptr);
 
         const output_filename = output_filenames.get(.dxil);
-        try writeOutputFile(dxil_code, output_filename, output_dir);
-        try installFile(arguments, output_filename);
+        {
+            m.lock();
+            defer m.unlock();
+            try writeOutputFile(dxil_code, output_filename, output_dir);
+            try installFile(arguments, output_filename);
+        }
     }
 
     var spirv_code: []u8 = undefined;
@@ -309,8 +379,12 @@ fn processFile(arguments: *const Arguments, output_dir: std.fs.Dir, entry: std.f
 
     {
         const output_filename = output_filenames.get(.spirv);
-        try writeOutputFile(spirv_code, output_filename, output_dir);
-        try installFile(arguments, output_filename);
+        {
+            m.lock();
+            defer m.unlock();
+            try writeOutputFile(spirv_code, output_filename, output_dir);
+            try installFile(arguments, output_filename);
+        }
     }
 
     const spirv_info: c.SDL_ShaderCross_SPIRV_Info = .{
@@ -331,20 +405,32 @@ fn processFile(arguments: *const Arguments, output_dir: std.fs.Dir, entry: std.f
         defer allocators.sdl().free(metal_code.ptr);
 
         const output_filename = output_filenames.get(.metal);
-        try writeOutputFile(metal_code, output_filename, output_dir);
-        try installFile(arguments, output_filename);
+        {
+            m.lock();
+            defer m.unlock();
+            try writeOutputFile(metal_code, output_filename, output_dir);
+            try installFile(arguments, output_filename);
+        }
     }
 
     if (shader_stage == .compute) {
         const info = c.SDL_ShaderCross_ReflectComputeSPIRV(spirv_code.ptr, spirv_code.len, 0);
         if (info == null) fatal("failed to reflect spirv: {s}", .{c.SDL_GetError()});
         const output_filename = output_filenames.get(.json);
-        try writeComputeJsonFile(info, output_filename, output_dir);
+        {
+            m.lock();
+            defer m.unlock();
+            try writeComputeJsonFile(info, output_filename, output_dir);
+        }
     } else {
         const info = c.SDL_ShaderCross_ReflectGraphicsSPIRV(spirv_code.ptr, spirv_code.len, 0);
         if (info == null) fatal("failed to reflect spirv: {s}", .{c.SDL_GetError()});
         const output_filename = output_filenames.get(.json);
-        try writeGraphicsJsonFile(info, output_filename, output_dir);
+        {
+            m.lock();
+            defer m.unlock();
+            try writeGraphicsJsonFile(info, output_filename, output_dir);
+        }
     }
 }
 

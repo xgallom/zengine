@@ -25,8 +25,8 @@ pub fn matrixMxNT(comptime M: comptime_int, comptime N: comptime_int, comptime T
         pub const vector = vectorNT(N, T);
         pub const scalar = scalarT(T);
 
-        pub const zero = splat(scalar.zero);
-        pub const one = splat(scalar.one);
+        pub const zero = splat(scalar.@"0");
+        pub const one = splat(scalar.@"1");
         pub const neg_one = splat(scalar.neg_one);
         pub const identity = makeIdentity();
 
@@ -34,7 +34,7 @@ pub fn matrixMxNT(comptime M: comptime_int, comptime N: comptime_int, comptime T
             if (rows != cols) @compileError("Must be square matrix");
             var result = zero;
             for (0..rows) |i| {
-                result[i][i] = scalar.one;
+                result[i][i] = scalar.@"1";
             }
             return result;
         }
@@ -73,77 +73,78 @@ pub fn matrixMxNT(comptime M: comptime_int, comptime N: comptime_int, comptime T
             scale(self, scalar.neg_one);
         }
 
-        /// Y_mn += O_mn
+        /// Element-wise addition.
         pub fn add(self: *Self, other: *const Self) void {
             const s = slice(self);
             const o = sliceConst(other);
             for (0..len) |n| s[n] += o[n];
         }
 
-        /// Y_mn -= O_mn
+        /// Element-wise subtraction.
         pub fn sub(self: *Self, other: *const Self) void {
             const s = slice(self);
             const o = sliceConst(other);
             for (0..len) |n| s[n] -= o[n];
         }
 
-        /// Y_mn *= O_mn
+        /// Element-wise multiplication.
         pub fn mul(self: *Self, other: *const Self) void {
             const s = slice(self);
             const o = sliceConst(other);
             for (0..len) |n| s[n] *= o[n];
         }
 
-        /// Y_mn /= O_mn
+        /// Element-wise division.
         pub fn div(self: *Self, other: *const Self) void {
             const s = slice(self);
             const o = sliceConst(other);
             for (0..len) |n| s[n] /= o[n];
         }
 
-        /// Y_mn += O_mn * mul
+        /// Element-wise multiply-add.
         pub fn mulAdd(self: *Self, other: *const Self, multiplier: Scalar) void {
             const s = slice(self);
             const o = sliceConst(other);
             for (0..len) |n| s[n] = @mulAdd(Scalar, o[n], multiplier, s[n]);
         }
 
-        /// Y_mn -= O_mn * mul
+        /// Element-wise multiply-subtract.
         pub fn mulSub(self: *Self, other: *const Self, multiplier: Scalar) void {
             const s = slice(self);
             const o = sliceConst(other);
             for (0..len) |n| s[n] = @mulAdd(Scalar, o[n], -multiplier, s[n]);
         }
 
-        /// Y_mn *= mul
+        /// Scale by scalar value.
         pub fn scale(self: *Self, multiplier: Scalar) void {
             const s = slice(self);
             for (0..len) |n| s[n] *= multiplier;
         }
 
-        /// Y_mn *= 1 / mul
+        /// Scale by inverse of scalar value.
         pub fn scaleRecip(self: *Self, multiplier: Scalar) void {
             const s = slice(self);
             if (comptime scalar.is_float) {
-                const recip = scalar.one / multiplier;
+                const recip = scalar.recip(multiplier);
                 for (0..len) |n| s[n] *= recip;
             } else {
-                const recip = scalar.one / multiplier;
-                for (0..len) |n| s[n] /= recip;
+                for (0..len) |n| s[n] /= multiplier;
             }
         }
 
+        /// Vector multiplication of matrix and vector.
         /// Y_m = O_mn X_n
         pub fn apply(result: *vector.Self, operation: *const Self, operand: *const vector.Self) void {
             for (0..rows) |y| vector.dotInto(&result[y], &operation[y], operand);
         }
 
+        /// Vector multiplication of two square matrices.
         /// Y_mn = L_mx R_xn
         pub fn dot(result: *Self, lhs: *const Self, rhs: *const Self) void {
             if (rows != cols) @compileError("Must be square matrix");
             for (0..rows) |y| {
                 for (0..cols) |x| {
-                    result[y][x] = scalar.zero;
+                    result[y][x] = scalar.@"0";
                     for (0..cols) |n| {
                         result[y][x] = @mulAdd(Scalar, lhs[y][n], rhs[n][x], result[y][x]);
                     }
@@ -151,12 +152,13 @@ pub fn matrixMxNT(comptime M: comptime_int, comptime N: comptime_int, comptime T
             }
         }
 
+        /// Vector multiplication of two transposed matrices.
         /// Y_mn = R_mx L_nx
         pub fn dotRight(result: *Self, lhs: *const Self, rhs: *const Self) void {
             if (rows != cols) @compileError("Must be square matrix");
             for (0..rows) |y| {
                 for (0..cols) |x| {
-                    result[y][x] = scalar.zero;
+                    result[y][x] = scalar.@"0";
                     for (0..cols) |n| {
                         result[y][x] = @mulAdd(Scalar, rhs[y][n], lhs[x][n], result[y][x]);
                     }
@@ -169,9 +171,7 @@ pub fn matrixMxNT(comptime M: comptime_int, comptime N: comptime_int, comptime T
             if (rows != cols) @compileError("Must be square matrix");
             for (0..rows) |y| {
                 for (0..y) |x| {
-                    const tmp = self[y][x];
-                    self[y][x] = self[x][y];
-                    self[x][y] = tmp;
+                    scalar.swap(&self[y][x], &self[x][y]);
                 }
             }
         }
@@ -182,10 +182,10 @@ pub fn matrixMxNT(comptime M: comptime_int, comptime N: comptime_int, comptime T
         pub fn worldTransform(result: *Self) void {
             if (rows == 4 and cols == 4) {} else @compileError("Wrong matrix dimensions");
             result.* = .{
-                .{ scalar.one, scalar.zero, scalar.zero, scalar.zero },
-                .{ scalar.zero, scalar.one, scalar.zero, scalar.zero },
-                .{ scalar.zero, scalar.zero, scalar.one, scalar.zero },
-                .{ scalar.zero, scalar.zero, scalar.zero, scalar.one },
+                .{ scalar.@"1", scalar.@"0", scalar.@"0", scalar.@"0" },
+                .{ scalar.@"0", scalar.@"1", scalar.@"0", scalar.@"0" },
+                .{ scalar.@"0", scalar.@"0", scalar.@"1", scalar.@"0" },
+                .{ scalar.@"0", scalar.@"0", scalar.@"0", scalar.@"1" },
             };
         }
 
@@ -203,10 +203,10 @@ pub fn matrixMxNT(comptime M: comptime_int, comptime N: comptime_int, comptime T
             const y = top - bottom;
 
             result.* = .{
-                .{ 2 / x, scalar.zero, scalar.zero, -(right + left) / x },
-                .{ scalar.zero, 2 / y, scalar.zero, -(top + bottom) / y },
-                .{ scalar.zero, scalar.zero, 1 / (near_plane - far_plane), near_plane / (near_plane - far_plane) },
-                .{ scalar.zero, scalar.zero, scalar.zero, scalar.one },
+                .{ scalar.@"2" / x, scalar.@"0", scalar.@"0", -(right + left) / x },
+                .{ scalar.@"0", scalar.@"2" / y, scalar.@"0", -(top + bottom) / y },
+                .{ scalar.@"0", scalar.@"0", scalar.@"1" / (near_plane - far_plane), near_plane / (near_plane - far_plane) },
+                .{ scalar.@"0", scalar.@"0", scalar.@"0", scalar.@"1" },
             };
         }
 
@@ -223,10 +223,10 @@ pub fn matrixMxNT(comptime M: comptime_int, comptime N: comptime_int, comptime T
             const x = y * width / height;
 
             result.* = .{
-                .{ 2 / x, scalar.zero, scalar.zero, scalar.zero },
-                .{ scalar.zero, 2 / y, scalar.zero, scalar.zero },
-                .{ scalar.zero, scalar.zero, 1 / (near_plane - far_plane), near_plane / (near_plane - far_plane) },
-                .{ scalar.zero, scalar.zero, scalar.zero, scalar.one },
+                .{ scalar.@"2" / x, scalar.@"0", scalar.@"0", scalar.@"0" },
+                .{ scalar.@"0", scalar.@"2" / y, scalar.@"0", scalar.@"0" },
+                .{ scalar.@"0", scalar.@"0", scalar.@"1" / (near_plane - far_plane), near_plane / (near_plane - far_plane) },
+                .{ scalar.@"0", scalar.@"0", scalar.@"0", scalar.@"1" },
             };
         }
 
@@ -239,14 +239,14 @@ pub fn matrixMxNT(comptime M: comptime_int, comptime N: comptime_int, comptime T
             far_plane: Scalar,
         ) void {
             if (rows == 4 and cols == 4) {} else @compileError("Wrong matrix dimensions");
-            const y = scalar.one / @tan(scalar.init(0.5) * fov);
+            const y = scalar.@"1" / @tan(scalar.init(0.5) * fov);
             const x = y * height / width;
 
             result.* = .{
-                .{ x, scalar.zero, scalar.zero, scalar.zero },
-                .{ scalar.zero, y, scalar.zero, scalar.zero },
-                .{ scalar.zero, scalar.zero, far_plane / (near_plane - far_plane), (near_plane * far_plane) / (near_plane - far_plane) },
-                .{ scalar.zero, scalar.zero, scalar.neg_one, scalar.zero },
+                .{ x, scalar.@"0", scalar.@"0", scalar.@"0" },
+                .{ scalar.@"0", y, scalar.@"0", scalar.@"0" },
+                .{ scalar.@"0", scalar.@"0", far_plane / (near_plane - far_plane), (near_plane * far_plane) / (near_plane - far_plane) },
+                .{ scalar.@"0", scalar.@"0", scalar.@"-1", scalar.@"0" },
             };
         }
 
@@ -268,7 +268,20 @@ pub fn matrixMxNT(comptime M: comptime_int, comptime N: comptime_int, comptime T
                 .{ x[0], x[1], x[2], -vector3.dot(x, position) },
                 .{ y[0], y[1], y[2], -vector3.dot(y, position) },
                 .{ z[0], z[1], z[2], -vector3.dot(z, position) },
-                .{ scalar.zero, scalar.zero, scalar.zero, scalar.one },
+                .{ scalar.@"0", scalar.@"0", scalar.@"0", scalar.@"1" },
+            };
+        }
+
+        /// Inverse of affine without scale is transpose and a dot product of translations
+        pub fn affineNoScaleInv(result: *Self) void {
+            if (rows == 4 and cols == 4) {} else @compileError("Wrong matrix dimensions");
+            const o = result.*;
+
+            result.* = .{
+                .{ o[0][0], o[1][0], o[2][0], -o[0][0] * o[0][3] - o[1][0] * o[1][3] - o[2][0] * o[2][3] },
+                .{ o[0][1], o[1][1], o[2][1], -o[0][1] * o[0][3] - o[1][1] * o[1][3] - o[2][1] * o[2][3] },
+                .{ o[0][2], o[1][2], o[2][2], -o[0][2] * o[0][3] - o[1][2] * o[1][3] - o[2][2] * o[2][3] },
+                .{ scalar.@"0", scalar.@"0", scalar.@"0", scalar.@"1" },
             };
         }
 
@@ -291,42 +304,96 @@ pub fn matrixMxNT(comptime M: comptime_int, comptime N: comptime_int, comptime T
             dot(operand, &operation, &input);
         }
 
+        pub fn scaleInvXYZ(operand: *Self, scales: *const Vector3) void {
+            if (rows == 4 and cols == 4) {} else @compileError("Wrong matrix dimensions");
+            const operation = scalingInvXYZ(scales);
+            const input = operand.*;
+            dot(operand, &operation, &input);
+        }
+
         pub fn scalingXYZ(scales: *const Vector3) Self {
             if (rows == 4 and cols == 4) {} else @compileError("Wrong matrix dimensions");
             return .{
-                .{ scales[0], scalar.zero, scalar.zero, scalar.zero },
-                .{ scalar.zero, scales[1], scalar.zero, scalar.zero },
-                .{ scalar.zero, scalar.zero, scales[2], scalar.zero },
-                .{ scalar.zero, scalar.zero, scalar.zero, scalar.one },
+                .{ scales[0], scalar.@"0", scalar.@"0", scalar.@"0" },
+                .{ scalar.@"0", scales[1], scalar.@"0", scalar.@"0" },
+                .{ scalar.@"0", scalar.@"0", scales[2], scalar.@"0" },
+                .{ scalar.@"0", scalar.@"0", scalar.@"0", scalar.@"1" },
+            };
+        }
+
+        pub fn scalingInvXYZ(scales: *const Vector3) Self {
+            if (rows == 4 and cols == 4) {} else @compileError("Wrong matrix dimensions");
+            return .{
+                .{ scalar.recip(scales[0]), scalar.@"0", scalar.@"0", scalar.@"0" },
+                .{ scalar.@"0", scalar.recip(scales[1]), scalar.@"0", scalar.@"0" },
+                .{ scalar.@"0", scalar.@"0", scalar.recip(scales[2]), scalar.@"0" },
+                .{ scalar.@"0", scalar.@"0", scalar.@"0", scalar.@"1" },
             };
         }
 
         pub fn rotateEuler(operand: *Self, rotation: *const types.Euler, order: types.EulerOrder) void {
             if (rows == 4 and cols == 4) {} else @compileError("Wrong matrix dimensions");
+            const cs = [_]Scalar{ @cos(rotation[0]), @cos(rotation[1]), @cos(rotation[2]) };
+            const ss = [_]Scalar{ @sin(rotation[0]), @sin(rotation[1]), @sin(rotation[2]) };
             const operations: [types.Axis3.len]Self = .{
                 // x
                 .{
-                    .{ scalar.one, scalar.zero, scalar.zero, scalar.zero },
-                    .{ scalar.zero, @cos(rotation[0]), -@sin(rotation[0]), scalar.zero },
-                    .{ scalar.zero, @sin(rotation[0]), @cos(rotation[0]), scalar.zero },
-                    .{ scalar.zero, scalar.zero, scalar.zero, scalar.one },
+                    .{ scalar.@"1", scalar.@"0", scalar.@"0", scalar.@"0" },
+                    .{ scalar.@"0", cs[0], -ss[0], scalar.@"0" },
+                    .{ scalar.@"0", ss[0], cs[0], scalar.@"0" },
+                    .{ scalar.@"0", scalar.@"0", scalar.@"0", scalar.@"1" },
                 },
                 // y
                 .{
-                    .{ @cos(rotation[1]), scalar.zero, @sin(rotation[1]), scalar.zero },
-                    .{ scalar.zero, scalar.one, scalar.zero, scalar.zero },
-                    .{ -@sin(rotation[1]), scalar.zero, @cos(rotation[1]), scalar.zero },
-                    .{ scalar.zero, scalar.zero, scalar.zero, scalar.one },
+                    .{ cs[1], scalar.@"0", ss[1], scalar.@"0" },
+                    .{ scalar.@"0", scalar.@"1", scalar.@"0", scalar.@"0" },
+                    .{ -ss[1], scalar.@"0", cs[1], scalar.@"0" },
+                    .{ scalar.@"0", scalar.@"0", scalar.@"0", scalar.@"1" },
                 },
                 // z
                 .{
-                    .{ @cos(rotation[2]), -@sin(rotation[2]), scalar.zero, scalar.zero },
-                    .{ @sin(rotation[2]), @cos(rotation[2]), scalar.zero, scalar.zero },
-                    .{ scalar.zero, scalar.zero, scalar.one, scalar.zero },
-                    .{ scalar.zero, scalar.zero, scalar.zero, scalar.one },
+                    .{ cs[2], -ss[2], scalar.@"0", scalar.@"0" },
+                    .{ ss[2], cs[2], scalar.@"0", scalar.@"0" },
+                    .{ scalar.@"0", scalar.@"0", scalar.@"1", scalar.@"0" },
+                    .{ scalar.@"0", scalar.@"0", scalar.@"0", scalar.@"1" },
                 },
             };
+
             inline for (order.axes()) |axis| {
+                const input = operand.*;
+                dot(operand, &operations[@intFromEnum(axis)], &input);
+            }
+        }
+
+        pub fn rotateInvEuler(operand: *Self, rotation: *const types.Euler, order: types.EulerOrder) void {
+            if (rows == 4 and cols == 4) {} else @compileError("Wrong matrix dimensions");
+            const cs = [_]Scalar{ @cos(rotation[0]), @cos(rotation[1]), @cos(rotation[2]) };
+            const ss = [_]Scalar{ @sin(rotation[0]), @sin(rotation[1]), @sin(rotation[2]) };
+            const operations: [types.Axis3.len]Self = .{
+                // x
+                .{
+                    .{ scalar.@"1", scalar.@"0", scalar.@"0", scalar.@"0" },
+                    .{ scalar.@"0", cs[0], ss[0], scalar.@"0" },
+                    .{ scalar.@"0", -ss[0], cs[0], scalar.@"0" },
+                    .{ scalar.@"0", scalar.@"0", scalar.@"0", scalar.@"1" },
+                },
+                // y
+                .{
+                    .{ cs[1], scalar.@"0", -ss[1], scalar.@"0" },
+                    .{ scalar.@"0", scalar.@"1", scalar.@"0", scalar.@"0" },
+                    .{ ss[1], scalar.@"0", cs[1], scalar.@"0" },
+                    .{ scalar.@"0", scalar.@"0", scalar.@"0", scalar.@"1" },
+                },
+                // z
+                .{
+                    .{ cs[2], ss[2], scalar.@"0", scalar.@"0" },
+                    .{ -ss[2], cs[2], scalar.@"0", scalar.@"0" },
+                    .{ scalar.@"0", scalar.@"0", scalar.@"1", scalar.@"0" },
+                    .{ scalar.@"0", scalar.@"0", scalar.@"0", scalar.@"1" },
+                },
+            };
+
+            inline for (order.axesInv()) |axis| {
                 const input = operand.*;
                 dot(operand, &operations[@intFromEnum(axis)], &input);
             }
@@ -346,13 +413,30 @@ pub fn matrixMxNT(comptime M: comptime_int, comptime N: comptime_int, comptime T
             dot(operand, &operation, &input);
         }
 
+        pub fn translateInvXYZ(operand: *Self, translation: *const Vector3) void {
+            if (rows == 4 and cols == 4) {} else @compileError("Wrong matrix dimensions");
+            const operation = translationInvXYZ(translation);
+            const input = operand.*;
+            dot(operand, &operation, &input);
+        }
+
         pub fn translationXYZ(translation: *const Vector3) Self {
             if (rows == 4 and cols == 4) {} else @compileError("Wrong matrix dimensions");
             return .{
-                .{ scalar.one, scalar.zero, scalar.zero, translation[0] },
-                .{ scalar.zero, scalar.one, scalar.zero, translation[1] },
-                .{ scalar.zero, scalar.zero, scalar.one, translation[2] },
-                .{ scalar.zero, scalar.zero, scalar.zero, scalar.one },
+                .{ scalar.@"1", scalar.@"0", scalar.@"0", translation[0] },
+                .{ scalar.@"0", scalar.@"1", scalar.@"0", translation[1] },
+                .{ scalar.@"0", scalar.@"0", scalar.@"1", translation[2] },
+                .{ scalar.@"0", scalar.@"0", scalar.@"0", scalar.@"1" },
+            };
+        }
+
+        pub fn translationInvXYZ(translation: *const Vector3) Self {
+            if (rows == 4 and cols == 4) {} else @compileError("Wrong matrix dimensions");
+            return .{
+                .{ scalar.@"1", scalar.@"0", scalar.@"0", -translation[0] },
+                .{ scalar.@"0", scalar.@"1", scalar.@"0", -translation[1] },
+                .{ scalar.@"0", scalar.@"0", scalar.@"1", -translation[2] },
+                .{ scalar.@"0", scalar.@"0", scalar.@"0", scalar.@"1" },
             };
         }
 
@@ -369,6 +453,23 @@ pub fn matrixMxNT(comptime M: comptime_int, comptime N: comptime_int, comptime T
                     .translate => translateXYZ(operand, translation),
                     .rotate => rotateEuler(operand, rotation, euler_order),
                     .scale => scaleXYZ(operand, scales),
+                }
+            }
+        }
+
+        pub fn transformInv(
+            operand: *Self,
+            translation: *const Vector3,
+            rotation: *const types.Euler,
+            scales: *const Vector3,
+            order: types.TransformOrder,
+            euler_order: types.EulerOrder,
+        ) void {
+            inline for (order.transformsInv()) |operation| {
+                switch (operation) {
+                    .translate => translateInvXYZ(operand, translation),
+                    .rotate => rotateInvEuler(operand, rotation, euler_order),
+                    .scale => scaleInvXYZ(operand, scales),
                 }
             }
         }
@@ -415,13 +516,13 @@ test "matrix4x4" {
     try std.testing.expectEqualSlices(ns.Scalar, &.{ 2, 2, 2, 2 }, ns.vector.sliceConst(&result[2]));
     try std.testing.expectEqualSlices(ns.Scalar, &.{ 2, 2, 2, 2 }, ns.vector.sliceConst(&result[3]));
     result = lhs;
-    ns.mul_add(&result, &rhs, 2);
+    ns.mulAdd(&result, &rhs, 2);
     try std.testing.expectEqualSlices(ns.Scalar, &.{ 4, 8, 12, 16 }, ns.vector.sliceConst(&result[0]));
     try std.testing.expectEqualSlices(ns.Scalar, &.{ 20, 24, 28, 32 }, ns.vector.sliceConst(&result[1]));
     try std.testing.expectEqualSlices(ns.Scalar, &.{ 36, 40, 44, 48 }, ns.vector.sliceConst(&result[2]));
     try std.testing.expectEqualSlices(ns.Scalar, &.{ 52, 56, 60, 64 }, ns.vector.sliceConst(&result[3]));
     result = lhs;
-    ns.mul_sub(&result, &rhs, 2);
+    ns.mulSub(&result, &rhs, 2);
     try std.testing.expectEqualSlices(ns.Scalar, &ns.vector.zero, ns.vector.sliceConst(&result[0]));
     try std.testing.expectEqualSlices(ns.Scalar, &ns.vector.zero, ns.vector.sliceConst(&result[1]));
     try std.testing.expectEqualSlices(ns.Scalar, &ns.vector.zero, ns.vector.sliceConst(&result[2]));
@@ -433,7 +534,7 @@ test "matrix4x4" {
     try std.testing.expectEqualSlices(ns.Scalar, &.{ 36, 40, 44, 48 }, ns.vector.sliceConst(&result[2]));
     try std.testing.expectEqualSlices(ns.Scalar, &.{ 52, 56, 60, 64 }, ns.vector.sliceConst(&result[3]));
     result = lhs;
-    ns.scale_recip(&result, 2);
+    ns.scaleRecip(&result, 2);
     try std.testing.expectEqualSlices(ns.Scalar, &.{ 1, 2, 3, 4 }, ns.vector.sliceConst(&result[0]));
     try std.testing.expectEqualSlices(ns.Scalar, &.{ 5, 6, 7, 8 }, ns.vector.sliceConst(&result[1]));
     try std.testing.expectEqualSlices(ns.Scalar, &.{ 9, 10, 11, 12 }, ns.vector.sliceConst(&result[2]));
@@ -453,5 +554,5 @@ test "matrix4x4" {
     try std.testing.expectEqualSlices(ns.Scalar, &.{ 2, 10, 18, 26 }, ns.vector.sliceConst(&result[0]));
     try std.testing.expectEqualSlices(ns.Scalar, &.{ 4, 12, 20, 28 }, ns.vector.sliceConst(&result[1]));
     try std.testing.expectEqualSlices(ns.Scalar, &.{ 6, 14, 22, 30 }, ns.vector.sliceConst(&result[2]));
-    try std.testing.expectEqualSlices(ns.Scalar, &.{ 8, 16, 24, 16 }, ns.vector.sliceConst(&result[3]));
+    try std.testing.expectEqualSlices(ns.Scalar, &.{ 8, 16, 24, 32 }, ns.vector.sliceConst(&result[3]));
 }

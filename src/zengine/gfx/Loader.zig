@@ -14,19 +14,20 @@ const math = @import("../math.zig");
 const perf = @import("../perf.zig");
 const str = @import("../str.zig");
 const ui_mod = @import("../ui.zig");
-const Error = @import("Error.zig").Error;
+const Error = @import("error.zig").Error;
 const GPUBuffer = @import("GPUBuffer.zig");
 const img_loader = @import("img_loader.zig");
+const cube_loader = @import("cube_loader.zig");
 const lgh_loader = @import("lgh_loader.zig");
 const MaterialInfo = @import("MaterialInfo.zig");
-const MeshBuffer = @import("MeshBuffer.zig");
-const MeshObject = @import("MeshObject.zig");
+const mesh = @import("mesh.zig");
 const mtl_loader = @import("mtl_loader.zig");
 const obj_loader = @import("obj_loader.zig");
 const Renderer = @import("Renderer.zig");
 const Scene = @import("Scene.zig");
 const Surface = @import("Surface.zig");
 const SurfaceTexture = @import("SurfaceTexture.zig");
+const LookUpTable = @import("LookUpTable.zig");
 const UploadTransferBuffer = @import("UploadTransferBuffer.zig");
 
 const log = std.log.scoped(.gfx_loader);
@@ -35,19 +36,23 @@ pub const Target = enum {
     mesh_buffer,
     storage_buffer,
     surface_texture,
+    look_up_table,
 };
 
 renderer: *Renderer,
 surface_textures: SurfaceTextures,
+look_up_tables: LookUpTables,
 modifs: std.EnumArray(Target, std.ArrayList([]const u8)),
 
 const Self = @This();
 const SurfaceTextures = ArrayPoolMap(SurfaceTexture, .{});
+const LookUpTables = ArrayPoolMap(LookUpTable, .{});
 
 pub fn init(renderer: *Renderer) !Self {
     return .{
         .renderer = renderer,
         .surface_textures = try .init(renderer.allocator, 128),
+        .look_up_tables = try .init(renderer.allocator, 128),
         .modifs = .initFill(.empty),
     };
 }
@@ -58,25 +63,31 @@ pub fn deinit(self: *Self) void {
 
     for (self.surface_textures.map.values()) |tex| tex.deinit(gpu_device);
     self.surface_textures.deinit();
+    for (self.look_up_tables.map.values()) |tex| tex.deinit(self.renderer.allocator, self.renderer.gpu_device);
+    self.look_up_tables.deinit();
 
     assert(self.modifs.getPtrConst(.mesh_buffer).items.len == 0);
     assert(self.modifs.getPtrConst(.storage_buffer).items.len == 0);
     assert(self.modifs.getPtrConst(.surface_texture).items.len == 0);
+    assert(self.modifs.getPtrConst(.look_up_table).items.len == 0);
     self.modifs.getPtr(.mesh_buffer).deinit(gpa);
     self.modifs.getPtr(.storage_buffer).deinit(gpa);
     self.modifs.getPtr(.surface_texture).deinit(gpa);
+    self.modifs.getPtr(.look_up_table).deinit(gpa);
 }
 
 pub fn cancel(self: *Self) void {
     self.modifs.getPtr(.mesh_buffer).clearRetainingCapacity();
     self.modifs.getPtr(.storage_buffer).clearRetainingCapacity();
     self.modifs.getPtr(.surface_texture).clearRetainingCapacity();
+    self.modifs.getPtr(.look_up_table).clearRetainingCapacity();
 }
 
 pub fn commit(self: *Self) !void {
     try self.createGPUData();
     try self.uploadTransferBuffers();
     try self.commitSurfaceTextures();
+    try self.commitLookUpTables();
     self.cancel();
 }
 
@@ -84,7 +95,7 @@ pub fn flagModified(self: *Self, comptime target: Target, key: []const u8) !void
     return self.modifs.getPtr(target).append(self.renderer.allocator, key);
 }
 
-pub fn loadMesh(self: *Self, asset_path: []const u8) !*MeshBuffer {
+pub fn loadMesh(self: *Self, asset_path: []const u8) !*mesh.Buffer {
     log.debug("loading mesh {s}", .{asset_path});
     const mesh_path = try global.assetPath(asset_path);
 
@@ -98,8 +109,9 @@ pub fn loadMesh(self: *Self, asset_path: []const u8) !*MeshBuffer {
     }
 
     if (result.mtl_path) |mtl_path| try self.loadMaterials(mtl_path);
-    const mesh_bufs: MeshObject.MeshBuffers = .init(.{
-        .mesh = try self.renderer.insertMeshBuffer(asset_path, &.fromCPUBuffer(&result.mesh_buf)),
+    const mesh_buf = try self.renderer.insertMeshBuffer(asset_path, &.fromCPUBuffer(&result.mesh_buf));
+    const mesh_bufs: mesh.Object.Buffers = .init(.{
+        .mesh = mesh_buf,
         .tex_coords_u = try self.createTexCoordUIndicators(asset_path),
         .tex_coords_v = try self.createTexCoordVIndicators(asset_path),
         .normals = try self.createNormalIndicators(asset_path),
@@ -128,11 +140,15 @@ pub fn loadMaterials(self: *Self, asset_path: []const u8) !void {
     defer mtl.deinit();
 
     for (mtl.items) |*item| {
-        const tex_paths = [_]?[]const u8{ item.texture, item.diffuse_map, item.bump_map };
-        for (&tex_paths) |opt_tex_path| {
-            if (opt_tex_path) |tex_path| _ = try self.loadTexture(tex_path);
+        if (item.texture) |tex_path| {
+            const tex = try self.loadTexture(tex_path);
+            try tex.properties().put(.bool, "is_sRGB", true);
         }
-
+        if (item.diffuse_map) |tex_path| {
+            const tex = try self.loadTexture(tex_path);
+            try tex.properties().put(.bool, "is_sRGB", true);
+        }
+        if (item.bump_map) |tex_path| _ = try self.loadTexture(tex_path);
         _ = try self.renderer.insertMaterial(item.name, item);
     }
 }
@@ -166,11 +182,34 @@ pub fn loadTexture(self: *Self, asset_path: []const u8) !*SurfaceTexture {
     errdefer texture.deinit(self.renderer.gpu_device);
 
     const tex = try self.surface_textures.insert(asset_path, texture);
+    _ = try tex.createProperties();
     try self.flagModified(.surface_texture, asset_path);
     return tex;
 }
 
-pub fn createOriginMesh(self: *Self) !*MeshBuffer {
+pub fn unloadTexture(self: *Self, key: []const u8) void {
+    const tex = self.surface_textures.getPtr(key);
+    tex.destroyProperties();
+    tex.deinit(self.renderer.gpu_device);
+    self.surface_textures.remove(key);
+}
+
+pub fn loadLut(self: *Self, asset_path: []const u8) !*LookUpTable {
+    if (self.look_up_tables.getPtrOrNull(asset_path)) |ptr| return ptr;
+
+    const tex_path = try global.assetPath(asset_path);
+    var cube = cube_loader.loadFile(self.renderer.allocator, tex_path) catch |err| {
+        log.err("failed reading cube file: {t}", .{err});
+        return Error.TextureFailed;
+    };
+    errdefer cube.deinit(self.renderer.allocator, self.renderer.gpu_device);
+
+    const lut = try self.look_up_tables.insert(asset_path, &cube);
+    try self.flagModified(.look_up_table, asset_path);
+    return lut;
+}
+
+pub fn createOriginMesh(self: *Self) !*mesh.Buffer {
     const origin_mesh = try self.renderer.createMeshBuffer("origin", .index);
 
     origin_mesh.appendSlice(self.renderer.allocator, .vertex, math.Vector3, 1, &.{
@@ -202,11 +241,11 @@ pub fn createIndicators(
     comptime suffix: [:0]const u8,
     comptime attr: math.VertexAttr,
     comptime components: enum { x, y, z, all },
-) !*MeshBuffer {
+) !*mesh.Buffer {
     const new_key = try str.join(&.{ key, "." ++ suffix });
-    const mesh = self.renderer.mesh_bufs.getPtr(key);
-    assert(mesh.type == .vertex);
-    const scalars = mesh.slice(.vertex);
+    const mesh_buf = self.renderer.mesh_bufs.getPtr(key);
+    assert(mesh_buf.type == .vertex);
+    const scalars = mesh_buf.slice(.vertex);
     const verts: []math.Vertex = @ptrCast(scalars);
 
     const result = try self.renderer.createMeshBuffer(new_key, .vertex);
@@ -230,23 +269,23 @@ pub fn createIndicators(
     return result;
 }
 
-pub fn createTexCoordUIndicators(self: *Self, key: []const u8) !*MeshBuffer {
+pub fn createTexCoordUIndicators(self: *Self, key: []const u8) !*mesh.Buffer {
     return self.createIndicators(key, "tex_coords_u", .tex_coord, .x);
 }
 
-pub fn createTexCoordVIndicators(self: *Self, key: []const u8) !*MeshBuffer {
+pub fn createTexCoordVIndicators(self: *Self, key: []const u8) !*mesh.Buffer {
     return self.createIndicators(key, "tex_coords_v", .tex_coord, .y);
 }
 
-pub fn createNormalIndicators(self: *Self, key: []const u8) !*MeshBuffer {
+pub fn createNormalIndicators(self: *Self, key: []const u8) !*mesh.Buffer {
     return self.createIndicators(key, "normals", .normal, .all);
 }
 
-pub fn createTangentIndicators(self: *Self, key: []const u8) !*MeshBuffer {
+pub fn createTangentIndicators(self: *Self, key: []const u8) !*mesh.Buffer {
     return self.createIndicators(key, "tangents", .tangent, .all);
 }
 
-pub fn createBinormalIndicators(self: *Self, key: []const u8) !*MeshBuffer {
+pub fn createBinormalIndicators(self: *Self, key: []const u8) !*mesh.Buffer {
     return self.createIndicators(key, "binormals", .binormal, .all);
 }
 
@@ -272,11 +311,12 @@ pub fn createDefaultTexture(self: *Self) !*SurfaceTexture {
     surf.slice(u32)[0] = c.SDL_MapSurfaceRGBA(surf.ptr, 0xff, 0x00, 0xff, 0xff);
 
     const tex = try self.surface_textures.insert(key, .init(surf));
+    _ = try tex.createProperties();
     try self.flagModified(.surface_texture, key);
     return tex;
 }
 
-pub fn createLightsBuffer(self: *Self, flat: ?*const Scene.Flattened) !*MeshBuffer {
+pub fn createLightsBuffer(self: *Self, flat: ?*const Scene.Flattened) !*mesh.Buffer {
     const key = "lights";
     const gpa = self.renderer.allocator;
     const lights_buf = try self.renderer.getOrCreateStorageBuffer(key);
@@ -328,8 +368,8 @@ fn createGPUData(self: *Self) !void {
     const gpu_device = self.renderer.gpu_device;
 
     for (self.modifs.getPtrConst(.mesh_buffer).items) |key| {
-        const mesh = self.renderer.mesh_bufs.getPtr(key);
-        try mesh.createGPUBuffers(gpu_device, null);
+        const mesh_buf = self.renderer.mesh_bufs.getPtr(key);
+        try mesh_buf.createGPUBuffers(gpu_device, null);
     }
 
     for (self.modifs.getPtrConst(.storage_buffer).items) |key| {
@@ -339,6 +379,11 @@ fn createGPUData(self: *Self) !void {
 
     for (self.modifs.getPtrConst(.surface_texture).items) |key| {
         const tex = self.surface_textures.getPtr(key);
+        try tex.createGPUTexture(gpu_device);
+    }
+
+    for (self.modifs.getPtrConst(.look_up_table).items) |key| {
+        const tex = self.look_up_tables.getPtr(key);
         try tex.createGPUTexture(gpu_device);
     }
 }
@@ -353,6 +398,7 @@ fn uploadTransferBuffers(self: *Self) !void {
     try tb.mesh_bufs.ensureUnusedCapacity(gpa, self.modifs.getPtrConst(.mesh_buffer).items.len);
     try tb.mesh_bufs.ensureUnusedCapacity(gpa, self.modifs.getPtrConst(.storage_buffer).items.len);
     try tb.surf_texes.ensureUnusedCapacity(gpa, self.modifs.getPtrConst(.surface_texture).items.len);
+    try tb.luts.ensureUnusedCapacity(gpa, self.modifs.getPtrConst(.look_up_table).items.len);
 
     for (self.modifs.getPtrConst(.mesh_buffer).items) |key| {
         const buf = self.renderer.mesh_bufs.getPtr(key);
@@ -383,6 +429,11 @@ fn uploadTransferBuffers(self: *Self) !void {
         tb.surf_texes.appendAssumeCapacity(surf_tex);
     }
 
+    for (self.modifs.getPtrConst(.look_up_table).items) |key| {
+        const lut = self.look_up_tables.getPtr(key);
+        tb.luts.appendAssumeCapacity(lut);
+    }
+
     try tb.createGPUTransferBuffer(gpu_device);
     try tb.map(gpu_device);
 
@@ -403,4 +454,36 @@ fn commitSurfaceTextures(self: *Self) !void {
         const tex = self.surface_textures.getPtr(key);
         _ = try self.renderer.insertTexture(key, tex.toOwnedGPUTexture());
     }
+}
+
+fn commitLookUpTables(self: *Self) !void {
+    for (self.modifs.getPtrConst(.look_up_table).items) |key| {
+        const tex = self.look_up_tables.getPtr(key);
+        log.info("{s}", .{key});
+        _ = try self.renderer.insertTexture(key, tex.toOwnedGPUTexture());
+    }
+}
+
+pub fn propertyEditorNode(
+    self: *Self,
+    editor: *ui_mod.PropertyEditorWindow,
+    parent: *ui_mod.PropertyEditorWindow.Item,
+) !*ui_mod.PropertyEditorWindow.Item {
+    const root_id = @typeName(Self);
+    const root_node = try editor.appendChildNode(parent, root_id, "Loader");
+    {
+        const node = try editor.appendChildNode(root_node, root_id ++ ".surface_textures", "Surface Textures");
+        var iter = self.surface_textures.map.iterator();
+        var buf: [64]u8 = undefined;
+        while (iter.next()) |entry| {
+            const id = try std.fmt.bufPrint(&buf, "{s}#{s}", .{ @typeName(SurfaceTexture), entry.key_ptr.* });
+            _ = try editor.appendChild(
+                node,
+                try entry.value_ptr.*.propertyEditor(),
+                id,
+                entry.key_ptr.*,
+            );
+        }
+    }
+    return root_node;
 }

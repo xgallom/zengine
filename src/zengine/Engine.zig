@@ -7,18 +7,26 @@ const assert = std.debug.assert;
 
 const allocators = @import("allocators.zig");
 const c = @import("ext.zig").c;
+const Error = @import("error.zig").Error;
+const ArrayMap = @import("containers.zig").ArrayMap;
 pub const Properties = @import("Properties.zig");
 pub const Window = @import("Window.zig");
+const gfx = @import("gfx.zig");
 
 const log = std.log.scoped(.engine);
 
-const GlobalRegistry = Properties.GlobalRegistry(&.{
-    Window.Registry,
-});
+const GlobalRegistry = Properties.GlobalRegistry(Properties.registryLists(&.{
+    gfx.registry_list,
+    Properties.registryList(&.{
+        Window.Registry,
+    }),
+}));
 
-main_win: Window = .invalid,
+windows: Windows = .empty,
 
 const Self = @This();
+const Windows = ArrayMap(Window);
+
 pub const invalid: Self = .{};
 var global_self: ?*Self = null;
 var global_registry: GlobalRegistry = undefined;
@@ -28,7 +36,7 @@ pub fn create() !*Self {
 
     if (!c.SDL_Init(c.SDL_INIT_VIDEO | c.SDL_INIT_AUDIO)) {
         log.err("init failed: {s}", .{c.SDL_GetError()});
-        return error.InitFailed;
+        return Error.EngineFailed;
     }
 
     c.SDL_SetLogOutputFunction(@ptrCast(&sdlLog), null);
@@ -40,29 +48,47 @@ pub fn create() !*Self {
     return self;
 }
 
-pub fn initMainWindow(self: *Self) !void {
+pub fn createWindow(self: *Self, key: []const u8, info: *const Window.CreateInfo) !*Window {
     assert(self == global_self);
-    assert(!self.main_win.isValid());
-    self.main_win = try .init(&.{
-        .title = "zeng - Zengine 0.1.0",
+    try self.windows.insert(allocators.gpa(), key, try .init(info));
+    return self.windows.getPtr(key);
+}
+
+pub fn createMainWindow(self: *Self) !*Window {
+    return self.createWindow("main", &.{
+        .title = "Zengine",
         .size = .{ 1920, 1080 },
         .flags = .initMany(&.{.high_pixel_density}),
     });
-
-    const props = try self.main_win.properties();
-    _ = try props.f32.insert("mouse_x", 0);
-    _ = try props.f32.insert("mouse_y", 0);
 }
 
 pub fn deinit(self: *Self) void {
     assert(self == global_self);
-    global_self = null;
-    self.main_win.deinit();
+    for (self.windows.values()) |*win| win.deinit();
+    self.windows.deinit(allocators.gpa());
     global_registry.deinit();
+    global_self = null;
     c.SDL_Quit();
 }
 
-pub inline fn properties(comptime Registry: type, key: Registry.Key) !*Properties {
+pub inline fn createProperties(comptime Registry: type, key: Registry.Key) !*Properties {
+    assert(global_self != null);
+    return global_registry.create(Registry, key);
+}
+
+pub inline fn destroyProperties(comptime Registry: type, key: Registry.Key) void {
+    assert(global_self != null);
+    global_registry.destroy(Registry, key);
+}
+
+pub inline fn properties(comptime Registry: type, key: Registry.Key) *Properties {
+    assert(global_self != null);
+    const ptr = global_registry.properties(Registry, key);
+    assert(ptr != null);
+    return ptr.?;
+}
+
+pub inline fn propertiesOrNull(comptime Registry: type, key: Registry.Key) ?*Properties {
     assert(global_self != null);
     return global_registry.properties(Registry, key);
 }

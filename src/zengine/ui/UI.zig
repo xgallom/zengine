@@ -6,14 +6,16 @@ const std = @import("std");
 const assert = std.debug.assert;
 
 const allocators = @import("../allocators.zig");
-const cache = @import("cache.zig");
 const Engine = @import("../Engine.zig");
 const c = @import("../ext.zig").c;
 const gfx = @import("../gfx.zig");
 const global = @import("../global.zig");
 const math = @import("../math.zig");
+const options = @import("../options.zig").options;
 const perf = @import("../perf.zig");
 const AllocsWindpw = @import("AllocsWindow.zig");
+const cache = @import("cache.zig");
+const LogWindow = @import("LogWindow.zig");
 const PerfWindow = @import("PerfWindow.zig");
 const PropertyEditorWindow = @import("PropertyEditorWindow.zig");
 
@@ -40,7 +42,7 @@ pub const Element = struct {
 
 var ref_count: std.atomic.Value(usize) = .init(0);
 
-pub fn create(engine: *Engine, renderer: *gfx.Renderer) !*Self {
+pub fn create(renderer: *gfx.Renderer) !*Self {
     try sections.register();
 
     const section = sections.sub(.init);
@@ -64,9 +66,10 @@ pub fn create(engine: *Engine, renderer: *gfx.Renderer) !*Self {
     io.*.ConfigDpiScaleFonts = true;
     io.*.ConfigDpiScaleViewports = true;
 
-    _ = c.ImGui_ImplSDL3_InitForSDLGPU(engine.main_win.ptr);
+    _ = c.ImGui_ImplSDL3_InitForSDLGPU(renderer.window.ptr);
     var init_info: c.ImGui_ImplSDLGPU3_InitInfo = .{
         .Device = renderer.gpu_device.ptr,
+        // .ColorTargetFormat = @intFromEnum(renderer.swapchainFormat()),
         .ColorTargetFormat = @intFromEnum(renderer.swapchainFormat()),
         .MSAASamples = @intFromEnum(gfx.types.SampleCount.@"1"),
     };
@@ -107,6 +110,8 @@ pub fn drawMainMenuBar(self: *const Self, config: struct {
     allocs_open: *bool,
     property_editor_open: *bool,
     perf_open: *bool,
+    log_open: *bool,
+    debug_ui_open: *bool,
 }) void {
     if (!self.render_ui) return;
     if (c.igBeginMainMenuBar()) {
@@ -114,6 +119,10 @@ pub fn drawMainMenuBar(self: *const Self, config: struct {
             if (c.igMenuItem_Bool("Property Editor", null, false, true)) config.property_editor_open.* = true;
             if (c.igMenuItem_Bool("Performance", null, false, true)) config.perf_open.* = true;
             if (c.igMenuItem_Bool("Allocations", null, false, true)) config.allocs_open.* = true;
+            if (c.igMenuItem_Bool("Debug Log", null, false, true)) config.log_open.* = true;
+            if (comptime options.has_debug_ui) {
+                if (c.igMenuItem_Bool("Debug UI", null, false, true)) config.debug_ui_open.* = true;
+            }
             c.igEndMenu();
         }
     }
@@ -150,6 +159,7 @@ pub fn drawDock(self: *Self) void {
         c.igDockBuilderDockWindow(PropertyEditorWindow.window_name, nodes[0]);
         c.igDockBuilderDockWindow(PerfWindow.window_name, nodes[2]);
         c.igDockBuilderDockWindow(AllocsWindpw.window_name, nodes[2]);
+        c.igDockBuilderDockWindow(LogWindow.window_name, nodes[2]);
         c.igDockBuilderFinish(dock_node);
     }
 }
@@ -173,7 +183,7 @@ pub fn submitPass(self: *Self, command_buffer: gfx.GPUCommandBuffer, ui_buffer: 
     c.ImGui_ImplSDLGPU3_PrepareDrawData(self.draw_data, command_buffer.ptr);
 
     var render_pass = try command_buffer.renderPass(&.{
-        .{ .texture = ui_buffer, .load_op = .load, .store_op = .store },
+        .{ .texture = ui_buffer, .clear_color = math.rgba_f32.zero, .load_op = .clear, .store_op = .store },
     }, null);
     c.ImGui_ImplSDLGPU3_RenderDrawData(self.draw_data, command_buffer.ptr, render_pass.ptr, null);
     render_pass.end();

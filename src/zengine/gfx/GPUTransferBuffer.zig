@@ -9,7 +9,7 @@ const c = @import("../ext.zig").c;
 const global = @import("../global.zig");
 const math = @import("../math.zig");
 const ui = @import("../ui.zig");
-const Error = @import("Error.zig").Error;
+const Error = @import("error.zig").Error;
 const GPUDevice = @import("GPUDevice.zig");
 const types = @import("types.zig");
 
@@ -94,6 +94,7 @@ pub const TextureTransferInfo = struct {
     rows_per_layer: u32 = 0,
 
     pub fn toSDL(self: *const @This()) c.SDL_GPUTextureTransferInfo {
+        assert(self.transfer_buffer.isValid());
         return .{
             .transfer_buffer = self.transfer_buffer.ptr,
             .offset = self.offset,
@@ -108,6 +109,7 @@ pub const Location = struct {
     offset: u32 = 0,
 
     pub fn toSDL(self: *const @This()) c.SDL_GPUTransferBufferLocation {
+        assert(self.transfer_buffer.isValid());
         return .{
             .transfer_buffer = self.transfer_buffer.ptr,
             .offset = self.offset,

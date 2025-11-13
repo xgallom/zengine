@@ -1,13 +1,21 @@
 #ifndef _MATERIAL_MAPS_HLSL_
 #define _MATERIAL_MAPS_HLSL_
 
+#include <zengine.hlsl>
+
+#ifndef MM_REG_TEX_OFFSET
+#error "MM_REG_OFFSET must be defined"
+#endif
+
+#define MM_REG_TEX_LEN 3
+
 Texture2D<float4> TextureMap : register(t0, space2);
 SamplerState SamplerTexture  : register(s0, space2);
 
 Texture2D<float4> DiffuseMap : register(t1, space2);
 SamplerState SamplerDiffuse  : register(s1, space2);
 
-Texture2D<float4> BumpMap    : register(t2, space2);
+Texture2D<float4> BumpMap    : register(t2,space2);
 SamplerState SamplerBump     : register(s2, space2);
 
 float3 bumpMap(in float3 world_pos, in float2 tex_uv, in float3 normal) {

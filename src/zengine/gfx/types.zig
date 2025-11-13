@@ -321,6 +321,26 @@ pub const DepthStencilState = struct {
             .enable_stencil_test = self.enable_stencil_test,
         };
     }
+
+    pub const depth_test: @This() = .{
+        .compare_op = .less,
+        .compare_mask = 0xff,
+        .enable_depth_test = true,
+    };
+
+    pub const depth_write: @This() = .{
+        .compare_op = .less,
+        .write_mask = 0xff,
+        .enable_depth_write = true,
+    };
+
+    pub const depth_test_and_write: @This() = .{
+        .compare_op = .less,
+        .compare_mask = 0xff,
+        .write_mask = 0xff,
+        .enable_depth_test = true,
+        .enable_depth_write = true,
+    };
 };
 
 pub const StencilOpState = struct {
@@ -363,6 +383,16 @@ pub const ColorTargetBlendState = struct {
             .enable_color_write_mask = self.enable_color_write_mask,
         };
     }
+
+    pub const blend: @This() = .{
+        .src_color_blendfactor = .src_alpha,
+        .dst_color_blendfactor = .one_minus_src_alpha,
+        .color_blend_op = .add,
+        .src_alpha_blendfactor = .one,
+        .dst_alpha_blendfactor = .one_minus_src_alpha,
+        .alpha_blend_op = .add,
+        .enable_blend = true,
+    };
 };
 
 pub const ColorTargetDescription = struct {
@@ -381,7 +411,7 @@ pub const ColorTargetInfo = struct {
     texture: GPUTexture = .invalid,
     mip_level: u32 = 0,
     layer_or_depth_plane: u32 = 0,
-    clear_color: math.RGBAf32 = math.rgba_f32.zero,
+    clear_color: math.RGBAf32 = math.rgba_f32.tr_zero,
     load_op: LoadOp = .default,
     store_op: StoreOp = .default,
     resolve_texture: GPUTexture = .invalid,
@@ -391,6 +421,7 @@ pub const ColorTargetInfo = struct {
     cycle_resolve_texture: bool = false,
 
     pub fn toSDL(self: *const @This()) c.SDL_GPUColorTargetInfo {
+        assert(self.texture.isValid());
         return .{
             .texture = self.texture.ptr,
             .mip_level = self.mip_level,
@@ -423,6 +454,7 @@ pub const DepthStencilTargetInfo = struct {
     clear_stencil: u8 = 0,
 
     pub fn toSDL(self: *const @This()) c.SDL_GPUDepthStencilTargetInfo {
+        assert(self.texture.isValid());
         return .{
             .texture = self.texture.ptr,
             .clear_depth = self.clear_depth,
@@ -468,6 +500,8 @@ pub const TextureSamplerBinding = struct {
     sampler: GPUSampler = .invalid,
 
     pub fn toSDL(self: *const @This()) c.SDL_GPUTextureSamplerBinding {
+        assert(self.texture.isValid());
+        assert(self.sampler.isValid());
         return .{
             .texture = self.texture.ptr,
             .sampler = self.sampler.ptr,
@@ -480,6 +514,7 @@ pub const StorageBufferReadWriteBinding = struct {
     cycle: bool = false,
 
     pub fn toSDL(self: *const @This()) c.SDL_GPUStorageBufferReadWriteBinding {
+        assert(self.buffer.isValid());
         return .{
             .buffer = self.buffer.ptr,
             .cycle = self.cycle,
@@ -494,6 +529,7 @@ pub const StorageTextureReadWriteBinding = struct {
     cycle: bool = false,
 
     pub fn toSDL(self: *const @This()) c.SDL_GPUStorageTextureReadWriteBinding {
+        assert(self.texture.isValid());
         return .{
             .texture = self.texture.ptr,
             .mip_level = self.mip_level,

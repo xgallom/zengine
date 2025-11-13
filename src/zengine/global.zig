@@ -19,7 +19,7 @@ const Self = struct {
     pub fn init(self: *Self) !void {
         const engine_now = time.getNow();
         const exe_path = try std.fs.selfExeDirPathAlloc(allocators.global());
-        const assets_path = try std.fs.path.join(
+        const assets_path = try std.fs.path.joinZ(
             allocators.global(),
             &.{ exe_path, "..", "..", "assets" },
         );
@@ -92,7 +92,7 @@ pub inline fn assetsPath() []const u8 {
 
 pub inline fn assetPath(path: []const u8) ![]const u8 {
     assert(is_init);
-    return std.fs.path.join(
+    return std.fs.path.joinZ(
         allocators.scratch(),
         &.{ assetsPath(), path },
     );

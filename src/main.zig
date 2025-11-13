@@ -21,12 +21,11 @@ const scheduler = zengine.scheduler;
 const time = zengine.time;
 const Engine = zengine.Engine;
 const ui = zengine.ui;
-var mouse_motion: math.Point_f32 = math.point_f32.zero;
 
 const log = std.log.scoped(.main);
 
 pub const std_options: std.Options = .{
-    .log_level = .debug,
+    .log_level = .info,
     .log_scope_levels = &.{
         // .{ .scope = .alloc, .level = .debug },
         // .{ .scope = .engine, .level = .debug },
@@ -34,6 +33,7 @@ pub const std_options: std.Options = .{
         // .{ .scope = .gfx_obj_loader, .level = .debug },
         // .{ .scope = .gfx_renderer, .level = .debug },
         // .{ .scope = .gfx_shader, .level = .debug },
+        .{ .scope = .gfx_shader_loader, .level = .debug },
         // .{ .scope = .gfx_loader, .level = .debug },
         // .{ .scope = .key_tree, .level = .debug },
         // .{ .scope = .radix_tree, .level = .debug },
@@ -42,10 +42,11 @@ pub const std_options: std.Options = .{
         // .{ .scope = .tree, .level = .debug },
         // .{ .scope = .scene, .level = .debug },
     },
+    .logFn = logFn,
 };
 
 pub const zengine_options: zengine.Options = .{
-    .has_debug_ui = false,
+    .has_debug_ui = true,
     .log_allocations = false,
     .gfx = .{
         .enable_normal_smoothing = true,
@@ -83,6 +84,10 @@ var debug_ui: zengine.ui.DebugUI = undefined;
 var property_editor: ui.PropertyEditorWindow = undefined;
 var allocs_window: zengine.ui.AllocsWindow = undefined;
 var perf_window: zengine.ui.PerfWindow = undefined;
+var log_window: zengine.ui.LogWindow = .invalid;
+
+var mouse_motion: math.Point_f32 = math.point_f32.zero;
+var execute_raycast: bool = false;
 
 const rnd = struct {
     var r: std.Random.DefaultPrng = undefined;
@@ -109,12 +114,29 @@ const rnd = struct {
     }
 };
 
+fn logFn(
+    comptime message_level: std.log.Level,
+    comptime scope: @Type(.enum_literal),
+    comptime format: []const u8,
+    args: anytype,
+) void {
+    const level_txt = comptime message_level.asText();
+    const prefix2 = if (scope == .default) ": " else "(" ++ @tagName(scope) ++ "): ";
+    log_window.print(level_txt ++ prefix2 ++ format ++ "\n", args) catch |err| {
+        std.log.defaultLog(.err, .default, "failed printing to log window: {t}", .{err});
+    };
+    std.log.defaultLog(message_level, scope, format, args);
+}
+
 pub fn main() !void {
     // memory limit 1GB, SDL allocations are not tracked
     allocators.init(1_000_000_000);
     defer allocators.deinit();
 
-    var engine: Zengine = try .init(.{
+    log_window = try .init(allocators.gpa());
+    defer log_window.deinit();
+
+    const engine = try Zengine.create(.{
         .load = &load,
         .unload = &unload,
         .input = &input,
@@ -144,6 +166,7 @@ fn load(self: *const Zengine) !bool {
         _ = try gfx_loader.loadMesh("mountain.obj");
         _ = try gfx_loader.loadMesh("cube.obj");
         _ = try gfx_loader.loadMesh("cottage.obj");
+        // _ = try gfx_loader.loadMesh("audi_A3.obj");
 
         _ = try gfx_loader.createOriginMesh();
         _ = try gfx_loader.createDefaultMaterial();
@@ -166,6 +189,7 @@ fn load(self: *const Zengine) !bool {
 
         _ = try gfx_loader.loadLights("scene.lgh");
         _ = try gfx_loader.createLightsBuffer(null);
+        _ = try gfx_loader.loadLut("lut/basic.cube");
         try gfx_loader.commit();
     }
 
@@ -212,6 +236,25 @@ fn load(self: *const Zengine) !bool {
         .scale = .{ 10, 10, 10 },
         .euler_order = .zyx,
     });
+
+    // const car = try self.scene.createChildNode(objects, "Car", .node(), &.{});
+    // _ = try self.scene.createChildNode(car, "Plane", .object("Plane.004_Plane.022"), &.{});
+    // _ = try self.scene.createChildNode(car, "Plane", .object("Plane.002_Plane.021"), &.{});
+    // _ = try self.scene.createChildNode(car, "Plane", .object("Plane.001_Plane.020"), &.{});
+    // _ = try self.scene.createChildNode(car, "Plane", .object("AUDIARMA_Plane.012"), &.{});
+    // _ = try self.scene.createChildNode(car, "Plane", .object("Plane.003_Plane.011"), &.{});
+    // _ = try self.scene.createChildNode(car, "Plane", .object("Plane.010"), &.{});
+    // _ = try self.scene.createChildNode(car, "Plane", .object("Plane.009"), &.{});
+    // _ = try self.scene.createChildNode(car, "Plane", .object("Plane.008"), &.{});
+    // _ = try self.scene.createChildNode(car, "Plane", .object("Plane.007"), &.{});
+    // _ = try self.scene.createChildNode(car, "Plane", .object("Plane.005"), &.{});
+    // _ = try self.scene.createChildNode(car, "Plane", .object("TYRE_Mesh.001"), &.{});
+    // _ = try self.scene.createChildNode(car, "Plane", .object("PLANE_Plane.006"), &.{});
+    // _ = try self.scene.createChildNode(car, "Plane", .object("TYRE2_Mesh.002"), &.{});
+    // _ = try self.scene.createChildNode(car, "Plane", .object("AUDIARMA.001_Plane.002"), &.{});
+    // _ = try self.scene.createChildNode(car, "Plane", .object("ARRAY_Plane"), &.{});
+    // _ = try self.scene.createChildNode(car, "Plane", .object("AUDIA3_Plane.001"), &.{});
+    // _ = try self.scene.createChildNode(car, "Plane", .object("Plane.000_Plane.015"), &.{});
 
     const cubes = try self.scene.createRootNode("Cubes", .node(), &.{
         .translation = .{ -58, -83, 18 },
@@ -261,11 +304,12 @@ fn load(self: *const Zengine) !bool {
 
     const gfx_node = try property_editor.appendNode(@typeName(gfx), "gfx");
     _ = try self.renderer.propertyEditorNode(&property_editor, gfx_node);
+    _ = try gfx_loader.propertyEditorNode(&property_editor, gfx_node);
     _ = try self.scene.propertyEditorNode(&property_editor, gfx_node);
 
     _ = try propertyEditorNode(&property_editor);
 
-    self.engine.main_win.setRelativeMouseMode(config.flags.mouse_captured);
+    try self.engine.windows.getPtr("main").setRelativeMouseMode(config.flags.mouse_captured);
 
     Zengine.sections.sub(.load).sub(.ui).end();
     allocators.scratchRelease();
@@ -295,11 +339,13 @@ fn input(self: *const Zengine) !bool {
                     switch (event.sdl.key.key) {
                         c.SDLK_F1 => {
                             self.ui.show_ui = !self.ui.show_ui;
-                            self.engine.main_win.setRelativeMouseMode(!self.ui.show_ui and config.flags.mouse_captured);
+                            try self.engine.windows.getPtr("main")
+                                .setRelativeMouseMode(!self.ui.show_ui and config.flags.mouse_captured);
                         },
                         c.SDLK_ESCAPE => {
                             self.ui.show_ui = !self.ui.show_ui;
-                            self.engine.main_win.setRelativeMouseMode(!self.ui.show_ui and config.flags.mouse_captured);
+                            try self.engine.windows.getPtr("main")
+                                .setRelativeMouseMode(!self.ui.show_ui and config.flags.mouse_captured);
                         },
                         else => {},
                     }
@@ -337,11 +383,13 @@ fn input(self: *const Zengine) !bool {
 
                     c.SDLK_F1 => {
                         self.ui.show_ui = !self.ui.show_ui;
-                        self.engine.main_win.setRelativeMouseMode(!self.ui.show_ui and config.flags.mouse_captured);
+                        try self.engine.windows.getPtr("main")
+                            .setRelativeMouseMode(!self.ui.show_ui and config.flags.mouse_captured);
                     },
                     c.SDLK_F2 => {
                         config.flags.mouse_captured = !config.flags.mouse_captured;
-                        self.engine.main_win.setRelativeMouseMode(config.flags.mouse_captured);
+                        try self.engine.windows.getPtr("main")
+                            .setRelativeMouseMode(config.flags.mouse_captured);
                     },
                     c.SDLK_ESCAPE => return false,
                     else => {},
@@ -374,17 +422,20 @@ fn input(self: *const Zengine) !bool {
                 }
             },
             .mouse_motion => {
-                const props = try self.engine.main_win.properties();
-                _ = try props.f32.put("mouse_x", event.sdl.motion.x);
-                _ = try props.f32.put("mouse_y", event.sdl.motion.y);
-                _ = try props.f32.put("mouse_x_rel", event.sdl.motion.xrel);
-                _ = try props.f32.put("mouse_y_rel", event.sdl.motion.yrel);
-                if (self.engine.main_win.is_relative_mouse_mode_enabled) {
+                const main_win = self.engine.windows.getPtr("main");
+                try main_win.setMousePos(
+                    .{ event.sdl.motion.x, event.sdl.motion.y },
+                    .{ event.sdl.motion.xrel, event.sdl.motion.yrel },
+                );
+                if (main_win.relativeMouseMode()) {
                     mouse_motion = .{
                         event.sdl.motion.xrel,
                         if (config.flags.mouse_y_inverted) -event.sdl.motion.yrel else event.sdl.motion.yrel,
                     };
                 }
+            },
+            .mouse_button_down => {
+                execute_raycast = true;
             },
             else => {
                 log.info("{}", .{event.type});
@@ -409,6 +460,8 @@ fn update(self: *const Zengine) !bool {
         try gfx_loader.commit();
     }
 
+    if (execute_raycast) executeRaycast(self);
+
     return true;
 }
 
@@ -418,13 +471,16 @@ fn render(self: *const Zengine) !void {
         .allocs_open = &allocs_window.is_open,
         .property_editor_open = &property_editor.is_open,
         .perf_open = &perf_window.is_open,
+        .log_open = &log_window.is_open,
+        .debug_ui_open = &debug_ui.is_open,
     });
     self.ui.drawDock();
 
     self.ui.draw(debug_ui.element(), &debug_ui.is_open);
     self.ui.draw(property_editor.element(), &property_editor.is_open);
-    self.ui.draw(perf_window.element(), &perf_window.is_open);
     self.ui.draw(allocs_window.element(), &allocs_window.is_open);
+    self.ui.draw(perf_window.element(), &perf_window.is_open);
+    self.ui.draw(log_window.element(), &log_window.is_open);
 
     self.ui.endDraw();
 
@@ -432,14 +488,59 @@ fn render(self: *const Zengine) !void {
     _ = try flat_scene.render(self.ui, &items);
 }
 
-fn updateScene(self: *const Zengine, delta: f32) void {
-    const s = self.scene.nodes.slice();
-    const cubes = scene_map.get("cubes");
+fn executeRaycast(self: *const Zengine) void {
+    execute_raycast = false;
+    const camera = self.scene.renderer.activeCamera();
 
-    var cube = s.node(cubes).child;
-    while (cube != .invalid) : (cube = s.node(cube).next) {
-        rnd.step(&s.transform(cube).translation, delta);
+    const s = flat_scene.mesh_objs.slice();
+    for (0..s.len) |n| {
+        const obj: *const gfx.mesh.Object = s.items(.target)[n];
+        const obj_key: []const u8 = s.items(.key)[n];
+        const mesh_buf = obj.mesh_bufs.get(.mesh);
+        const tr: *const math.Matrix4x4 = &s.items(.transform)[n];
+        const buf: []const math.Vertex = @ptrCast(mesh_buf.slice(.vertex));
+        for (obj.sections.items, 0..) |section, section_n| {
+            var mesh_n: usize = 0;
+            while (mesh_n < section.len) : (mesh_n += 3) {
+                const vertexes = [_]math.vertex.CMap{
+                    math.vertex.cmap(&buf[section.offset + mesh_n]),
+                    math.vertex.cmap(&buf[section.offset + mesh_n + 1]),
+                    math.vertex.cmap(&buf[section.offset + mesh_n + 2]),
+                };
+                var verts: [3]math.Vector4 = undefined;
+                for (0..3) |vert_n| {
+                    math.matrix4x4.apply(
+                        &verts[vert_n],
+                        tr,
+                        &math.vector4.makeTranslatable(vertexes[vert_n].getPtrConst(.position).*),
+                    );
+                }
+                const tri: [3]*const math.Vector3 = .{
+                    verts[0][0..3],
+                    verts[1][0..3],
+                    verts[2][0..3],
+                };
+                const int_opt = math.vector3.rayIntersectTri(tri, &camera.position, &camera.direction);
+                if (int_opt) |int| {
+                    log.info("{s}[{}]: {}", .{ obj_key, section_n, @divExact(mesh_n, 3) });
+                    log.info("verts: {any}", .{verts});
+                    log.info("intersect point: {any}", .{int});
+                }
+            }
+        }
     }
+}
+
+fn updateScene(self: *const Zengine, delta: f32) void {
+    _ = self;
+    _ = delta;
+    // const s = self.scene.nodes.slice();
+    // const cubes = scene_map.get("cubes");
+    //
+    // var cube = s.node(cubes).child;
+    // while (cube != .invalid) : (cube = s.node(cube).next) {
+    //     rnd.step(&s.transform(cube).translation, delta);
+    // }
 }
 
 fn updateCameraControls(

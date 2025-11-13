@@ -5,6 +5,7 @@
 pub const Error = error{
     GPUFailed,
     ImageFailed,
+    TextEngineFailed,
     ShaderFailed,
     WindowFailed,
     PipelineFailed,

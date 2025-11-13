@@ -17,11 +17,9 @@ struct VertexOutput {
 VertexOutput main(VertexInput input)
 {
     VertexOutput output;
-
     const float4 position = mul(float4(input.position, 1), tr_model);
 
     output.position = mul(position, tr_view_projection);
     output.world_pos = position.xyz;
-
     return output;
 }

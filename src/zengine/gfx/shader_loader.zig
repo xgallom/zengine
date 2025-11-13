@@ -113,11 +113,12 @@ fn pickFormat(config: *const OpenConfig) !FormatConfig {
 }
 
 fn openShadersDir() !std.fs.Dir {
-    const shaders_path = try std.fs.path.join(
+    const shaders_path = try std.fs.path.joinZ(
         allocators.scratch(),
         &.{ global.exePath(), "..", "shaders" },
     );
     defer allocators.scratch().free(shaders_path);
+    log.debug("opening shaders dir {s}", .{shaders_path});
     return std.fs.openDirAbsolute(shaders_path, .{});
 }
 

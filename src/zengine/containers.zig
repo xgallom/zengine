@@ -12,6 +12,7 @@ pub const ArrayPtrMap = @import("containers/key_map.zig").ArrayPtrMap;
 pub const ArrayMap = @import("containers/key_map.zig").ArrayMap;
 pub const PoolMap = @import("containers/key_map.zig").PoolMap;
 pub const PtrMap = @import("containers/key_map.zig").PtrMap;
+pub const Map = @import("containers/key_map.zig").Map;
 pub const KeyTreeMap = @import("containers/key_tree_map.zig").KeyTreeMap;
 pub const RadixTree = @import("containers/radix_tree.zig").RadixTree;
 pub const SwapWrapper = @import("containers/swap_wrapper.zig").SwapWrapper;

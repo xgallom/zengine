@@ -10,6 +10,7 @@ const c = @import("../ext.zig").c;
 const global = @import("../global.zig");
 const perf = @import("../perf.zig");
 const UI = @import("UI.zig");
+const options = @import("../options.zig").options;
 
 const log = std.log.scoped(.ui_debug_ui);
 

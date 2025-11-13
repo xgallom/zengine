@@ -21,7 +21,7 @@ pub const Result = enum {
     init,
 };
 
-filter: c.ImGuiTextFilter = .{},
+// filter: c.ImGuiTextFilter = .{},
 toggle_state: bool = false,
 buf: [256:0]u8 = @splat(0),
 text: [:0]const u8 = "",

@@ -15,7 +15,7 @@ const perf = @import("../perf.zig");
 const ui = @import("../ui.zig");
 const Camera = @import("Camera.zig");
 const Light = @import("Light.zig");
-const MeshObject = @import("MeshObject.zig");
+const mesh = @import("mesh.zig");
 const Renderer = @import("Renderer.zig");
 pub const Node = @import("Scene/Node.zig");
 const Nodes = Node.Tree;
@@ -39,7 +39,7 @@ pub const Flattened = struct {
     empty: std.ArrayList(math.Matrix4x4) = .empty,
     cameras: FlatList(Camera) = .empty,
     lights: FlatList(Light) = .empty,
-    mesh_objs: FlatList(MeshObject) = .empty,
+    mesh_objs: FlatList(mesh.Object) = .empty,
 
     pub fn lightCounts(self: *const Flattened) std.EnumArray(Light.Type, u32) {
         var result: std.EnumArray(Light.Type, u32) = .initFill(0);
@@ -49,6 +49,37 @@ pub const Flattened = struct {
 
     pub fn render(self: *const Flattened, ui_ptr: ?*ui.UI, items_iter: anytype) !bool {
         return self.scene.renderer.renderScene(self, ui_ptr, items_iter);
+    }
+
+    pub fn rayCast(flat: *const Flattened, ray_pos: *const math.Vector3, ray_dir: *const math.Vector3) void {
+        const s = flat.mesh_objs.slice();
+        for (0..s.len) |n| {
+            const item = s.get(n);
+            const obj = item.target;
+            const mesh_buf = obj.mesh_bufs.get(.mesh);
+            const verts: []const math.Vertex = mesh_buf.slice(.vertex);
+            if (obj.face_type != .triangle) continue;
+            for (obj.sections.items) |section| {
+                const start = section.offset;
+                const end = section.offset + section.len;
+                var vn0 = start;
+                while (vn0 < end) : (vn0 += 3) {
+                    const tri = .{
+                        math.vertex.cmap(&verts[vn0]).getPtrConst(.position),
+                        math.vertex.cmap(&verts[vn0 + 1]).getPtrConst(.position),
+                        math.vertex.cmap(&verts[vn0 + 2]).getPtrConst(.position),
+                    };
+                    const result = math.vector3.rayIntersectTri(tri, ray_pos, ray_dir);
+                    if (result) |point| {
+                        log.info("intersected {s} offset {}: {any}", .{ item.key, section.offset, point });
+                        log.info(
+                            "triangle: [{}]: {any} [{}]: {any} [{}]: {any}",
+                            .{ vn0, tri[0].*, vn0 + 1, tri[1].*, vn0 + 2, tri[2].* },
+                        );
+                    }
+                }
+            }
+        }
     }
 };
 
@@ -96,17 +127,13 @@ pub fn flatten(self: *const Self) !Flattened {
     sections.sub(.flatten).begin();
     defer sections.sub(.flatten).end();
 
-    var transforms: std.ArrayList(math.Matrix4x4) = .empty;
     var flat = Flattened{ .scene = self };
-
     var tr_scratch: math.Matrix4x4 = undefined;
-    const tr_root = try transforms.addOne(allocators.frame());
-    tr_root.* = math.matrix4x4.identity;
 
     const s = self.nodes.slice();
     var walk = self.nodes.head;
     while (walk != .invalid) : (walk = s.node(walk).next) {
-        try flattenWalk(&flat, &s, walk, 0, &tr_scratch, &transforms);
+        try flattenWalk(&flat, &s, walk, &math.matrix4x4.identity, &tr_scratch);
     }
 
     return flat;
@@ -116,34 +143,30 @@ fn flattenWalk(
     flat: *Flattened,
     s: *const Node.Tree.Slice,
     node: Node.Id,
-    tr_parent: usize,
+    tr_parent: *const math.Matrix4x4,
     tr_scratch: *math.Matrix4x4,
-    transforms: *std.ArrayList(math.Matrix4x4),
 ) !void {
-    const tr = try transforms.addOne(allocators.frame());
-    const tr_n = transforms.items.len - 1;
-
     s.transform(node).transform(tr_scratch);
-    math.matrix4x4.dot(tr, &transforms.items[tr_parent], tr_scratch);
+    math.matrix4x4.dot(s.matrix(node), tr_parent, tr_scratch);
 
     if (!s.flags(node).is_visible) return;
 
     switch (s.target(node).type) {
-        .empty => try flat.empty.append(allocators.frame(), tr.*),
+        .empty => try flat.empty.append(allocators.frame(), s.matrix(node).*),
         .camera => try flat.cameras.append(allocators.frame(), .{
             .key = s.target(node).key,
             .target = flat.scene.renderer.cameras.getPtr(s.target(node).key),
-            .transform = tr.*,
+            .transform = s.matrix(node).*,
         }),
         .light => try flat.lights.append(allocators.frame(), .{
             .key = s.target(node).key,
             .target = flat.scene.renderer.lights.getPtr(s.target(node).key),
-            .transform = tr.*,
+            .transform = s.matrix(node).*,
         }),
         .object => try flat.mesh_objs.append(allocators.frame(), .{
             .key = s.target(node).key,
             .target = flat.scene.renderer.mesh_objs.getPtr(s.target(node).key),
-            .transform = tr.*,
+            .transform = s.matrix(node).*,
         }),
     }
 
@@ -151,13 +174,13 @@ fn flattenWalk(
     log.debug("type: {t}", .{s.target(node).type});
     log.debug("key: {s}", .{s.target(node).key});
     log.debug("node: {any}", .{s.transform(node)});
-    log.debug("tr_n: {any}", .{tr_n});
-    log.debug("node_tr: {any}", .{tr_scratch});
-    log.debug("tr: {any}\n", .{tr});
+    // log.debug("tr_n: {any}", .{tr_n});
+    // log.debug("node_tr: {any}", .{tr_scratch});
+    // log.debug("tr: {any}\n", .{tr});
 
     var walk = s.node(node).child;
     while (walk != .invalid) : (walk = s.node(walk).next) {
-        try flattenWalk(flat, s, walk, tr_n, tr_scratch, transforms);
+        try flattenWalk(flat, s, walk, s.matrix(node), tr_scratch);
     }
 }
 

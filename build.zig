@@ -1,8 +1,17 @@
 const std = @import("std");
 const log = std.log;
 
-const ExtCommand = enum {
+pub const Options = struct {
+    compile_shaders: bool,
+    ext_cmd: ?ExtCommand,
+    ext_cmd_cmake_args: []const u8,
+    ext_cmd_make_args: []const u8,
+    ext_cmd_make_install_args: []const u8,
+};
+
+pub const ExtCommand = enum {
     external,
+    cache,
     sdl,
     sdl_image,
     sdl_ttf,
@@ -22,41 +31,24 @@ pub fn build(b: *std.Build) !void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
-    const compile_shaders_opt = b.option(bool, "compile-shaders", "Force shader compilation");
-    const ext_cmd_opt = b.option(ExtCommand, "ext-command", "Project to use for external compilation") orelse .external;
-    const ext_cmd_cmake_args_opt = b.option(
-        []const u8,
-        "ext-cmake-args",
-        "Arguments for external configuration",
-    ) orelse "";
-    const ext_cmd_make_args_opt = b.option(
-        []const u8,
-        "ext-make-args",
-        "Arguments for external compilation",
-    ) orelse "-j";
-    const ext_cmd_make_install_args_opt = b.option(
-        []const u8,
-        "ext-make-install-args",
-        "Arguments for external installation",
-    ) orelse "";
-
+    const options = getOptions(b);
     const build_ext_cmd = try std.fs.path.join(b.allocator, &.{
         "build-scripts",
-        b.fmt("build-{t}.sh", .{ext_cmd_opt}),
+        b.fmt("build-{t}.sh", .{options.ext_cmd orelse .external}),
     });
     const build_ext = b.addSystemCommand(&.{
         build_ext_cmd,
         ext_optimize.get(optimize),
-        ext_cmd_cmake_args_opt,
-        ext_cmd_make_args_opt,
-        ext_cmd_make_install_args_opt,
+        options.ext_cmd_cmake_args,
+        options.ext_cmd_make_args,
+        options.ext_cmd_make_install_args,
     });
     const build_ext_step = b.step("ext", "Build external dependencies");
     build_ext_step.dependOn(&build_ext.step);
 
     const clean_ext_cmd = try std.fs.path.join(b.allocator, &.{
         "build-scripts",
-        b.fmt("clean-{t}.sh", .{ext_cmd_opt}),
+        b.fmt("clean-{t}.sh", .{options.ext_cmd orelse .cache}),
     });
     const clean_ext = b.addSystemCommand(&.{clean_ext_cmd});
     const clean_ext_step = b.step("ext-clean", "Clean external dependencies");
@@ -107,10 +99,9 @@ pub fn build(b: *std.Build) !void {
         }),
     });
 
-    b.installArtifact(exe);
-
-    const install_assembly = b.addInstallBinFile(exe.getEmittedAsm(), "zeng.s");
-    b.getInstallStep().dependOn(&install_assembly.step);
+    const install_assembly = b.addInstallBinFile(exe.getEmittedAsm(), "zengine.S");
+    const install_exe = b.addInstallArtifact(exe, .{});
+    install_exe.step.dependOn(&install_assembly.step);
 
     // const build_ext = b.addExecutable(.{
     //     .name = "build-external",
@@ -142,18 +133,6 @@ pub fn build(b: *std.Build) !void {
     // const build_ext_step = b.step("ext", "Builds external dependencies");
     // build_ext_step.dependOn(&build_ext_install.step);
 
-    const compile_shaders = b.addExecutable(.{
-        .name = "compile-shaders",
-        .root_module = b.addModule("compile_shaders", .{
-            .root_source_file = b.path("src/compile_shaders.zig"),
-            .imports = &.{
-                .{ .name = "zengine", .module = zengine },
-            },
-            .target = b.graph.host,
-            .optimize = optimize,
-        }),
-    });
-
     // TODO: use instead of hlsl?
     //
     // const compile_shader = b.addExecutable(.{
@@ -175,11 +154,8 @@ pub fn build(b: *std.Build) !void {
     // b.installArtifact(compile_shader);
 
     switch (target.result.os.tag) {
-        .linux => {
-            log.info("Building target linux...", .{});
-        },
+        .linux => {},
         .macos => {
-            log.info("Building target macos...", .{});
             // zengine.addRPathSpecial("$ORIGIN/../lib");
             // b.getInstallStep().dependOn(&b.addInstallLibFile(
             //     b.path("SDL/build/libSDL3.0.dylib"),
@@ -198,45 +174,15 @@ pub fn build(b: *std.Build) !void {
             //     "libcimgui.dylib",
             // ).step);
         },
-        .windows => {
-            log.info("Building target macos...", .{});
-        },
+        .windows => {},
         else => std.process.fatal("Unsupported target os: {s}", .{@tagName(target.result.os.tag)}),
     }
 
-    const compile_shaders_cmd = b.addRunArtifact(compile_shaders);
-    compile_shaders_cmd.addArg("--include-dir");
-    compile_shaders_cmd.addDirectoryArg(b.path("shaders/include"));
-    compile_shaders_cmd.addArg("--input-dir");
-    compile_shaders_cmd.addDirectoryArg(b.path("shaders/src"));
-    compile_shaders_cmd.addArg("--output-dir");
-    const shaders_output = compile_shaders_cmd.addOutputDirectoryArg("shaders");
-
-    const install_shaders_dir = b.addInstallDirectory(.{
-        .source_dir = shaders_output,
-        .install_dir = .prefix,
-        .install_subdir = "shaders",
+    const install_shaders_dir = addCompileShaders(b, .{
+        .module = zengine,
+        .options = options,
+        .optimize = optimize,
     });
-
-    b.getInstallStep().dependOn(&install_shaders_dir.step);
-
-    compile_shaders_cmd.has_side_effects = compile_shaders_opt orelse false;
-    // try addDirectoryWatchInput(b, &compile_shaders_cmd.step, "shaders/include");
-    // try addDirectoryWatchInput(b, &compile_shaders_cmd.step, "shaders/src");
-    // try addDirectoryWatchInput(b, &install_shaders_dir.step, "shaders/include");
-    // try addDirectoryWatchInput(b, &install_shaders_dir.step, "shaders/src");
-    // try addDirectoryWatchInput(b, b.getInstallStep(), "shaders/include");
-    // try addDirectoryWatchInput(b, b.getInstallStep(), "shaders/src");
-
-    const run_cmd = b.addRunArtifact(exe);
-    run_cmd.step.dependOn(b.getInstallStep());
-
-    if (b.args) |args| {
-        run_cmd.addArgs(args);
-    }
-
-    const run_step = b.step("run", "Run the app");
-    run_step.dependOn(&run_cmd.step);
 
     const unit_tests = b.addTest(.{
         .root_module = zengine,
@@ -255,36 +201,78 @@ pub fn build(b: *std.Build) !void {
     const docs_step = b.step("docs", "Install documentation");
     docs_step.dependOn(&install_docs.step);
 
-    const all_step = b.step("zengine", "Build zengine with docs");
-    all_step.dependOn(b.getInstallStep());
-    all_step.dependOn(&install_docs.step);
+    const zengine_step = b.step("zengine", "Build Zengine");
+    zengine_step.dependOn(&install_shaders_dir.step);
+    zengine_step.dependOn(&install_exe.step);
+    zengine_step.dependOn(&install_docs.step);
+
+    const run_cmd = b.addRunArtifact(exe);
+    run_cmd.step.dependOn(zengine_step);
+    run_cmd.step.dependOn(b.getInstallStep());
+
+    if (b.args) |args| {
+        run_cmd.addArgs(args);
+    }
+
+    const run_step = b.step("run", "Run Zengine");
+    run_step.dependOn(&run_cmd.step);
 }
 
-fn addDirectoryWatchInput(b: *std.Build, step: *std.Build.Step, path: []const u8) !void {
-    const allowed_exts = [_][]const u8{".hlsl"};
+pub fn addCompileShaders(b: *std.Build, options: struct {
+    b: ?*std.Build = null,
+    src: ?std.Build.LazyPath = null,
+    module: *std.Build.Module,
+    options: Options,
+    optimize: std.builtin.OptimizeMode,
+}) *std.Build.Step.InstallDir {
+    const zb = options.b orelse b;
+    const compile_shaders = b.addExecutable(.{
+        .name = "compile-shaders",
+        .root_module = b.addModule("compile_shaders", .{
+            .root_source_file = zb.path("src/compile_shaders.zig"),
+            .imports = &.{
+                .{ .name = "zengine", .module = options.module },
+            },
+            .target = b.graph.host,
+            .optimize = options.optimize,
+        }),
+    });
 
-    if (try step.addDirectoryWatchInput(b.path(path))) {
-        var sources: std.ArrayList([]const u8) = .empty;
-        var dir = try std.fs.cwd().openDir(path, .{
-            .iterate = true,
-            .access_sub_paths = true,
-        });
+    const compile_shaders_cmd = b.addRunArtifact(compile_shaders);
+    compile_shaders_cmd.addArg("--include-dir");
+    compile_shaders_cmd.addDirectoryArg(zb.path("shaders/include"));
+    compile_shaders_cmd.addArg("--input-dir");
+    compile_shaders_cmd.addDirectoryArg(options.src orelse zb.path("shaders/src"));
+    compile_shaders_cmd.addArg("--output-dir");
+    const shaders_output = compile_shaders_cmd.addOutputDirectoryArg("shaders");
+    log.info("compile shaders opt: {}", .{options.options.compile_shaders});
+    compile_shaders_cmd.has_side_effects = options.options.compile_shaders;
 
-        var walker = try dir.walk(b.allocator);
-        defer walker.deinit();
+    return b.addInstallDirectory(.{
+        .source_dir = shaders_output,
+        .install_dir = .prefix,
+        .install_subdir = "shaders",
+    });
+}
 
-        while (try walker.next()) |entry| {
-            const ext = std.fs.path.extension(entry.basename);
-            const include_file = for (allowed_exts) |e| {
-                if (std.mem.eql(u8, ext, e))
-                    break true;
-            } else false;
-            if (include_file) try sources.append(b.allocator, b.pathJoin(&.{ path, entry.path }));
-        }
-
-        for (sources.items) |src_path| {
-            std.log.info("watch {s}", .{src_path});
-            try step.addWatchInput(b.path(src_path));
-        }
-    }
+pub fn getOptions(b: *std.Build) Options {
+    return .{
+        .compile_shaders = b.option(bool, "compile-shaders", "Force shader compilation") orelse false,
+        .ext_cmd = b.option(ExtCommand, "ext-command", "Project to use for external compilation"),
+        .ext_cmd_cmake_args = b.option(
+            []const u8,
+            "ext-cmake-args",
+            "Arguments for external configuration",
+        ) orelse "",
+        .ext_cmd_make_args = b.option(
+            []const u8,
+            "ext-make-args",
+            "Arguments for external compilation",
+        ) orelse "-j",
+        .ext_cmd_make_install_args = b.option(
+            []const u8,
+            "ext-make-install-args",
+            "Arguments for external installation",
+        ) orelse "",
+    };
 }

@@ -8,15 +8,16 @@ const assert = std.debug.assert;
 const allocators = @import("allocators.zig");
 const c = @import("ext.zig").c;
 const Engine = @import("Engine.zig");
+const Error = @import("error.zig").Error;
+const Event = @import("Event.zig");
 const math = @import("math.zig");
 
 const log = std.log.scoped(.window);
 
 ptr: ?*c.SDL_Window = null,
-is_relative_mouse_mode_enabled: bool = false,
 
 const Self = @This();
-pub const Registry = Engine.Properties.AutoRegistry(?*c.SDL_Window, .{});
+pub const Registry = Engine.Properties.AutoRegistry(*c.SDL_Window, .{});
 
 pub const invalid: Self = .{};
 
@@ -53,12 +54,19 @@ pub fn create(info: *const CreateInfo) !*c.SDL_Window {
     );
     if (ptr == null) {
         log.err("failed creating window: {s}", .{c.SDL_GetError()});
-        return error.WindowFailed;
+        return Error.WindowFailed;
     }
+    errdefer c.SDL_DestroyWindow(ptr.?);
+    const props = try Engine.createProperties(Registry, ptr.?);
+    try props.put(.f32, "mouse_x", 0);
+    try props.put(.f32, "mouse_y", 0);
+    try props.put(.f32, "mouse_x_rel", 0);
+    try props.put(.f32, "mouse_y_rel", 0);
     return ptr.?;
 }
 
 pub fn destroy(ptr: *c.SDL_Window) void {
+    Engine.destroyProperties(Registry, ptr);
     c.SDL_DestroyWindow(ptr);
 }
 
@@ -66,7 +74,7 @@ pub fn pixelSize(self: Self) math.Point_u32 {
     assert(self.isValid());
     var result: math.Point_u32 = undefined;
     if (!c.SDL_GetWindowSizeInPixels(self.ptr, @ptrCast(&result[0]), @ptrCast(&result[1]))) {
-        log.err("failed getting window size: {s}", .{c.SDL_GetError()});
+        log.err("failed getting window pixel size: {s}", .{c.SDL_GetError()});
         std.process.exit(1);
     }
     return result;
@@ -76,24 +84,48 @@ pub fn logicalSize(self: Self) math.Point_u32 {
     assert(self.isValid());
     var result: math.Point_u32 = undefined;
     if (!c.SDL_GetWindowSize(self.ptr, @ptrCast(&result[0]), @ptrCast(&result[1]))) {
-        log.err("failed getting window size: {s}", .{c.SDL_GetError()});
+        log.err("failed getting window logical size: {s}", .{c.SDL_GetError()});
         std.process.exit(1);
     }
     return result;
 }
 
-pub fn setRelativeMouseMode(self: *Self, enabled: bool) void {
-    self.is_relative_mouse_mode_enabled = enabled;
+pub fn relativeMouseMode(self: Self) bool {
+    const props = self.properties();
+    return props.bool.getOrNull("relative_mouse_mode") orelse false;
+}
+
+pub fn setRelativeMouseMode(self: *Self, enabled: bool) !void {
+    const props = self.properties();
+    try props.put(.bool, "relative_mouse_mode", enabled);
     assert(c.SDL_SetWindowRelativeMouseMode(self.ptr, enabled));
+}
+
+pub fn mousePos(self: Self) math.Point_f32 {
+    const props = self.properties();
+    return .{ props.f32.get("mouse_x"), props.f32.get("mouse_y") };
+}
+
+pub fn mousePosRel(self: Self) !math.Point_f32 {
+    const props = self.properties();
+    return .{ props.f32.get("mouse_x_rel"), props.f32.get("mouse_y_rel") };
+}
+
+pub fn setMousePos(self: Self, pos: math.Point_f32, pos_rel: math.Point_f32) !void {
+    const props = self.properties();
+    try props.put(.f32, "mouse_x", pos[0]);
+    try props.put(.f32, "mouse_y", pos[1]);
+    try props.put(.f32, "mouse_x_rel", pos_rel[0]);
+    try props.put(.f32, "mouse_y_rel", pos_rel[1]);
 }
 
 pub inline fn isValid(self: Self) bool {
     return self.ptr != null;
 }
 
-pub inline fn properties(self: Self) !*Engine.Properties {
+pub fn properties(self: Self) *Engine.Properties {
     assert(self.isValid());
-    return Engine.properties(Registry, self.ptr);
+    return Engine.properties(Registry, self.ptr.?);
 }
 
 pub const Flag = enum(c.SDL_WindowFlags) {

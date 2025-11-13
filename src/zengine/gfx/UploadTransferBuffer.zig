@@ -7,30 +7,34 @@ const assert = std.debug.assert;
 
 const c = @import("../ext.zig").c;
 const math = @import("../math.zig");
-const Error = @import("Error.zig").Error;
+const Error = @import("error.zig").Error;
 const GPUCopyPass = @import("GPUCopyPass.zig");
 const GPUDevice = @import("GPUDevice.zig");
 const GPUTransferBuffer = @import("GPUTransferBuffer.zig");
-const MeshBuffer = @import("MeshBuffer.zig");
+const mesh = @import("mesh.zig");
 const SurfaceTexture = @import("SurfaceTexture.zig");
+const LookUpTable = @import("LookUpTable.zig");
 
 const log = std.log.scoped(.gfx_upload_transfer_buffer);
 
 mesh_bufs: MeshBuffers = .empty,
 surf_texes: SurfaceTextures = .empty,
+luts: LookUpTables = .empty,
 tr_buf: GPUTransferBuffer = .invalid,
 len: u32 = 0,
 state: State = .invalid,
 
 const Self = @This();
-pub const MeshBuffers = std.ArrayList(*const MeshBuffer);
+pub const MeshBuffers = std.ArrayList(*const mesh.Buffer);
 pub const SurfaceTextures = std.ArrayList(*const SurfaceTexture);
+pub const LookUpTables = std.ArrayList(*const LookUpTable);
 pub const State = enum { invalid, upload, mapped, uploaded };
 pub const empty: Self = .{};
 
 pub fn deinit(self: *Self, gpa: std.mem.Allocator, gpu_device: GPUDevice) void {
     self.mesh_bufs.deinit(gpa);
     self.surf_texes.deinit(gpa);
+    self.luts.deinit(gpa);
 
     if (self.state == .invalid) {
         assert(!self.tr_buf.isValid());
@@ -54,6 +58,7 @@ pub fn createGPUTransferBuffer(self: *Self, gpu_device: GPUDevice) !void {
         self.len += gpu_buf.byteLen(.index);
     }
     for (self.surf_texes.items) |surf_tex| self.len += surf_tex.surf.byteLen();
+    for (self.luts.items) |lut| self.len += lut.byteLen();
 
     self.tr_buf = GPUTransferBuffer.init(gpu_device, &.{
         .usage = .upload,
@@ -91,6 +96,10 @@ pub fn map(self: *Self, gpu_device: GPUDevice) !void {
 
     for (self.surf_texes.items) |surf_tex| {
         mapping.copy(surf_tex.surf.slice(u8));
+    }
+
+    for (self.luts.items) |lut| {
+        mapping.copy(lut.bytes());
     }
 
     assert(mapping.offset == self.len);
@@ -146,6 +155,27 @@ pub fn upload(self: *Self, copy_pass: GPUCopyPass) void {
             .h = surf_tex.surf.height(),
         }, false);
         tb_offset += surf_tex.surf.byteLen();
+    }
+
+    for (self.luts.items) |lut| {
+        const is_valid = lut.isValid();
+        assert(is_valid.data and is_valid.gpu_tex);
+
+        for (0..lut.dim_len) |n| {
+            copy_pass.uploadToTexture(&.{
+                .transfer_buffer = self.tr_buf,
+                .offset = tb_offset,
+                .pixels_per_row = lut.dim_len,
+                .rows_per_layer = lut.dim_len,
+            }, &.{
+                .texture = lut.gpu_tex,
+                .z = @intCast(n),
+                .w = lut.dim_len,
+                .h = lut.dim_len,
+                .d = 1,
+            }, false);
+            tb_offset += lut.dim_len * lut.dim_len * @sizeOf(math.RGBAf32);
+        }
     }
 
     assert(tb_offset == self.len);

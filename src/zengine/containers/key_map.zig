@@ -57,7 +57,7 @@ pub fn AutoArrayPoolMap(comptime K: type, comptime V: type, comptime options: st
             return null;
         }
 
-        pub fn getPtr(self: *const Self, key: []const u8) *V {
+        pub fn getPtr(self: *const Self, key: K) *V {
             const ptr = self.map.get(key);
             assert(ptr != null);
             return ptr.?;
@@ -382,7 +382,7 @@ pub fn ArrayPtrMap(comptime V: type) type {
     };
 }
 
-/// Pointer array hash map
+/// Value array hash map
 pub fn ArrayMap(comptime V: type) type {
     return struct {
         map: HashMap = .empty,
@@ -440,7 +440,7 @@ pub fn ArrayMap(comptime V: type) type {
             try self.map.put(gpa, key, value);
         }
 
-        pub fn values(self: *const Self) []*V {
+        pub fn values(self: *const Self) []V {
             return self.map.values();
         }
     };
@@ -525,6 +525,13 @@ pub fn PoolMap(comptime V: type, comptime options: struct {
             self.pool.destroy(entry.?.value);
         }
 
+        pub fn put(self: *Self, key: []const u8, value: ValIn) !*V {
+            const r = try self.map.getOrPut(self.gpa(), key);
+            if (!r.found_existing) r.value_ptr.* = try self.pool.create();
+            r.value_ptr.*.* = valDeref(value);
+            return r.value_ptr.*;
+        }
+
         inline fn gpa(self: *const Self) std.mem.Allocator {
             return self.pool.arena.child_allocator;
         }
@@ -583,6 +590,76 @@ pub fn PtrMap(comptime V: type) type {
         }
 
         pub const ValueIterator = PtrValueIterator(V);
+    };
+}
+
+/// Value hash map
+pub fn Map(comptime V: type) type {
+    return struct {
+        map: HashMap = .empty,
+
+        pub const Self = @This();
+        pub const Value = V;
+        pub const HashMap = std.StringHashMapUnmanaged(V);
+        pub const empty: Self = .{};
+
+        // Initializes the map
+        pub fn init(gpa: std.mem.Allocator, preheat: u32) !Self {
+            var result: Self = .{};
+            try result.map.ensureTotalCapacity(gpa, preheat);
+            return result;
+        }
+
+        /// Deinitializes the map
+        pub fn deinit(self: *Self, gpa: std.mem.Allocator) void {
+            self.map.deinit(gpa);
+        }
+
+        pub fn contains(self: *const Self, key: []const u8) bool {
+            return self.map.contains(key);
+        }
+
+        pub fn get(self: *const Self, key: []const u8) V {
+            const ptr = self.map.getPtr(key);
+            assert(ptr != null);
+            return ptr.?.*;
+        }
+
+        pub fn getOrNull(self: *const Self, key: []const u8) ?V {
+            return self.map.get(key);
+        }
+
+        pub fn getPtr(self: *const Self, key: []const u8) *V {
+            const ptr = self.map.getPtr(key);
+            assert(ptr != null);
+            return ptr.?;
+        }
+
+        pub fn getPtrOrNull(self: *const Self, key: []const u8) ?*V {
+            return self.map.getPtr(key);
+        }
+
+        /// Inserts new value into the map
+        pub fn insert(self: *Self, gpa: std.mem.Allocator, key: []const u8, value: V) !void {
+            try self.map.putNoClobber(gpa, key, value);
+        }
+
+        /// Removes existing value from the map
+        pub fn remove(self: *Self, key: []const u8) void {
+            assert(self.map.remove(key));
+        }
+
+        pub fn put(self: *Self, gpa: std.mem.Allocator, key: []const u8, value: V) !void {
+            try self.map.put(gpa, key, value);
+        }
+
+        pub fn iterator(self: *const Self) HashMap.Iterator {
+            return self.map.iterator();
+        }
+
+        pub fn valueIterator(self: *const Self) HashMap.ValueIterator {
+            return self.map.valueIterator();
+        }
     };
 }
 

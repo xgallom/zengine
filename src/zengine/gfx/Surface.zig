@@ -9,7 +9,7 @@ const c = @import("../ext.zig").c;
 const global = @import("../global.zig");
 const math = @import("../math.zig");
 const ui = @import("../ui.zig");
-const Error = @import("Error.zig").Error;
+const Error = @import("error.zig").Error;
 const GPUTexture = @import("GPUTexture.zig");
 const types = @import("types.zig");
 
@@ -21,11 +21,11 @@ const Self = @This();
 pub const invalid: Self = .{};
 
 pub fn init(size: math.Point_u32, pixel_format: PixelFormat) !Self {
-    return fromOwnedSurface(try create(size, pixel_format));
+    return fromOwned(try create(size, pixel_format));
 }
 
 pub fn deinit(self: *Self) void {
-    if (self.isValid()) destroy(self.toOwnedSurface());
+    if (self.isValid()) destroy(self.toOwned());
 }
 
 pub fn create(size: math.Point_u32, pixel_format: PixelFormat) !*c.SDL_Surface {
@@ -83,7 +83,7 @@ pub fn convert(self: *Self, pixel_format: PixelFormat) !void {
         log.err("failed converting surface format: {s}", .{c.SDL_GetError()});
         return Error.SurfaceFailed;
     }
-    destroy(self.toOwnedSurface());
+    destroy(self.toOwned());
     self.ptr = new_surf;
 }
 
@@ -95,11 +95,11 @@ pub fn flip(self: Self, mode: types.FlipMode) !void {
     }
 }
 
-pub fn fromOwnedSurface(ptr: *c.SDL_Surface) Self {
+pub fn fromOwned(ptr: *c.SDL_Surface) Self {
     return .{ .ptr = ptr };
 }
 
-pub fn toOwnedSurface(self: *Self) *c.SDL_Surface {
+pub fn toOwned(self: *Self) *c.SDL_Surface {
     assert(self.isValid());
     defer self.ptr = null;
     return self.ptr.?;

@@ -3,6 +3,7 @@
 //!
 
 const std = @import("std");
+const assert = std.debug.assert;
 
 pub const allocators = @import("allocators.zig");
 pub const containers = @import("containers.zig");
@@ -27,18 +28,26 @@ pub const typeId = @import("type_id.zig").typeId;
 pub const ui = @import("ui.zig");
 pub const Window = @import("Window.zig");
 
+var global_self: ?*Zengine = null;
+
 pub const Zengine = struct {
     engine: *Engine,
-    scene: *gfx.Scene,
+    scene: if (options.has_scene) *gfx.Scene else void,
     renderer: *gfx.Renderer,
-    ui: *ui.UI,
+    ui: if (options.has_ui) *ui.UI else void,
     handlers: Handlers = .{},
 
     const Self = @This();
     pub const main_section = perf.section(@This()).sub(.main);
     pub const sections = main_section.sections(&.{ .init, .load, .frame });
 
-    pub fn init(handlers: Handlers) !Self {
+    pub inline fn get() *Self {
+        assert(global_self != null);
+        return global_self.?;
+    }
+
+    pub fn create(handlers: Handlers) !*Self {
+        assert(global_self == null);
         const engine = try Engine.create();
         errdefer engine.deinit();
 
@@ -60,46 +69,53 @@ pub const Zengine = struct {
         main_section.begin();
         sections.sub(.init).begin();
 
-        try engine.initMainWindow();
+        _ = try engine.createMainWindow();
 
         const renderer = try gfx.Renderer.create(engine);
         errdefer renderer.deinit();
 
-        const scene = try gfx.Scene.create(renderer);
-        errdefer scene.deinit();
+        const scene = if (comptime options.has_scene) try gfx.Scene.create(renderer) else {};
+        errdefer if (comptime options.has_scene) scene.deinit();
 
-        const ui_ptr = try ui.UI.create(engine, renderer);
-        errdefer ui_ptr.deinit();
+        const ui_ptr = if (comptime options.has_ui) try ui.UI.create(renderer) else {};
+        errdefer if (comptime options.has_ui) ui_ptr.deinit();
 
-        try perf.commitGraph();
-
-        sections.sub(.init).end();
-
-        return .{
+        const self = try allocators.global().create(Self);
+        self.* = .{
             .engine = engine,
             .scene = scene,
             .renderer = renderer,
             .ui = ui_ptr,
             .handlers = handlers,
         };
+        global_self = self;
+
+        if (handlers.init) |init| try init(self);
+
+        try perf.commitGraph();
+        sections.sub(.init).end();
+
+        return self;
     }
 
     pub fn deinit(self: *Self) void {
-        defer self.engine.deinit();
-        defer perf.deinit();
-        defer global.deinit();
-        defer self.renderer.deinit();
-        defer self.scene.deinit();
-        defer self.ui.deinit();
-        defer perf.releaseGraph();
+        assert(self == global_self);
+        perf.releaseGraph();
+        self.ui.deinit();
+        self.scene.deinit();
+        self.renderer.deinit();
+        global.deinit();
+        perf.deinit();
+        self.engine.deinit();
+        global_self = null;
     }
 
     pub fn run(self: *const Self) !void {
         sections.sub(.load).begin();
+        defer if (self.handlers.unload) |unload| unload(self);
         if (self.handlers.load) |load| {
             if (!try load(self)) return;
         }
-        defer if (self.handlers.unload) |unload| unload(self);
         sections.sub(.load).end();
 
         return while (true) {
@@ -153,6 +169,7 @@ pub const Zengine = struct {
     }
 
     pub const Handlers = struct {
+        init: ?*const fn (self: *const Self) anyerror!void = null,
         load: ?*const fn (self: *const Self) anyerror!bool = null,
         unload: ?*const fn (self: *const Self) void = null,
         input: ?*const fn (self: *const Self) anyerror!bool = null,

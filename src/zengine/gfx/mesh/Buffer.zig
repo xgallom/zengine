@@ -5,13 +5,13 @@
 const std = @import("std");
 const assert = std.debug.assert;
 
-const c = @import("../ext.zig").c;
-const math = @import("../math.zig");
-const ui = @import("../ui.zig");
-const CPUBuffer = @import("CPUBuffer.zig");
-const Error = @import("Error.zig").Error;
-const GPUBuffer = @import("GPUBuffer.zig");
-const GPUDevice = @import("GPUDevice.zig");
+const c = @import("../../ext.zig").c;
+const math = @import("../../math.zig");
+const ui = @import("../../ui.zig");
+const CPUBuffer = @import("../CPUBuffer.zig");
+const Error = @import("../Error.zig").Error;
+const GPUBuffer = @import("../GPUBuffer.zig");
+const GPUDevice = @import("../GPUDevice.zig");
 
 const log = std.log.scoped(.gfx_mesh_buffer);
 
@@ -21,7 +21,7 @@ type: Type,
 
 const Self = @This();
 pub const Type = enum { vertex, index };
-pub const exclude_properties: ui.property_editor.PropertyList = &.{ .cpu_bufs, .gpu_bufs };
+pub const excluded_properties: ui.property_editor.PropertyList = &.{ .cpu_bufs, .gpu_bufs };
 
 pub fn Elem(comptime buf_type: Type) type {
     return switch (buf_type) {

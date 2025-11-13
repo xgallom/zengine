@@ -80,10 +80,12 @@ pub const Point_f32 = Vector2T(f32);
 pub const Point_f64 = Vector2T(f64);
 
 pub const RGBu8 = Vector3T(u8);
+pub const RGBf16 = Vector3T(f16);
 pub const RGBf32 = Vector3T(f32);
 pub const RGBf64 = Vector3T(f64);
 
 pub const RGBAu8 = Vector4T(u8);
+pub const RGBAf16 = Vector4T(f16);
 pub const RGBAf32 = Vector4T(f32);
 pub const RGBAf64 = Vector4T(f64);
 
@@ -104,8 +106,8 @@ pub const Ease = enum(u2) {
     in_out,
 
     pub const start = .in;
-    pub const end = .out;
-    pub const both = .in_out;
+    pub const stop = .out;
+    pub const step = .in_out;
 };
 
 /// Components of an RGB vector
@@ -199,6 +201,17 @@ pub const TransformOrder = enum {
             .trs => .{ .translate, .rotate, .scale },
         };
     }
+
+    pub fn transformsInv(self: TransformOrder) [TransformOp.len]TransformOp {
+        return switch (self) {
+            .srt => .{ .translate, .rotate, .scale },
+            .str => .{ .rotate, .translate, .scale },
+            .rst => .{ .translate, .scale, .rotate },
+            .rts => .{ .scale, .translate, .rotate },
+            .tsr => .{ .rotate, .scale, .translate },
+            .trs => .{ .scale, .rotate, .translate },
+        };
+    }
 };
 
 /// Enum describing order of 3D axis rotations
@@ -220,6 +233,17 @@ pub const EulerOrder = enum {
             .yzx => .{ .y, .z, .x },
             .zxy => .{ .z, .x, .y },
             .zyx => .{ .z, .y, .x },
+        };
+    }
+
+    pub fn axesInv(self: EulerOrder) [Axis3.len]Axis3 {
+        return switch (self) {
+            .xyz => .{ .z, .y, .x },
+            .xzy => .{ .y, .z, .x },
+            .yxz => .{ .z, .x, .y },
+            .yzx => .{ .x, .z, .y },
+            .zxy => .{ .y, .x, .z },
+            .zyx => .{ .x, .y, .z },
         };
     }
 };

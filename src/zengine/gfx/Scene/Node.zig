@@ -17,8 +17,11 @@ name: [:0]const u8,
 target: Target,
 flags: Flags,
 transform: Transform = .{},
+matrix: math.Matrix4x4 = math.matrix4x4.identity,
 
 const Self = @This();
+
+pub const excluded_properties: ui.property_editor.PropertyList = &.{.matrix};
 
 pub const Id = enum(u64) {
     invalid = 0,
@@ -138,6 +141,10 @@ pub const Tree = struct {
         pub fn transform(self: Slice, id: Id) *Transform {
             return &self.slice.items(.transform)[id.idx()];
         }
+
+        pub fn matrix(self: Slice, id: Id) *math.Matrix4x4 {
+            return &self.slice.items(.matrix)[id.idx()];
+        }
     };
 
     pub const Node = struct {
@@ -178,6 +185,7 @@ pub const Tree = struct {
         s.target(id).* = target;
         s.flags(id).* = .{};
         s.transform(id).* = transform.*;
+        transform.transform(s.matrix(id));
 
         if (self.tail == .invalid) {
             assert(self.head == .invalid);
@@ -210,6 +218,9 @@ pub const Tree = struct {
         s.target(id).* = target;
         s.flags(id).* = .{};
         s.transform(id).* = transform.*;
+        var tr: math.Matrix4x4 = undefined;
+        transform.transform(&tr);
+        math.matrix4x4.dot(s.matrix(id), s.matrix(parent), &tr);
 
         if (parent_node.child == .invalid) {
             parent_node.child = id;

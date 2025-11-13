@@ -8,7 +8,7 @@ const assert = std.debug.assert;
 const Tree = @import("../containers.zig").Tree;
 const c = @import("../ext.zig").c;
 const math = @import("../math.zig");
-const Error = @import("Error.zig").Error;
+const Error = @import("error.zig").Error;
 const GPUDevice = @import("GPUDevice.zig");
 
 const log = std.log.scoped(.gfx_gpu_buffer);
@@ -52,7 +52,7 @@ pub fn create(gpu_device: GPUDevice, info: *const CreateInfo) !*c.SDL_GPUBuffer 
     assert(gpu_device.isValid());
     const ptr = c.SDL_CreateGPUBuffer(gpu_device.ptr, &c.SDL_GPUBufferCreateInfo{
         .usage = info.usage.bits.mask,
-        .size = info.size,
+        .size = @max(info.size, @sizeOf(math.Scalar)),
     });
     if (ptr == null) {
         log.err("failed creating gpu buffer: {s}", .{c.SDL_GetError()});
@@ -68,7 +68,7 @@ pub fn release(gpu_device: GPUDevice, ptr: *c.SDL_GPUBuffer) void {
 
 pub fn resize(self: *Self, gpu_device: GPUDevice, info: *const CreateInfo) !void {
     assert(gpu_device.isValid());
-    if (self.size != info.size) {
+    if (self.size != info.size or !self.isValid()) {
         self.deinit(gpu_device);
         self.* = try gpu_device.buffer(info);
     }
@@ -91,6 +91,7 @@ pub const Location = struct {
     offset: u32,
 
     pub fn toSDL(self: *const @This()) c.SDL_GPUBufferLocation {
+        assert(self.buffer.isValid());
         return .{
             .buffer = self.buffer.ptr,
             .offset = self.offset,
@@ -104,6 +105,7 @@ pub const Region = struct {
     size: u32 = 0,
 
     pub fn toSDL(self: *const @This()) c.SDL_GPUBufferRegion {
+        assert(self.buffer.isValid());
         return .{
             .buffer = self.buffer.ptr,
             .offset = self.offset,
@@ -117,6 +119,7 @@ pub const Binding = struct {
     offset: u32 = 0,
 
     pub fn toSDL(self: *const @This()) c.struct_SDL_GPUBufferBinding {
+        assert(self.buffer.isValid());
         return .{
             .buffer = self.buffer.ptr,
             .offset = self.offset,

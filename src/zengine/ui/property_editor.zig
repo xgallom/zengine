@@ -9,6 +9,7 @@ const allocators = @import("../allocators.zig");
 const c = @import("../ext.zig").c;
 const UI = @import("UI.zig");
 const cache = @import("cache.zig");
+const Engine = @import("../Engine.zig");
 const StdType = std.builtin.Type;
 
 const log = std.log.scoped(.ui_property_editor);
@@ -99,12 +100,74 @@ pub fn PropertyEditor(comptime C: type) type {
     return InputFields(C, .{});
 }
 
+pub fn PropertiesEditor(comptime Registry: type) type {
+    return struct {
+        key: Registry.Key,
+
+        pub const Self = @This();
+
+        var cc: cache.Cache(Registry.Key) = .empty;
+
+        pub fn init(key: Registry.Key) UI.Element {
+            const result = cc.getOrPut(Self, key, .{ .key = key });
+            return result.value.element;
+        }
+
+        pub fn register() !void {
+            try cc.register();
+        }
+
+        pub fn draw(self: *const Self, ui: *const UI, is_open: *bool) void {
+            const props = Engine.properties(Registry, self.key);
+            drawImpl(props, ui, is_open);
+        }
+
+        pub fn drawImpl(component: *Engine.Properties, ui: *const UI, is_open: *bool) void {
+            {
+                var iter = component.bool.iterator();
+                while (iter.next()) |e| {
+                    const Input = InputCheckbox(.{});
+                    const old_name = Input.name;
+                    Input.name = allocators.scratch().dupeZ(u8, e.key_ptr.*) catch |err| {
+                        log.err("allocation failed: {t}", .{err});
+                        std.process.exit(1);
+                    };
+                    InputCheckbox(.{}).init(e.value_ptr).draw(ui, is_open);
+                    allocators.scratch().free(Input.name);
+                    Input.name = old_name;
+                }
+            }
+            {
+                var iter = component.u8.iterator();
+                while (iter.next()) |e| {
+                    const Input = InputScalar(u8, 1, .{});
+                    const old_name = Input.name;
+                    Input.name = allocators.scratch().dupeZ(u8, e.key_ptr.*) catch |err| {
+                        log.err("allocation failed: {t}", .{err});
+                        std.process.exit(1);
+                    };
+                    Input.init(e.value_ptr).draw(ui, is_open);
+                    allocators.scratch().free(Input.name);
+                    Input.name = old_name;
+                }
+            }
+        }
+
+        pub fn element(self: *const Self) UI.Element {
+            return .{
+                .ptr = @ptrCast(@constCast(self)),
+                .drawFn = @ptrCast(&draw),
+            };
+        }
+    };
+}
+
 pub fn RefPropertyEditor(comptime C: type, comptime K: type) type {
     comptime assert(@typeInfo(C) == .@"struct");
     const type_info = @typeInfo(C).@"struct";
     const field_resolver = FieldResolver(C);
 
-    const exclude_properties = field_resolver.propertyList("exclude_properties");
+    const excluded_properties = field_resolver.propertyList("excluded_properties");
 
     return struct {
         ref: CRef = undefined,
@@ -117,7 +180,7 @@ pub fn RefPropertyEditor(comptime C: type, comptime K: type) type {
             .is_tuple = type_info.is_tuple,
         } });
         pub const fields = type_info.fields;
-        pub const ref_fields = refFields(fields);
+        pub const ref_fields = refFields(fields, excluded_properties);
 
         var cc: cache.Cache(K) = .empty;
 
@@ -132,7 +195,7 @@ pub fn RefPropertyEditor(comptime C: type, comptime K: type) type {
 
         pub fn draw(self: *Self, ui: *const UI, is_open: *bool) void {
             fields: inline for (type_info.fields) |field| {
-                comptime if (exclude_properties.contains(field.name)) continue :fields;
+                comptime if (excluded_properties.contains(field.name)) continue :fields;
 
                 const field_ptr = @field(self.ref, field.name);
                 const Input = InputField(C, field);
@@ -345,7 +408,7 @@ pub fn InputFields(comptime C: type, comptime options: Options.InputFields) type
     const type_info = @typeInfo(C).@"struct";
     const field_resolver = FieldResolver(C);
 
-    const exclude_properties = field_resolver.propertyList("exclude_properties");
+    const excluded_properties = field_resolver.propertyList("excluded_properties");
 
     return switch (type_info.layout) {
         .auto, .@"extern" => struct {
@@ -372,7 +435,7 @@ pub fn InputFields(comptime C: type, comptime options: Options.InputFields) type
                 }
 
                 fields: inline for (fields) |field| {
-                    comptime if (exclude_properties.contains(field.name)) continue :fields;
+                    comptime if (excluded_properties.contains(field.name)) continue :fields;
                     InputField(C, field).drawImpl(component, ui, is_open);
                 }
             }
@@ -405,7 +468,7 @@ pub fn InputFields(comptime C: type, comptime options: Options.InputFields) type
                 });
 
                 fields: inline for (fields) |field| {
-                    comptime if (exclude_properties.contains(field.name)) continue :fields;
+                    comptime if (excluded_properties.contains(field.name)) continue :fields;
                     @field(result.value.item.unpacked, field.name) = @field(component, field.name);
                 }
 
@@ -421,7 +484,7 @@ pub fn InputFields(comptime C: type, comptime options: Options.InputFields) type
                 }
 
                 fields: inline for (unpacked_fields) |field| {
-                    comptime if (exclude_properties.contains(field.name)) continue :fields;
+                    comptime if (excluded_properties.contains(field.name)) continue :fields;
 
                     const target_ptr = &@field(self.component, field.name);
                     const field_ptr = &@field(self.unpacked, field.name);
@@ -494,7 +557,7 @@ pub fn InputCheckbox(comptime options: Options.InputCheckbox) type {
         component: *C,
 
         pub const Self = @This();
-        pub const name = options.name;
+        pub var name: [:0]const u8 = options.name;
 
         pub fn init(component: *C) Self {
             return .{ .component = component };
@@ -517,7 +580,7 @@ pub fn InputCheckbox(comptime options: Options.InputCheckbox) type {
             c.igTextUnformatted(name, null);
 
             _ = c.igTableNextColumn();
-            const value_changed = c.igCheckbox("##" ++ name, component);
+            const value_changed = c.igCheckbox(name, component);
 
             c.igPopID();
             return value_changed;
@@ -526,7 +589,7 @@ pub fn InputCheckbox(comptime options: Options.InputCheckbox) type {
         pub fn element(self: *const Self) UI.Element {
             return .{
                 .ptr = @ptrCast(self.component),
-                .drawFn = @ptrCast(&drawElement),
+                .drawFn = @ptrCast(&drawImpl),
             };
         }
     };
@@ -722,7 +785,7 @@ pub fn InputScalar(comptime C: type, comptime count: usize, comptime options: Op
         component: CPtr,
 
         pub const Self = @This();
-        pub const name = options.name;
+        pub var name: [:0]const u8 = options.name;
         pub const depth = 0;
         pub const min = options.min orelse defaults.min;
         pub const max = options.max orelse defaults.max;
@@ -735,7 +798,7 @@ pub fn InputScalar(comptime C: type, comptime count: usize, comptime options: Op
         }
 
         pub fn draw(self: *const Self, ui: *const UI, is_open: *bool) void {
-            drawImpl(self.component, ui, is_open);
+            _ = drawImpl(self.component, ui, is_open);
         }
 
         fn drawElement(component: CPtr, ui: *const UI, is_open: *bool) void {
@@ -759,9 +822,9 @@ pub fn InputScalar(comptime C: type, comptime count: usize, comptime options: Op
                         .relative => relSpeed(component),
                     };
 
-                    break :blk c.igDragScalarN("##" ++ name, data_type, component, count, speed_val, &min, &max, null, 0);
+                    break :blk c.igDragScalarN(name, data_type, component, count, speed_val, &min, &max, null, 0);
                 },
-                .slider => c.igSliderScalarN("##" ++ name, data_type, component, count, &min, &max, null, 0),
+                .slider => c.igSliderScalarN(name, data_type, component, count, &min, &max, null, 0),
             };
 
             c.igPopID();
@@ -846,16 +909,22 @@ fn StripOptional(comptime T: type) type {
     return if (isOptional(T)) StripOptional(std.meta.Child(T)) else T;
 }
 
-fn refFields(comptime fields: []const StdType.StructField) []const StdType.StructField {
+fn refFields(
+    comptime fields: []const StdType.StructField,
+    comptime excluded_properties: PropertyListImpl,
+) []const StdType.StructField {
     comptime {
         var result: []const StdType.StructField = &[_]StdType.StructField{};
-        for (fields) |field| result = result ++ &[_]StdType.StructField{.{
-            .name = field.name,
-            .type = *field.type,
-            .default_value_ptr = null,
-            .is_comptime = field.is_comptime,
-            .alignment = @alignOf(*field.type),
-        }};
+        for (fields) |field| {
+            if (excluded_properties.contains(field.name)) continue;
+            result = result ++ &[_]StdType.StructField{.{
+                .name = field.name,
+                .type = *field.type,
+                .default_value_ptr = null,
+                .is_comptime = field.is_comptime,
+                .alignment = @alignOf(*field.type),
+            }};
+        }
         return result;
     }
 }

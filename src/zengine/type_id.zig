@@ -4,7 +4,7 @@
 
 const std = @import("std");
 
-const TypeId = *const struct {
+pub const TypeId = *const struct {
     _: u8,
 };
 

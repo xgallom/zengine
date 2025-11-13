@@ -5,15 +5,15 @@
 const std = @import("std");
 const assert = std.debug.assert;
 
-const c = @import("../ext.zig").c;
-const global = @import("../global.zig");
-const math = @import("../math.zig");
-const ui = @import("../ui.zig");
-const MeshBuffer = @import("MeshBuffer.zig");
+const c = @import("../../ext.zig").c;
+const global = @import("../../global.zig");
+const math = @import("../../math.zig");
+const ui = @import("../../ui.zig");
+const mesh = @import("../mesh.zig");
 
 const log = std.log.scoped(.gfx_mesh_object);
 
-pub const MeshBufferType = enum {
+pub const BufferType = enum {
     mesh,
     tex_coords_u,
     tex_coords_v,
@@ -22,48 +22,40 @@ pub const MeshBufferType = enum {
     binormals,
 };
 
-pub const FaceType = enum {
-    invalid,
-    point,
-    line,
-    triangle,
-    pub const arr_len = 3;
-};
-
-pub const face_vert_counts: std.EnumArray(FaceType, usize) = .init(.{
+pub const face_vert_counts: std.EnumArray(mesh.FaceType, usize) = .init(.{
     .invalid = 0,
     .point = 1,
     .line = 2,
     .triangle = 3,
 });
 
-mesh_bufs: MeshBuffers = .initUndefined(),
+mesh_bufs: Buffers = .initUndefined(),
 sections: Sections = .empty,
 groups: Groups = .empty,
-face_type: FaceType,
+face_type: mesh.FaceType,
+is_visible: BufferFlags = .initOne(.mesh),
 has_active: packed struct {
     section: bool = false,
     group: bool = false,
 } = .{},
-is_visible: MeshBufferFlags = .initOne(.mesh),
 
 const Self = @This();
-pub const MeshBuffers = std.EnumArray(MeshBufferType, *MeshBuffer);
-pub const MeshBufferFlags = std.EnumSet(MeshBufferType);
+pub const Buffers = std.EnumArray(BufferType, *mesh.Buffer);
+pub const BufferFlags = std.EnumSet(BufferType);
 const Sections = std.ArrayList(Section);
 const Groups = std.ArrayList(Group);
 
-pub const exclude_properties: ui.property_editor.PropertyList = &.{ .mesh_bufs, .sections, .groups };
+pub const excluded_properties: ui.property_editor.PropertyList = &.{ .mesh_bufs, .sections, .groups };
 pub const is_visible_input = struct {
-    ptr: *MeshBufferFlags,
+    ptr: *BufferFlags,
 
-    pub fn init(ptr: *MeshBufferFlags) @This() {
+    pub fn init(ptr: *BufferFlags) @This() {
         return .{ .ptr = ptr };
     }
 
     pub fn draw(self: *const @This(), ui_ptr: *const ui.UI, is_open: *bool) void {
         ui.property_editor.InputFields(
-            packed struct(std.bit_set.IntegerBitSet(MeshBufferFlags.len).MaskInt) {
+            packed struct(std.bit_set.IntegerBitSet(BufferFlags.len).MaskInt) {
                 mesh: bool,
                 tex_coords_u: bool,
                 tex_coords_v: bool,
@@ -93,7 +85,7 @@ pub const AddSectionResult = struct {
     section: *Section,
 };
 
-pub fn init(face_type: FaceType) Self {
+pub fn init(face_type: mesh.FaceType) Self {
     return .{ .face_type = face_type };
 }
 

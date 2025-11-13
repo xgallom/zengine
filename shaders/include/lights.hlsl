@@ -4,6 +4,16 @@
 #include <zengine.hlsl>
 #include <shading.hlsl>
 
+#ifndef LGH_REG_CBUF_OFFSET
+#error "LGH_REG_CBUF_OFFSET must be defined"
+#endif
+#ifndef LGH_REG_SB_OFFSET
+#error "LGH_REG_SB_OFFSET muse be defined"
+#endif
+
+#define LGH_REG_CBUF_LEN 1
+#define LGH_REG_SB_LEN 1
+
 #define LGH_MIN_DIST_SQR  0.01
 #define LGH_MIN_INTENSITY 0.01
 
@@ -71,7 +81,7 @@ LightDirectional lightDirectional(in float3 world_pos, in float3 normal, in floa
     const float light_int = light_clr.w;
 
     output.dir = light_dir;
-    output.clr = light_clr.xyz;
+    output.clr = light_clr.rgb;
     output.int_diffuse = light_int * highlights.diffuse_falloff;
     output.int_specular = light_int * highlights.specular_falloff;
     return output;
@@ -90,7 +100,7 @@ LightPoint lightPoint(in float3 world_pos, in float3 normal, in float3 camera_di
 
     output.pos = light_pos;
     output.dir = light_dir;
-    output.clr = light_clr.xyz;
+    output.clr = light_clr.rgb;
     output.int_diffuse = light_int * highlights.diffuse_falloff;
     output.int_specular = light_int * highlights.specular_falloff;
     return output;

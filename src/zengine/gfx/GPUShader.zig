@@ -9,7 +9,7 @@ const c = @import("../ext.zig").c;
 const global = @import("../global.zig");
 const math = @import("../math.zig");
 const ui = @import("../ui.zig");
-const Error = @import("Error.zig").Error;
+const Error = @import("error.zig").Error;
 const GPUDevice = @import("GPUDevice.zig");
 
 const log = std.log.scoped(.gfx_gpu_shader);

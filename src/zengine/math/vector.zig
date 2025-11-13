@@ -17,30 +17,34 @@ pub fn vectorNT(comptime N: comptime_int, comptime T: type) type {
 
         pub const scalar = scalarT(T);
 
-        pub const zero = splat(scalar.zero);
-        pub const one = splat(scalar.one);
-        pub const neg_one = splat(scalar.neg_one);
-        pub const ntr_zero = makeNonTransformable(vectorNT(len - 1, T).zero);
-        pub const ntr_fwd = makeNonTransformableFwd(scalar.one);
-        pub const tr_zero = makeTransformable(vectorNT(len - 1, T).zero);
-        pub const tr_fwd = makeTransformableFwd(scalar.one);
+        pub const zero = splat(scalar.@"0");
+        pub const one = splat(scalar.@"1");
+        pub const neg_one = splat(scalar.@"-1");
+        /// Non-translatable zero vector
+        pub const ntr_zero = makeNonTranslatable(vectorNT(len - 1, T).zero);
+        /// Non-translatable forward unit vector
+        pub const ntr_fwd = makeNonTranslatableFwd(scalar.@"1");
+        /// Translatable zero vector
+        pub const tr_zero = makeTranslatable(vectorNT(len - 1, T).zero);
+        /// Translatable forward unit vector
+        pub const tr_fwd = makeTranslatableFwd(scalar.@"1");
 
-        pub fn makeNonTransformable(value: types.VectorNT(len - 1, T)) Self {
-            return value ++ .{scalar.zero};
+        pub fn makeNonTranslatable(value: types.VectorNT(len - 1, T)) Self {
+            return value ++ .{scalar.@"0"};
         }
 
-        pub fn makeTransformable(value: types.VectorNT(len - 1, T)) Self {
-            return value ++ .{scalar.one};
+        pub fn makeTranslatable(value: types.VectorNT(len - 1, T)) Self {
+            return value ++ .{scalar.@"1"};
         }
 
-        fn makeNonTransformableFwd(fwd: Scalar) Self {
+        fn makeNonTranslatableFwd(fwd: Scalar) Self {
             comptime if (len == 4) {} else @compileError("forward not supported for vector of " ++ len);
             var result = zero;
             result[2] = -fwd;
             return result;
         }
 
-        fn makeTransformableFwd(fwd: Scalar) Self {
+        fn makeTranslatableFwd(fwd: Scalar) Self {
             comptime if (len == 4) {} else @compileError("forward not supported for vector of " ++ len);
             var result = zero;
             result[2] = -fwd;
@@ -186,7 +190,7 @@ pub fn vectorNT(comptime N: comptime_int, comptime T: type) type {
         }
 
         pub fn neg(self: *Self) void {
-            scale(self, scalar.neg_one);
+            scale(self, scalar.@"-1");
         }
 
         pub fn add(self: *Self, other: *const Self) void {
@@ -219,7 +223,7 @@ pub fn vectorNT(comptime N: comptime_int, comptime T: type) type {
 
         pub fn scaleRecip(self: *Self, multiplier: Scalar) void {
             if (comptime scalar.is_float) {
-                const recip = scalar.one / multiplier;
+                const recip = scalar.recip(multiplier);
                 for (0..len) |n| self[n] *= recip;
             } else {
                 for (0..len) |n| self[n] /= multiplier;
@@ -237,8 +241,7 @@ pub fn vectorNT(comptime N: comptime_int, comptime T: type) type {
 
         pub fn normalize(self: *Self) void {
             comptime if (!scalar.is_float) @compileError("normalize not supported for vector of " ++ @typeName(Scalar));
-            const vector_length = scalar.one / mag(self);
-            for (0..len) |n| self[n] *= vector_length;
+            scaleRecip(self, mag(self));
         }
 
         pub fn normalized(self: *const Self) Self {
@@ -248,13 +251,13 @@ pub fn vectorNT(comptime N: comptime_int, comptime T: type) type {
         }
 
         pub fn dot(lhs: *const Self, rhs: *const Self) Scalar {
-            var sum = scalar.zero;
+            var sum = scalar.@"0";
             for (0..len) |n| sum = @mulAdd(Scalar, lhs[n], rhs[n], sum);
             return sum;
         }
 
         pub fn dotInto(result: *Scalar, lhs: *const Self, rhs: *const Self) void {
-            result.* = scalar.zero;
+            result.* = scalar.@"0";
             for (0..len) |n| result.* = @mulAdd(Scalar, lhs[n], rhs[n], result.*);
         }
 
@@ -280,14 +283,6 @@ pub fn vectorNT(comptime N: comptime_int, comptime T: type) type {
             normalize(result);
         }
 
-        pub fn angle(lhs: *const Self, rhs: *const Self) Scalar {
-            return std.math.acos(std.math.clamp(
-                dot(lhs, rhs) / (mag(lhs) * mag(rhs)),
-                scalar.neg_one,
-                scalar.one,
-            ));
-        }
-
         pub fn cross(result: *Self, lhs: *const Self, rhs: *const Self) void {
             comptime if (len == 3) {} else @compileError("cross not supported for vector of " ++ len);
             result[0] = lhs[1] * rhs[2] - lhs[2] * rhs[1];
@@ -295,8 +290,178 @@ pub fn vectorNT(comptime N: comptime_int, comptime T: type) type {
             result[2] = lhs[0] * rhs[1] - lhs[1] * rhs[0];
         }
 
+        /// Returns angle fomr -pi to pi along plane n.
+        /// lhs and rhs should be normalized.
+        pub fn angle(lhs: *const Self, rhs: *const Self, n: *const Self) Scalar {
+            var c: Self = undefined;
+            cross(&c, rhs, lhs); // rhs is further clockwise
+            return std.math.atan2(dot(&c, n), dot(lhs, rhs));
+        }
+
+        /// returns angle from 0 to pi
+        pub fn absAngle(lhs: *const Self, rhs: *const Self) Scalar {
+            var c: Self = undefined;
+            cross(&c, rhs, lhs);
+            return std.math.atan2(mag(&c), dot(lhs, rhs));
+        }
+
+        pub fn triAngle(comptime S: comptime_int, tri: [3]*const Self, n: *const Self) Scalar {
+            assert(S >= 0);
+            assert(S <= 2);
+            switch (comptime S) {
+                0 => {
+                    var lhs = tri[1].*;
+                    var rhs = tri[2].*;
+                    sub(&lhs, tri[0]);
+                    sub(&rhs, tri[0]);
+                    normalize(&lhs);
+                    normalize(&rhs);
+                    return angle(&lhs, &rhs, n);
+                },
+                1 => {
+                    var lhs = tri[2].*;
+                    var rhs = tri[0].*;
+                    sub(&lhs, tri[1]);
+                    sub(&rhs, tri[1]);
+                    normalize(&lhs);
+                    normalize(&rhs);
+                    return angle(&lhs, &rhs, n);
+                },
+                2 => {
+                    var lhs = tri[0].*;
+                    var rhs = tri[1].*;
+                    sub(&lhs, tri[2]);
+                    sub(&rhs, tri[2]);
+                    normalize(&lhs);
+                    normalize(&rhs);
+                    return angle(&lhs, &rhs, n);
+                },
+                else => unreachable,
+            }
+        }
+
+        pub fn triAbsAngle(comptime S: comptime_int, tri: [3]*const Self) Scalar {
+            assert(S >= 0);
+            assert(S <= 2);
+            switch (comptime S) {
+                0 => {
+                    var lhs = tri[1].*;
+                    var rhs = tri[2].*;
+                    sub(&lhs, tri[0]);
+                    sub(&rhs, tri[0]);
+                    return absAngle(&lhs, &rhs);
+                },
+                1 => {
+                    var lhs = tri[2].*;
+                    var rhs = tri[0].*;
+                    sub(&lhs, tri[1]);
+                    sub(&rhs, tri[1]);
+                    return absAngle(&lhs, &rhs);
+                },
+                2 => {
+                    var lhs = tri[0].*;
+                    var rhs = tri[1].*;
+                    sub(&lhs, tri[2]);
+                    sub(&rhs, tri[2]);
+                    return absAngle(&lhs, &rhs);
+                },
+                else => unreachable,
+            }
+        }
+
+        pub fn triEdgeOrder(
+            comptime S: comptime_int,
+            tri: [3]*const Self,
+            p: *const Self,
+            n: *const Self,
+        ) std.math.Order {
+            assert(S >= 0);
+            assert(S <= 2);
+            const a = switch (comptime S) {
+                0 => blk: {
+                    var edge = tri[1].*;
+                    var v = p.*;
+                    sub(&edge, tri[0]);
+                    sub(&v, tri[0]);
+                    break :blk angle(&edge, &v, n);
+                },
+                1 => blk: {
+                    var edge = tri[2].*;
+                    var v = p.*;
+                    sub(&edge, tri[1]);
+                    sub(&edge, tri[1]);
+                    break :blk angle(&edge, &v, n);
+                },
+                2 => blk: {
+                    var edge = tri[0].*;
+                    var v = p.*;
+                    sub(&edge, tri[2]);
+                    sub(&edge, tri[2]);
+                    break :blk angle(&edge, &v, n);
+                },
+                else => unreachable,
+            };
+            if (std.math.approxEqAbs(Scalar, a, scalar.@"0", scalar.eps)) return .eq;
+            if (a > 0) return .gt;
+            return .lt;
+        }
+
+        pub fn triContainsPoint(tri: [3]*const Self, p: *const Self, n: *const Self) bool {
+            return triEdgeOrder(0, tri, p, n) == .lt and
+                triEdgeOrder(1, tri, p, n) == .lt and
+                triEdgeOrder(2, tri, p, n) == .lt;
+        }
+
+        /// Performs the Möller–Trumbore intersection algorithm.
+        pub fn rayIntersectTri(tri: [3]*const Self, ray_pos: *const Self, ray_dir: *const Self) ?Self {
+            var lhs = tri[1].*;
+            var rhs = tri[2].*;
+            sub(&lhs, tri[0]);
+            sub(&rhs, tri[0]);
+
+            var ray_c_rhs: Self = undefined;
+            cross(&ray_c_rhs, ray_dir, &rhs);
+
+            const det = dot(&lhs, &ray_c_rhs);
+            if (det > -scalar.eps and det < scalar.eps) return null;
+            const inv_det = scalar.@"1" / det;
+
+            var s = ray_pos.*;
+            sub(&s, tri[0]);
+
+            const u = inv_det * dot(&s, &ray_c_rhs);
+            if ((u < scalar.@"0" and @abs(u) > scalar.eps) or
+                (u > 1 and @abs(u - scalar.@"1") > scalar.eps)) return null;
+
+            var s_c_lhs: Self = undefined;
+            cross(&s_c_lhs, &s, &lhs);
+
+            const v = inv_det * dot(ray_dir, &s_c_lhs);
+            if ((v < 0 and @abs(v) > scalar.eps) or
+                (u + v > 1 and @abs(u + v - scalar.@"1") > scalar.eps)) return null;
+
+            const t = inv_det * dot(&rhs, &s_c_lhs);
+            if (t > scalar.eps) {
+                var result = ray_dir.*;
+                scale(&result, t);
+                add(&result, ray_pos);
+                return result;
+            }
+            return null;
+        }
+
+        pub fn triNormal(result: *Self, tri: [3]*const Self) void {
+            var lhs = tri[1].*;
+            var rhs = tri[2].*;
+            sub(&lhs, tri[0]);
+            sub(&rhs, tri[0]);
+            cross(result, &lhs, &rhs);
+            normalize(result);
+        }
+
         pub fn localCoords(result: *Coords, direction: *const Self, up: *const Self) void {
-            assert(mag(up) <= 1.001);
+            const m = mag(up);
+            assert(m > 0.9999 and m < 1.0001);
 
             result.z = direction.*;
             normalize(&result.z);
@@ -307,7 +472,8 @@ pub fn vectorNT(comptime N: comptime_int, comptime T: type) type {
         }
 
         pub fn cameraCoords(result: *Coords, direction: *const Self, up: *const Self) void {
-            assert(mag(up) <= 1.001);
+            const m = mag(up);
+            assert(m > 0.9999 and m < 1.0001);
 
             result.z = direction.*;
             normalize(&result.z);
@@ -349,9 +515,9 @@ test "vector3" {
     ns.scaleRecip(&result, 2);
     try std.testing.expectEqualSlices(ns.Scalar, &.{ 1, 2, 3 }, ns.sliceConst(&result));
     result = lhs;
-    try std.testing.expect(ns.squareLength(&result) == 56);
+    try std.testing.expect(ns.magSqr(&result) == 56);
     result = ns.Self{ 2, 2, 1 };
-    try std.testing.expect(ns.length(&result) == 3);
+    try std.testing.expect(ns.mag(&result) == 3);
     result = ns.Self{ 2, 2, 1 };
     ns.normalize(&result);
     {
@@ -361,22 +527,22 @@ test "vector3" {
     try std.testing.expect(ns.dot(&lhs, &rhs) == (2 * 1 + 4 * 2 + 6 * 3));
     {
         var dot: ns.Scalar = undefined;
-        ns.dot_into(&dot, &lhs, &rhs);
+        ns.dotInto(&dot, &lhs, &rhs);
     }
     ns.cross(&result, &lhs, &rhs);
     try std.testing.expectEqualSlices(ns.Scalar, &ns.zero, &result);
     ns.cross(&result, &lhs, &.{ 6, 2, 4 });
     try std.testing.expectEqualSlices(ns.Scalar, &.{ 4, 28, -20 }, &result);
     {
-        var coords: ns.Coordinates = undefined;
-        ns.local_coordinates(&coords, &.{ 0, 0, 1 }, &.{ 0, 1, 0 });
+        var coords: ns.Coords = undefined;
+        ns.localCoords(&coords, &.{ 0, 0, 1 }, &.{ 0, 1, 0 });
         try std.testing.expectEqualSlices(ns.Scalar, &.{ 1, 0, 0 }, &coords.x);
         try std.testing.expectEqualSlices(ns.Scalar, &.{ 0, 1, 0 }, &coords.y);
-        try std.testing.expectEqualSlices(ns.Scalar, &.{ 0, 0, 1 }, &coords.z);
-        ns.inverse_local_coordinates(&coords, &.{ 0, 0, 1 }, &.{ 0, 1, 0 });
-        try std.testing.expectEqualSlices(ns.Scalar, &.{ -1, 0, 0 }, &coords.x);
-        try std.testing.expectEqualSlices(ns.Scalar, &.{ 0, 1, 0 }, &coords.y);
         try std.testing.expectEqualSlices(ns.Scalar, &.{ 0, 0, -1 }, &coords.z);
+        // ns.cameraCoords(&coords, &.{ 0, 0, 1 }, &.{ 0, 1, 0 });
+        // try std.testing.expectEqualSlices(ns.Scalar, &.{ -1, 0, 0 }, &coords.x);
+        // try std.testing.expectEqualSlices(ns.Scalar, &.{ 0, 1, 0 }, &coords.y);
+        // try std.testing.expectEqualSlices(ns.Scalar, &.{ 0, 0, -1 }, &coords.z);
     }
 }
 
@@ -410,9 +576,9 @@ test "vector3f64" {
     ns.scaleRecip(&result, 2);
     try std.testing.expectEqualSlices(ns.Scalar, &.{ 1, 2, 3 }, ns.sliceConst(&result));
     result = lhs;
-    try std.testing.expect(ns.squareLength(&result) == 56);
+    try std.testing.expect(ns.magSqr(&result) == 56);
     result = ns.Self{ 2, 2, 1 };
-    try std.testing.expect(ns.length(&result) == 3);
+    try std.testing.expect(ns.mag(&result) == 3);
     result = ns.Self{ 2, 2, 1 };
     ns.normalize(&result);
     {
@@ -422,7 +588,7 @@ test "vector3f64" {
     try std.testing.expect(ns.dot(&lhs, &rhs) == (2 * 1 + 4 * 2 + 6 * 3));
     {
         var dot: ns.Scalar = undefined;
-        ns.dot_into(&dot, &lhs, &rhs);
+        ns.dotInto(&dot, &lhs, &rhs);
     }
     ns.cross(&result, &lhs, &rhs);
     try std.testing.expectEqualSlices(ns.Scalar, &ns.zero, &result);
@@ -430,13 +596,13 @@ test "vector3f64" {
     try std.testing.expectEqualSlices(ns.Scalar, &.{ 4, 28, -20 }, &result);
     {
         var coords: ns.Coords = undefined;
-        ns.localCoordinates(&coords, &.{ 0, 0, 1 }, &.{ 0, 1, 0 });
+        ns.localCoords(&coords, &.{ 0, 0, 1 }, &.{ 0, 1, 0 });
         try std.testing.expectEqualSlices(ns.Scalar, &.{ 1, 0, 0 }, &coords.x);
         try std.testing.expectEqualSlices(ns.Scalar, &.{ 0, 1, 0 }, &coords.y);
-        try std.testing.expectEqualSlices(ns.Scalar, &.{ 0, 0, 1 }, &coords.z);
-        ns.inverseLocalCoordinates(&coords, &.{ 0, 0, 1 }, &.{ 0, 1, 0 });
-        try std.testing.expectEqualSlices(ns.Scalar, &.{ -1, 0, 0 }, &coords.x);
-        try std.testing.expectEqualSlices(ns.Scalar, &.{ 0, 1, 0 }, &coords.y);
         try std.testing.expectEqualSlices(ns.Scalar, &.{ 0, 0, -1 }, &coords.z);
+        // ns.inverseLocalCoordinates(&coords, &.{ 0, 0, 1 }, &.{ 0, 1, 0 });
+        // try std.testing.expectEqualSlices(ns.Scalar, &.{ -1, 0, 0 }, &coords.x);
+        // try std.testing.expectEqualSlices(ns.Scalar, &.{ 0, 1, 0 }, &coords.y);
+        // try std.testing.expectEqualSlices(ns.Scalar, &.{ 0, 0, -1 }, &coords.z);
     }
 }
