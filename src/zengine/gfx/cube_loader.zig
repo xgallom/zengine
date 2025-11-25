@@ -39,13 +39,17 @@ pub fn loadFile(gpa: std.mem.Allocator, path: []const u8) !LookUpTable {
             if (str.eql(cmd, "TITLE")) {
                 const name = str.trimRest(&iter);
                 if (name.len == 0) return error.SyntaxError;
-                log.debug("title {}", .{name});
+                log.debug("title {s}", .{name});
                 // lgh_ptr = try data.addOne(gpa);
                 // lgh_ptr.?.* = .{ .name = try str.dupeZ(name) };
             } else if (str.eql(cmd, "LUT_3D_SIZE")) {
                 dim_len = try parseSize(&iter);
                 try data.ensureTotalCapacityPrecise(gpa, dim_len * dim_len * dim_len);
                 log.debug("3D size {}", .{dim_len});
+            } else if (str.eql(cmd, "DOMAIN_MIN")) {
+                log.warn("DOMAIN_MAX not impemented", .{});
+            } else if (str.eql(cmd, "DOMAIN_MAX")) {
+                log.warn("DOMAIN_MAX not impemented", .{});
             } else {
                 assert(dim_len > 0);
                 iter.reset();

@@ -34,12 +34,17 @@ var global_registry: GlobalRegistry = undefined;
 pub fn create() !*Self {
     if (global_self != null) return global_self.?;
 
-    if (!c.SDL_Init(c.SDL_INIT_VIDEO | c.SDL_INIT_AUDIO)) {
+    if (!c.SDL_Init(c.SDL_INIT_VIDEO | c.SDL_INIT_AUDIO | c.SDL_INIT_GAMEPAD)) {
         log.err("init failed: {s}", .{c.SDL_GetError()});
         return Error.EngineFailed;
     }
 
     c.SDL_SetLogOutputFunction(@ptrCast(&sdlLog), null);
+
+    if (!c.TTF_Init()) {
+        log.err("ttf init failed: {s}", .{c.SDL_GetError()});
+        return Error.EngineFailed;
+    }
 
     global_registry = try .init();
     const self = try allocators.global().create(Self);
@@ -69,6 +74,15 @@ pub fn deinit(self: *Self) void {
     global_registry.deinit();
     global_self = null;
     c.SDL_Quit();
+}
+
+pub fn setCursorVisible(self: *const Self, visible: bool) !void {
+    _ = self;
+    const result = if (visible) c.SDL_ShowCursor() else c.SDL_HideCursor();
+    if (!result) {
+        log.err("failed setting cursor visible to {}: {s}", .{ visible, c.SDL_GetError() });
+        return Error.EngineFailed;
+    }
 }
 
 pub inline fn createProperties(comptime Registry: type, key: Registry.Key) !*Properties {

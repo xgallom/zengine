@@ -308,7 +308,7 @@ const Section = struct {
     pub fn end(self: *Section) void {
         const now = time.getNano();
         if (self.pause_clock.isRunning()) self.clock.unpause(&self.pause_clock, now);
-        self.buf[frametime_mask.offset(self.idx)] = @intCast(self.clock.elapsed(now));
+        self.buf[frametime_mask.offset(self.idx)] = @intCast(@min(self.clock.elapsed(now), std.math.maxInt(u32)));
         self.clock.reset();
         self.idx += 1;
         self.flags.state = .ended;

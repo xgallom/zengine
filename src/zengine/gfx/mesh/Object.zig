@@ -13,13 +13,27 @@ const mesh = @import("../mesh.zig");
 
 const log = std.log.scoped(.gfx_mesh_object);
 
-pub const BufferType = enum {
+pub const BufferType = enum(u8) {
     mesh,
     tex_coords_u,
     tex_coords_v,
     normals,
     tangents,
     binormals,
+};
+
+pub const BufferFlagsType = enum(u8) {
+    mesh,
+    tex_coords_u,
+    tex_coords_v,
+    normals,
+    tangents,
+    binormals,
+    origin,
+
+    pub fn from(t: BufferType) BufferFlagsType {
+        return @enumFromInt(@intFromEnum(t));
+    }
 };
 
 pub const face_vert_counts: std.EnumArray(mesh.FaceType, usize) = .init(.{
@@ -41,11 +55,11 @@ has_active: packed struct {
 
 const Self = @This();
 pub const Buffers = std.EnumArray(BufferType, *mesh.Buffer);
-pub const BufferFlags = std.EnumSet(BufferType);
+pub const BufferFlags = std.EnumSet(BufferFlagsType);
 const Sections = std.ArrayList(Section);
 const Groups = std.ArrayList(Group);
 
-pub const excluded_properties: ui.property_editor.PropertyList = &.{ .mesh_bufs, .sections, .groups };
+pub const excluded_properties: ui.property_editor.PropertyList = &.{ .mesh_bufs, .groups };
 pub const is_visible_input = struct {
     ptr: *BufferFlags,
 
@@ -62,6 +76,7 @@ pub const is_visible_input = struct {
                 normals: bool,
                 tangents: bool,
                 binormals: bool,
+                origin: bool,
             },
             .{ .name = "is_visible" },
         ).init(@ptrCast(&self.ptr.bits.mask)).draw(ui_ptr, is_open);

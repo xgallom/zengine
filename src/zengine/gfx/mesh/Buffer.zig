@@ -21,7 +21,7 @@ type: Type,
 
 const Self = @This();
 pub const Type = enum { vertex, index };
-pub const excluded_properties: ui.property_editor.PropertyList = &.{ .cpu_bufs, .gpu_bufs };
+pub const excluded_properties: ui.property_editor.PropertyList = &.{.gpu_bufs};
 
 pub fn Elem(comptime buf_type: Type) type {
     return switch (buf_type) {

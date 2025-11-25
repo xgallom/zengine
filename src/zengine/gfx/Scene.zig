@@ -13,9 +13,12 @@ const global = @import("../global.zig");
 const math = @import("../math.zig");
 const perf = @import("../perf.zig");
 const ui = @import("../ui.zig");
+const pass = @import("pass.zig");
 const Camera = @import("Camera.zig");
 const Light = @import("Light.zig");
 const mesh = @import("mesh.zig");
+const ttf = @import("ttf.zig");
+const gfx_render = @import("render.zig");
 const Renderer = @import("Renderer.zig");
 pub const Node = @import("Scene/Node.zig");
 const Nodes = Node.Tree;
@@ -40,6 +43,8 @@ pub const Flattened = struct {
     cameras: FlatList(Camera) = .empty,
     lights: FlatList(Light) = .empty,
     mesh_objs: FlatList(mesh.Object) = .empty,
+    ui_objs: FlatList(mesh.Object) = .empty,
+    text_objs: FlatList(ttf.Text) = .empty,
 
     pub fn lightCounts(self: *const Flattened) std.EnumArray(Light.Type, u32) {
         var result: std.EnumArray(Light.Type, u32) = .initFill(0);
@@ -47,8 +52,15 @@ pub const Flattened = struct {
         return result;
     }
 
-    pub fn render(self: *const Flattened, ui_ptr: ?*ui.UI, items_iter: anytype) !bool {
-        return self.scene.renderer.renderScene(self, ui_ptr, items_iter);
+    pub fn render(
+        self: *const Flattened,
+        ui_ptr: ?*ui.UI,
+        items_iter: *gfx_render.Items.Object,
+        ui_iter: *gfx_render.Items.Object,
+        text_iter: *gfx_render.Items.Text,
+        bloom: *const pass.Bloom,
+    ) !bool {
+        return gfx_render.renderScene(self.scene.renderer, self, ui_ptr, items_iter, ui_iter, text_iter, bloom);
     }
 
     pub fn rayCast(flat: *const Flattened, ray_pos: *const math.Vector3, ray_dir: *const math.Vector3) void {
@@ -133,19 +145,21 @@ pub fn flatten(self: *const Self) !Flattened {
     const s = self.nodes.slice();
     var walk = self.nodes.head;
     while (walk != .invalid) : (walk = s.node(walk).next) {
-        try flattenWalk(&flat, &s, walk, &math.matrix4x4.identity, &tr_scratch);
+        try self.flattenWalk(&flat, &s, walk, &math.matrix4x4.identity, &tr_scratch);
     }
 
     return flat;
 }
 
 fn flattenWalk(
+    self: *const Self,
     flat: *Flattened,
     s: *const Node.Tree.Slice,
     node: Node.Id,
     tr_parent: *const math.Matrix4x4,
     tr_scratch: *math.Matrix4x4,
 ) !void {
+    if (!self.nodes.isPresent(node)) return;
     s.transform(node).transform(tr_scratch);
     math.matrix4x4.dot(s.matrix(node), tr_parent, tr_scratch);
 
@@ -168,6 +182,16 @@ fn flattenWalk(
             .target = flat.scene.renderer.mesh_objs.getPtr(s.target(node).key),
             .transform = s.matrix(node).*,
         }),
+        .ui => try flat.ui_objs.append(allocators.frame(), .{
+            .key = s.target(node).key,
+            .target = flat.scene.renderer.mesh_objs.getPtr(s.target(node).key),
+            .transform = s.matrix(node).*,
+        }),
+        .text => try flat.text_objs.append(allocators.frame(), .{
+            .key = s.target(node).key,
+            .target = flat.scene.renderer.texts.getPtr(s.target(node).key),
+            .transform = s.matrix(node).*,
+        }),
     }
 
     log.debug("walk scene", .{});
@@ -180,7 +204,7 @@ fn flattenWalk(
 
     var walk = s.node(node).child;
     while (walk != .invalid) : (walk = s.node(walk).next) {
-        try flattenWalk(flat, s, walk, s.matrix(node), tr_scratch);
+        try self.flattenWalk(flat, s, walk, s.matrix(node), tr_scratch);
     }
 }
 

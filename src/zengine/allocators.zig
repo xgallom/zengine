@@ -7,6 +7,7 @@ const assert = std.debug.assert;
 pub const Arena = std.heap.ArenaAllocator;
 
 const c = @import("ext.zig").c;
+const ChunkAllocator = @import("ChunkAllocator.zig");
 const log_allocator = @import("log_allocator.zig");
 const options = @import("zengine.zig").options;
 const sdl_allocator = @import("sdl_allocator.zig");
@@ -33,6 +34,7 @@ const Self = struct {
     gpa_state: GPA = undefined,
     log_state: LogAllocator = undefined,
     gpa: std.mem.Allocator = undefined,
+    chunk: ChunkAllocator = undefined,
     arena_states: std.EnumArray(ArenaKey, Arena) = .initUndefined(),
     arenas: std.EnumArray(ArenaKey, std.mem.Allocator) = .initUndefined(),
     max_alloc: usize = 0,
@@ -50,6 +52,7 @@ const Self = struct {
             .alloc_callback = &updateMaxAlloc,
         };
         self.gpa = self.log_state.allocator();
+        self.chunk = .init(self.gpa);
 
         var iter = self.arena_states.iterator();
         while (iter.next()) |item| {
@@ -61,6 +64,7 @@ const Self = struct {
     fn deinit(self: *Self) std.heap.Check {
         var iter = self.arena_states.iterator();
         while (iter.next()) |item| item.value.deinit();
+        self.chunk.deinit();
         return self.gpa_state.deinit();
     }
 
@@ -128,6 +132,11 @@ pub inline fn sdl() type {
 pub inline fn gpa() std.mem.Allocator {
     assert(is_init);
     return global_state.gpa;
+}
+
+pub inline fn chunk() std.mem.Allocator {
+    assert(is_init);
+    return global_state.chunk.allocator();
 }
 
 pub inline fn memoryLimit() usize {

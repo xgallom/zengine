@@ -14,6 +14,7 @@ pub fn Controls(comptime K: type) type {
         pub const Key = K;
         pub const Value = @typeInfo(Key).@"enum".tag_type;
         const max_key = std.math.maxInt(Value);
+        pub const init: Self = .{};
 
         comptime {
             assert(max_key <= std.math.maxInt(std.math.Log2Int(usize)));

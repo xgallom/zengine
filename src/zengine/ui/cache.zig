@@ -14,7 +14,10 @@ const log = std.log.scoped(.ui_cache);
 
 pub fn Cache(comptime K: type) type {
     return struct {
-        map: std.AutoHashMapUnmanaged(K, Value(anyopaque)) = .empty,
+        map: if (K == [:0]const u8)
+            std.StringHashMapUnmanaged(Value(anyopaque))
+        else
+            std.AutoHashMapUnmanaged(K, Value(anyopaque)) = .empty,
 
         pub const Self = @This();
         pub const empty: Self = .{};

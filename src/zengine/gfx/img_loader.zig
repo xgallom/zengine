@@ -38,7 +38,7 @@ fn load(config: *const OpenConfig, buf: []const u8) !Surface {
     const surf = c.IMG_Load_IO(c.SDL_IOFromConstMem(buf.ptr, buf.len), true);
     if (surf == null) {
         log.err("image load failed for \"{s}\": {s}", .{ config.file_path, c.SDL_GetError() });
-        return error.ImageFailed;
+        return Error.ImageFailed;
     }
     return .fromOwned(surf);
 }

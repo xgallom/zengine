@@ -38,7 +38,7 @@ pub fn deinit(self: *Self, gpu_device: GPUDevice) void {
     if (self.isValid()) destroy(gpu_device, self.toOwned());
 }
 
-fn create(gpu_device: GPUDevice, info: *const CreateInfo) !*c.SDL_GPUShader {
+pub fn create(gpu_device: GPUDevice, info: *const CreateInfo) !*c.SDL_GPUShader {
     assert(gpu_device.isValid());
     const ptr = c.SDL_CreateGPUShader(gpu_device.ptr, &c.SDL_GPUShaderCreateInfo{
         .code = info.code.ptr,
@@ -58,7 +58,7 @@ fn create(gpu_device: GPUDevice, info: *const CreateInfo) !*c.SDL_GPUShader {
     return ptr.?;
 }
 
-fn destroy(gpu_device: GPUDevice, ptr: *c.SDL_GPUShader) void {
+pub fn destroy(gpu_device: GPUDevice, ptr: *c.SDL_GPUShader) void {
     assert(gpu_device.isValid());
     c.SDL_ReleaseGPUShader(gpu_device.ptr, ptr);
 }

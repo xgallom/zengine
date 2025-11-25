@@ -29,12 +29,14 @@ pub const std_options: std.Options = .{
     .log_scope_levels = &.{
         // .{ .scope = .alloc, .level = .debug },
         // .{ .scope = .engine, .level = .debug },
+        .{ .scope = .ecs_component_storage, .level = .debug },
         // .{ .scope = .gfx_mesh, .level = .debug },
         // .{ .scope = .gfx_obj_loader, .level = .debug },
         // .{ .scope = .gfx_renderer, .level = .debug },
         // .{ .scope = .gfx_shader, .level = .debug },
-        .{ .scope = .gfx_shader_loader, .level = .debug },
+        // .{ .scope = .gfx_shader_loader, .level = .debug },
         // .{ .scope = .gfx_loader, .level = .debug },
+        // .{ .scope = .gfx_cube_loader, .level = .debug },
         // .{ .scope = .key_tree, .level = .debug },
         // .{ .scope = .radix_tree, .level = .debug },
         // .{ .scope = .scheduler, .level = .debug },
@@ -50,7 +52,7 @@ pub const zengine_options: zengine.Options = .{
     .log_allocations = false,
     .gfx = .{
         .enable_normal_smoothing = true,
-        .normal_smoothing_angle_limit = 89.9,
+        .normal_smoothing_angle_limit = 90.1,
     },
 };
 
@@ -73,9 +75,31 @@ const Config = struct {
     }
 };
 
+const RenderPasses = struct {
+    bloom: gfx.pass.Bloom = .{},
+
+    pub fn propertyEditor(self: *RenderPasses) ui.Element {
+        return ui.PropertyEditor(RenderPasses).init(self).element();
+    }
+
+    pub fn propertyEditorNode(
+        self: *RenderPasses,
+        editor: *ui.PropertyEditorWindow,
+        parent: *ui.PropertyEditorWindow.Item,
+    ) !*ui.PropertyEditorWindow.Item {
+        return editor.appendChild(
+            parent,
+            self.propertyEditor(),
+            @typeName(RenderPasses),
+            "Render Passes",
+        );
+    }
+};
+
 var config: Config = .{};
 
 var gfx_loader: gfx.Loader = undefined;
+var gfx_passes: RenderPasses = .{};
 var flat_scene: Scene.Flattened = undefined;
 var scene_map: zengine.containers.ArrayMap(Scene.Node.Id) = .empty;
 
@@ -168,10 +192,13 @@ fn load(self: *const Zengine) !bool {
         _ = try gfx_loader.loadMesh("cottage.obj");
         // _ = try gfx_loader.loadMesh("audi_A3.obj");
 
+        try gfx_loader.createGraphicsPipelines();
         _ = try gfx_loader.createOriginMesh();
         _ = try gfx_loader.createDefaultMaterial();
         _ = try gfx_loader.createTestingMaterial();
         _ = try gfx_loader.createDefaultTexture();
+
+        try gfx.pass.Bloom.init(&gfx_loader);
 
         {
             var camera_position: math.Vector3 = .{ 4, 8, 10 };
@@ -189,7 +216,13 @@ fn load(self: *const Zengine) !bool {
 
         _ = try gfx_loader.loadLights("scene.lgh");
         _ = try gfx_loader.createLightsBuffer(null);
-        _ = try gfx_loader.loadLut("lut/basic.cube");
+
+        // self.renderer.settings.lut = "lut/SoftBlackAndWhite.cube";
+        _ = try gfx_loader.loadLut(self.renderer.settings.lut);
+
+        const font = try gfx_loader.loadFont("fonts/minecraft.ttf", 12);
+        _ = try self.renderer.createText("Test", font, "Test");
+
         try gfx_loader.commit();
     }
 
@@ -236,6 +269,15 @@ fn load(self: *const Zengine) !bool {
         .scale = .{ 10, 10, 10 },
         .euler_order = .zyx,
     });
+    _ = try self.scene.createChildNode(objects, "Cube Hard", .object("Cube"), &.{
+        .translation = .{ 5, 0, 0 },
+        .scale = .{ 3, 3, 3 },
+    });
+    _ = try self.scene.createChildNode(objects, "Cube Smooth", .object("Cube Smooth"), &.{
+        .translation = .{ -5, 0, 0 },
+        .scale = .{ 3, 3, 3 },
+    });
+    _ = try self.scene.createRootNode("Text", .text("Test"), &.{});
 
     // const car = try self.scene.createChildNode(objects, "Car", .node(), &.{});
     // _ = try self.scene.createChildNode(car, "Plane", .object("Plane.004_Plane.022"), &.{});
@@ -262,7 +304,7 @@ fn load(self: *const Zengine) !bool {
         .order = .trs,
     });
 
-    for (0..10) |_| {
+    for (0..3) |_| {
         const cube_r = try self.scene.createChildNode(cubes, "Red", .node(), &.{
             .translation = rnd.vector3(),
         });
@@ -306,6 +348,7 @@ fn load(self: *const Zengine) !bool {
     _ = try self.renderer.propertyEditorNode(&property_editor, gfx_node);
     _ = try gfx_loader.propertyEditorNode(&property_editor, gfx_node);
     _ = try self.scene.propertyEditorNode(&property_editor, gfx_node);
+    _ = try gfx_passes.propertyEditorNode(&property_editor, gfx_node);
 
     _ = try propertyEditorNode(&property_editor);
 
@@ -484,8 +527,10 @@ fn render(self: *const Zengine) !void {
 
     self.ui.endDraw();
 
-    var items: gfx.Renderer.Items = .init(&flat_scene);
-    _ = try flat_scene.render(self.ui, &items);
+    var items: gfx.render.Items.Object = .init(&flat_scene, .mesh_objs);
+    var ui_items: gfx.render.Items.Object = .init(&flat_scene, .ui_objs);
+    var texts: gfx.render.Items.Text = .init(&flat_scene);
+    _ = try flat_scene.render(self.ui, &items, &ui_items, &texts, &gfx_passes.bloom);
 }
 
 fn executeRaycast(self: *const Zengine) void {
@@ -532,15 +577,15 @@ fn executeRaycast(self: *const Zengine) void {
 }
 
 fn updateScene(self: *const Zengine, delta: f32) void {
-    _ = self;
-    _ = delta;
-    // const s = self.scene.nodes.slice();
-    // const cubes = scene_map.get("cubes");
-    //
-    // var cube = s.node(cubes).child;
-    // while (cube != .invalid) : (cube = s.node(cube).next) {
-    //     rnd.step(&s.transform(cube).translation, delta);
-    // }
+    // _ = self;
+    // _ = delta;
+    const s = self.scene.nodes.slice();
+    const cubes = scene_map.get("cubes");
+
+    var cube = s.node(cubes).child;
+    while (cube != .invalid) : (cube = s.node(cube).next) {
+        rnd.step(&s.transform(cube).translation, delta);
+    }
 }
 
 fn updateCameraControls(

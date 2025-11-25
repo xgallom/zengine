@@ -3,7 +3,7 @@ const assert = std.debug.assert;
 
 const component_array_list = @import("component_array_list.zig");
 const ComponentArrayList = component_array_list.ComponentArrayList;
-const PrimitiveComponentArrayList = component_array_list.PrimitiveComponentArrayList;
+const MultiComponentArrayList = component_array_list.MultiComponentArrayList;
 const types = @import("types.zig");
 const FlagsBitSet = types.FlagsBitSet;
 const ComponentFlagsBitSet = types.ComponentFlagsBitSet;
@@ -131,6 +131,6 @@ pub fn ComponentManager(comptime C: type) type {
     return AnyComponentManager(C, ComponentArrayList(C));
 }
 
-pub fn PrimitiveComponentManager(comptime C: type) type {
-    return AnyComponentManager(C, PrimitiveComponentArrayList(C));
+pub fn MultiComponentManager(comptime C: type) type {
+    return AnyComponentManager(C, MultiComponentArrayList(C));
 }

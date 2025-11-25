@@ -116,6 +116,10 @@ float2 aspectRatio(float wh_ratio) {
      return float2(wh_ratio, 1);
 }
 
+float2 texelSize(float w, float h) {
+    return float2(1 / w, 1 / h);
+}
+
 float2 mixOscillate(float2 a, float2 b, float t) {
     const float c = cos(t), s = sin(t);
     return c * c * a + s * s * b;

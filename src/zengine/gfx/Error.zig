@@ -14,6 +14,8 @@ pub const Error = error{
     SurfaceFailed,
     TextureFailed,
     TransferBufferFailed,
+    TextFailed,
+    FontFailed,
     SamplerFailed,
     LightFailed,
     CameraFailed,

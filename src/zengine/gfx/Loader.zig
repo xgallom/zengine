@@ -6,6 +6,7 @@ const std = @import("std");
 const assert = std.debug.assert;
 
 const allocators = @import("../allocators.zig");
+const ArrayMap = @import("../containers.zig").ArrayMap;
 const ArrayPoolMap = @import("../containers.zig").ArrayPoolMap;
 const ecs = @import("../ecs.zig");
 const c = @import("../ext.zig").c;
@@ -14,20 +15,25 @@ const math = @import("../math.zig");
 const perf = @import("../perf.zig");
 const str = @import("../str.zig");
 const ui_mod = @import("../ui.zig");
+const cube_loader = @import("cube_loader.zig");
 const Error = @import("error.zig").Error;
 const GPUBuffer = @import("GPUBuffer.zig");
+const GPUGraphicsPipeline = @import("GPUGraphicsPipeline.zig");
+const GPUShader = @import("GPUShader.zig");
 const img_loader = @import("img_loader.zig");
-const cube_loader = @import("cube_loader.zig");
 const lgh_loader = @import("lgh_loader.zig");
+const LookUpTable = @import("LookUpTable.zig");
 const MaterialInfo = @import("MaterialInfo.zig");
 const mesh = @import("mesh.zig");
 const mtl_loader = @import("mtl_loader.zig");
 const obj_loader = @import("obj_loader.zig");
 const Renderer = @import("Renderer.zig");
 const Scene = @import("Scene.zig");
+const shader_loader = @import("shader_loader.zig");
 const Surface = @import("Surface.zig");
 const SurfaceTexture = @import("SurfaceTexture.zig");
-const LookUpTable = @import("LookUpTable.zig");
+const ttf = @import("ttf.zig");
+const ttf_loader = @import("ttf_loader.zig");
 const UploadTransferBuffer = @import("UploadTransferBuffer.zig");
 
 const log = std.log.scoped(.gfx_loader);
@@ -40,17 +46,20 @@ pub const Target = enum {
 };
 
 renderer: *Renderer,
+fonts: Fonts,
 surface_textures: SurfaceTextures,
 look_up_tables: LookUpTables,
 modifs: std.EnumArray(Target, std.ArrayList([]const u8)),
 
 const Self = @This();
+const Fonts = ArrayMap(ttf.Font);
 const SurfaceTextures = ArrayPoolMap(SurfaceTexture, .{});
 const LookUpTables = ArrayPoolMap(LookUpTable, .{});
 
 pub fn init(renderer: *Renderer) !Self {
     return .{
         .renderer = renderer,
+        .fonts = try .init(renderer.allocator, 128),
         .surface_textures = try .init(renderer.allocator, 128),
         .look_up_tables = try .init(renderer.allocator, 128),
         .modifs = .initFill(.empty),
@@ -61,6 +70,8 @@ pub fn deinit(self: *Self) void {
     const gpa = self.renderer.allocator;
     const gpu_device = self.renderer.gpu_device;
 
+    for (self.fonts.values()) |*font| font.deinit();
+    self.fonts.deinit(self.renderer.allocator);
     for (self.surface_textures.map.values()) |tex| tex.deinit(gpu_device);
     self.surface_textures.deinit();
     for (self.look_up_tables.map.values()) |tex| tex.deinit(self.renderer.allocator, self.renderer.gpu_device);
@@ -93,6 +104,49 @@ pub fn commit(self: *Self) !void {
 
 pub fn flagModified(self: *Self, comptime target: Target, key: []const u8) !void {
     return self.modifs.getPtr(target).append(self.renderer.allocator, key);
+}
+
+pub fn loadShader(self: *Self, comptime stage: GPUShader.Stage, asset_path: []const u8) !GPUShader {
+    log.debug("loading shader {s}", .{asset_path});
+    var shader = shader_loader.loadFile(&.{
+        .allocator = self.renderer.allocator,
+        .gpu_device = self.renderer.gpu_device,
+        .shader_path = asset_path,
+        .stage = stage,
+    }) catch |err| {
+        log.err("failed creating {t} shader \"{s}\": {t}", .{ stage, asset_path, err });
+        return Error.ShaderFailed;
+    };
+    assert(shader.isValid());
+    errdefer shader.deinit(self.renderer.gpu_device);
+    return self.renderer.insertShader(asset_path, shader.ptr.?);
+}
+
+pub fn loadImage(self: *Self, asset_path: [:0]const u8) !*mesh.Buffer {
+    log.debug("loading image {s}", .{asset_path});
+    _ = try self.loadTexture(asset_path);
+    const mtl = try self.renderer.createMaterial(asset_path);
+    mtl.texture = asset_path;
+    mtl.diffuse_map = asset_path;
+    const buf = try self.createRectangle(asset_path);
+    const mesh_obj = try self.renderer.createMeshObject(asset_path, .triangle);
+    mesh_obj.mesh_bufs.set(.mesh, buf);
+    try mesh_obj.beginSection(self.renderer.allocator, 0, asset_path);
+    mesh_obj.endSection(buf.vertCount(.index));
+    return buf;
+}
+
+pub fn loadFont(self: *Self, asset_path: [:0]const u8, size_pts: f32) !ttf.Font {
+    log.debug("loading font {s}", .{asset_path});
+    const font_path = try global.assetPath(asset_path);
+    var result = try ttf_loader.loadFile(&.{
+        .allocator = self.renderer.allocator,
+        .file_path = font_path,
+        .size_pts = size_pts,
+    });
+    errdefer result.deinit();
+    _ = try self.fonts.insert(self.renderer.allocator, asset_path, result);
+    return result;
 }
 
 pub fn loadMesh(self: *Self, asset_path: []const u8) !*mesh.Buffer {
@@ -207,6 +261,111 @@ pub fn loadLut(self: *Self, asset_path: []const u8) !*LookUpTable {
     const lut = try self.look_up_tables.insert(asset_path, &cube);
     try self.flagModified(.look_up_table, asset_path);
     return lut;
+}
+
+pub fn createGraphicsPipelines(self: *Self) !void {
+    const screen_vert = try self.loadShader(.vertex, "system/screen.vert");
+    const position_vert = try self.loadShader(.vertex, "system/position.vert");
+    const vertex_vert = try self.loadShader(.vertex, "system/vertex.vert");
+
+    const color_frag = try self.loadShader(.fragment, "system/color.frag");
+    const material_frag = try self.loadShader(.fragment, "system/material.frag");
+    // const image_frag = try self.loadShader(.fragment, "system/image.frag");
+    const blend_frag = try self.loadShader(.fragment, "system/blend.frag");
+    const render_frag = try self.loadShader(.fragment, "system/render.frag");
+
+    log.info("swapchain format: {t}", .{self.renderer.swapchainFormat()});
+    var pipeline: GPUGraphicsPipeline.CreateInfo = .{
+        .target_info = .{
+            .color_target_descriptions = &.{
+                .{ .format = self.renderer.swapchainFormat(), .blend_state = .blend },
+            },
+        },
+    };
+
+    pipeline.vertex_shader = screen_vert;
+    pipeline.fragment_shader = blend_frag;
+    _ = try self.renderer.createGraphicsPipeline("blend", &pipeline);
+
+    pipeline.vertex_shader = screen_vert;
+    pipeline.fragment_shader = render_frag;
+    _ = try self.renderer.createGraphicsPipeline("render", &pipeline);
+
+    pipeline.rasterizer_state.enable_depth_clip = true;
+    pipeline.depth_stencil_state = .depth_test_and_write;
+    pipeline.target_info = .{
+        .color_target_descriptions = &.{
+            .{ .format = .hdr_f, .blend_state = .blend },
+        },
+        .has_depth_stencil_target = true,
+        .depth_stencil_format = self.renderer.stencil_format,
+    };
+
+    pipeline.vertex_shader = position_vert;
+    pipeline.fragment_shader = color_frag;
+    pipeline.vertex_input_state = .{
+        .vertex_buffer_descriptions = &.{
+            .{ .slot = 0, .pitch = @sizeOf(math.Vector3), .input_rate = .vertex, .instance_step_rate = 0 },
+        },
+        .vertex_attributes = &.{
+            .{ .location = 0, .buffer_slot = 0, .format = .f32_3, .offset = 0 },
+        },
+    };
+    pipeline.primitive_type = .line_list;
+    pipeline.rasterizer_state.fill_mode = .line;
+    _ = try self.renderer.createGraphicsPipeline("line", &pipeline);
+
+    pipeline.vertex_shader = vertex_vert;
+    pipeline.fragment_shader = material_frag;
+    pipeline.vertex_input_state = .{
+        .vertex_buffer_descriptions = &.{
+            .{ .slot = 0, .pitch = @sizeOf(math.Vertex), .input_rate = .vertex, .instance_step_rate = 0 },
+        },
+        .vertex_attributes = &.{
+            .{ .location = 0, .buffer_slot = 0, .format = .f32_3, .offset = 0 },
+            .{ .location = 1, .buffer_slot = 0, .format = .f32_3, .offset = @sizeOf(math.Vector3) },
+            .{ .location = 2, .buffer_slot = 0, .format = .f32_3, .offset = 2 * @sizeOf(math.Vector3) },
+            .{ .location = 3, .buffer_slot = 0, .format = .f32_3, .offset = 3 * @sizeOf(math.Vector3) },
+            .{ .location = 4, .buffer_slot = 0, .format = .f32_3, .offset = 4 * @sizeOf(math.Vector3) },
+        },
+    };
+    pipeline.primitive_type = .triangle_list;
+    pipeline.rasterizer_state.fill_mode = .fill;
+
+    _ = try self.renderer.createGraphicsPipeline("ui", &pipeline);
+
+    pipeline.rasterizer_state.front_face = .clockwise;
+    pipeline.rasterizer_state.cull_mode = .back;
+
+    _ = try self.renderer.createGraphicsPipeline("material", &pipeline);
+
+    // pipeline.fragment_shader = image_frag;
+    // _ = try self.renderer.createGraphicsPipeline("image", &pipeline);
+}
+
+pub fn createRectangle(self: *Self, name: []const u8) !*mesh.Buffer {
+    const rect = try self.renderer.createMeshBuffer(name, .index);
+
+    rect.appendSlice(self.renderer.allocator, .vertex, math.Vertex, 1, &.{
+        .{ .{ -1, -1, 0 }, .{ 0, 1, 0 }, .{ 0, 0, 1 }, .{ 1, 0, 0 }, .{ 0, -1, 0 } },
+        .{ .{ 1, -1, 0 }, .{ 1, 1, 0 }, .{ 0, 0, 1 }, .{ 1, 0, 0 }, .{ 0, -1, 0 } },
+        .{ .{ 1, 1, 0 }, .{ 1, 0, 0 }, .{ 0, 0, 1 }, .{ 1, 0, 0 }, .{ 0, -1, 0 } },
+        .{ .{ -1, 1, 0 }, .{ 0, 0, 0 }, .{ 0, 0, 1 }, .{ 1, 0, 0 }, .{ 0, -1, 0 } },
+    }) catch |err| {
+        log.err("failed appending rectangle vertices: {t}", .{err});
+        return Error.BufferFailed;
+    };
+
+    rect.appendSlice(self.renderer.allocator, .index, math.FaceIndex, 3, &.{
+        .{ 0, 1, 2 },
+        .{ 0, 2, 3 },
+    }) catch |err| {
+        log.err("failed appending rectangle faces: {t}", .{err});
+        return Error.BufferFailed;
+    };
+
+    try self.flagModified(.mesh_buffer, name);
+    return rect;
 }
 
 pub fn createOriginMesh(self: *Self) !*mesh.Buffer {

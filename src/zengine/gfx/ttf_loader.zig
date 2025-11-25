@@ -33,7 +33,7 @@ fn load(config: *const OpenConfig, buf: []const u8) !ttf.Font {
     const font = c.TTF_OpenFontIO(c.SDL_IOFromConstMem(buf.ptr, buf.len), true, config.size_pts);
     if (font == null) {
         log.err("ttf font load failed for \"{s}\": {s}", .{ config.file_path, c.SDL_GetError() });
-        return error.ImageFailed;
+        return Error.FontFailed;
     }
-    return .fromOwned(font);
+    return .fromOwned(font.?);
 }

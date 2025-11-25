@@ -2,14 +2,16 @@ const std = @import("std");
 const assert = std.debug.assert;
 pub const FlagsBitSet = std.DynamicBitSetUnmanaged;
 
+pub const ComponentStorage = @import("ecs/component_storage.zig").ComponentStorage;
+pub const MultiComponentStorage = @import("ecs/component_storage.zig").MultiComponentStorage;
 pub const component_array_list = @import("ecs/component_array_list.zig");
 const ComponentArrayList = component_array_list.ComponentArrayList;
-const PrimitiveComponentArrayList = component_array_list.PrimitiveComponentArrayList;
+const MultiComponentArrayList = component_array_list.MultiComponentArrayList;
 pub const component_flags_array_list = @import("ecs/component_flags_array_list.zig");
 pub const ComponentFlagsArrayListUnmanaged = component_flags_array_list.ComponentFlagsArrayListUnmanaged;
 pub const component_manager = @import("ecs/component_manager.zig");
 pub const ComponentManager = component_manager.ComponentManager;
-pub const PrimitiveComponentManager = component_manager.PrimitiveComponentManager;
+pub const MultiComponentManager = component_manager.MultiComponentManager;
 
 pub const ComponentFlagsBitSet = std.StaticBitSet(512);
 pub const ComponentFlag = u32;
@@ -17,8 +19,10 @@ pub const ComponentFlag = u32;
 pub const Entity = u32;
 pub const null_entity: Entity = 0;
 
+pub const Id = @import("ecs/types.zig").Id;
+
 pub const OpaqueComponentArrayList = ComponentArrayList(struct {});
-pub const OpaquePrimitiveComponentArrayList = PrimitiveComponentArrayList(u64);
+pub const OpaquePrimitiveComponentArrayList = MultiComponentArrayList(u64);
 
 pub const ComponentsHashMapUnmanaged = std.StringArrayHashMapUnmanaged(OpaqueComponentArrayList);
 pub const PrimitiveComponentsHashMapUnmanaged = std.StringArrayHashMapUnmanaged(OpaquePrimitiveComponentArrayList);
@@ -110,7 +114,7 @@ pub fn ECS(comptime config: struct {
             assert(!self.primitive_components.contains(key));
 
             self.last_component_flag += 1;
-            var item = try PrimitiveComponentArrayList(C).init(component_allocator, component_capacity, self.last_component_flag);
+            var item = try MultiComponentArrayList(C).init(component_allocator, component_capacity, self.last_component_flag);
             const ptr: *OpaquePrimitiveComponentArrayList = @ptrCast(&item);
             try self.primitive_components.put(
                 self.allocator,
@@ -132,7 +136,7 @@ pub fn ECS(comptime config: struct {
             }
         }
 
-        pub fn primitiveComponentArrayListCast(self: *const Self, comptime C: type) *PrimitiveComponentArrayList(C) {
+        pub fn primitiveComponentArrayListCast(self: *const Self, comptime C: type) *MultiComponentArrayList(C) {
             comptime if (!config.enable_primitive_components) @compileError("Primitive components are disabled");
 
             const ptr = self.primitive_components.getPtr(@typeName(C));

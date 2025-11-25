@@ -17,8 +17,12 @@ pub const Param = types.Param;
 pub const Param64 = types.Param64;
 pub const Vector2 = types.Vector2;
 pub const Vector2f64 = types.Vector2f64;
+pub const Vector2i32 = types.Vector2i32;
+pub const Vector2u32 = types.Vector2u32;
 pub const Vector3 = types.Vector3;
 pub const Vector3f64 = types.Vector3f64;
+pub const Vector3i32 = types.Vector3i32;
+pub const Vector3u32 = types.Vector3u32;
 pub const Vector4 = types.Vector4;
 pub const Vector4f64 = types.Vector4f64;
 pub const Matrix3x3 = types.Matrix3x3;
@@ -89,8 +93,12 @@ pub const binoms = paramT(comptime_int).binoms;
 
 pub const vector2 = vectorNT(2, types.Scalar);
 pub const vector2f64 = vectorNT(2, types.Scalar64);
+pub const vector2i32 = vectorNT(2, i32);
+pub const vector2u32 = vectorNT(2, u32);
 pub const vector3 = vectorNT(3, types.Scalar);
 pub const vector3f64 = vectorNT(3, types.Scalar64);
+pub const vector3i32 = vectorNT(3, i32);
+pub const vector3u32 = vectorNT(3, u32);
 pub const vector4 = vectorNT(4, types.Scalar);
 pub const vector4f64 = vectorNT(4, types.Scalar64);
 
@@ -114,6 +122,7 @@ pub const rgba_f64 = vector4T(f64);
 
 pub const vertex = vertexNT(3, f32);
 pub const vertex4 = vertexNT(4, f32);
+pub const tex_coord = vector2T(f32);
 pub const euler = vector3T(f32);
 pub const quat = quatT(f32);
 

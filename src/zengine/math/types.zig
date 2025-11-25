@@ -59,8 +59,12 @@ pub const Param64 = ParamT(Scalar64);
 
 pub const Vector2 = VectorNT(2, Scalar);
 pub const Vector2f64 = VectorNT(2, Scalar64);
+pub const Vector2i32 = VectorNT(2, i32);
+pub const Vector2u32 = VectorNT(2, u32);
 pub const Vector3 = VectorNT(3, Scalar);
 pub const Vector3f64 = VectorNT(3, Scalar64);
+pub const Vector3i32 = VectorNT(3, i32);
+pub const Vector3u32 = VectorNT(3, u32);
 pub const Vector4 = VectorNT(4, Scalar);
 pub const Vector4f64 = VectorNT(4, Scalar64);
 

@@ -1,5 +1,5 @@
-#ifndef _LIGHT_HLSL_
-#define _LIGHT_HLSL_
+#ifndef _LIGHTS_HLSL_
+#define _LIGHTS_HLSL_
 
 #include <zengine.hlsl>
 #include <shading.hlsl>
@@ -17,7 +17,7 @@
 #define LGH_MIN_DIST_SQR  0.01
 #define LGH_MIN_INTENSITY 0.01
 
-float lightDistanceFalloff(in float3 light_ray, in float light_pwr) {
+float lightDistanceFalloff(float3 light_ray, float light_pwr) {
     const float light_dist_sqr = dot(light_ray, light_ray);
     const float light_dist = sqrt(light_dist_sqr);
 
@@ -70,14 +70,15 @@ LightAmbient lightAmbient() {
     return output;
 }
 
-LightDirectional lightDirectional(in float3 world_pos, in float3 normal, in float3 camera_dir, in float specular_exp) {
+LightDirectional lightDirectional(float3 world_pos, float3 normal, float3 camera_dir, float roughness, 
+                                  float fres_0) {
     LightDirectional output;
 
     const float3 light_ray = LightsBuffer.Load(lgh_idx++).xyz;
     const float4 light_clr = LightsBuffer.Load(lgh_idx++);
     const float3 light_dir = normalize(light_ray);
 
-    const Highlights highlights = shadingBlinnPhong(normal, light_dir, camera_dir, specular_exp);
+    const Highlights highlights = shadingGGX(normal, light_dir, camera_dir, roughness, fres_0);
     const float light_int = light_clr.w;
 
     output.dir = light_dir;
@@ -87,7 +88,7 @@ LightDirectional lightDirectional(in float3 world_pos, in float3 normal, in floa
     return output;
 }
 
-LightPoint lightPoint(in float3 world_pos, in float3 normal, in float3 camera_dir, in float specular_exp) {
+LightPoint lightPoint(float3 world_pos, float3 normal, float3 camera_dir, float roughness, float fres_0) {
     LightPoint output;
 
     const float3 light_pos = LightsBuffer.Load(lgh_idx++).xyz;
@@ -95,7 +96,7 @@ LightPoint lightPoint(in float3 world_pos, in float3 normal, in float3 camera_di
     const float3 light_ray = light_pos - world_pos;
     const float3 light_dir = normalize(light_ray);
 
-    const Highlights highlights = shadingBlinnPhong(normal, light_dir, camera_dir, specular_exp);
+    const Highlights highlights = shadingGGX(normal, light_dir, camera_dir, roughness, fres_0);
     const float light_int = lightDistanceFalloff(light_ray, light_clr.w);
 
     output.pos = light_pos;
@@ -106,7 +107,8 @@ LightPoint lightPoint(in float3 world_pos, in float3 normal, in float3 camera_di
     return output;
 }
 
-Light processLights(in float3 world_pos, in float3 normal, in float3 camera_dir, in float specular_exp) {
+Light processLights(float3 world_pos, float3 normal, float3 camera_dir, float roughness,
+                    float fres_0) {
     Light output;
     float3 ambient_light = float3(0, 0, 0);
     float3 diffuse_light = float3(0, 0, 0);
@@ -118,13 +120,13 @@ Light processLights(in float3 world_pos, in float3 normal, in float3 camera_dir,
     }
 
     for (uint n = 0; n < lgh_cnt_directional; ++n) {
-        const LightDirectional light = lightDirectional(world_pos, normal, camera_dir, specular_exp);
+        const LightDirectional light = lightDirectional(world_pos, normal, camera_dir, roughness, fres_0);
         diffuse_light += light.int_diffuse * light.clr;
         specular_light += light.int_specular * light.clr;
     }
 
     for (uint n = 0; n < lgh_cnt_point; ++n) {
-        const LightPoint light = lightPoint(world_pos, normal, camera_dir, specular_exp);
+        const LightPoint light = lightPoint(world_pos, normal, camera_dir, roughness, fres_0);
         diffuse_light += light.int_diffuse * light.clr;
         specular_light += light.int_specular * light.clr;
     }

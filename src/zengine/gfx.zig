@@ -4,7 +4,6 @@
 
 const std = @import("std");
 
-const Properties = @import("Properties.zig");
 pub const Camera = @import("gfx/Camera.zig");
 pub const CPUBuffer = @import("gfx/CPUBuffer.zig");
 pub const Error = @import("gfx/error.zig").Error;
@@ -26,6 +25,8 @@ pub const MaterialInfo = @import("gfx/MaterialInfo.zig");
 pub const mesh = @import("gfx/mesh.zig");
 pub const mtl_loader = @import("gfx/mtl_loader.zig");
 pub const obj_loader = @import("gfx/obj_loader.zig");
+pub const pass = @import("gfx/pass.zig");
+pub const render = @import("gfx/render.zig");
 pub const Renderer = @import("gfx/Renderer.zig");
 pub const Scene = @import("gfx/Scene.zig");
 pub const shader_loader = @import("gfx/shader_loader.zig");
@@ -33,11 +34,20 @@ pub const Surface = @import("gfx/Surface.zig");
 pub const SurfaceTexture = @import("gfx/SurfaceTexture.zig");
 pub const types = @import("gfx/types.zig");
 pub const UploadTransferBuffer = @import("gfx/UploadTransferBuffer.zig");
+const Properties = @import("Properties.zig");
 
 pub const registry_list = Properties.registryList(&.{
     SurfaceTexture.Registry,
 });
 // pub const Vertices = @import("gfx/Vertices.zig");
+
+pub fn register() !void {
+    try Renderer.sections.register();
+    try Renderer.sections.sub(.render)
+        .sections(&.{ .acquire, .init, .items, .origin, .ui, .submit })
+        .register();
+    try Scene.sections.register();
+}
 
 test {
     std.testing.refAllDecls(@This());

@@ -233,6 +233,8 @@ fn parseLine(self: *Self, line: []const u8) !void {
                 try self.faces.append(self.allocator, face);
                 self.face_polygon.clearRetainingCapacity();
             }
+        } else if (str.eql(cmd, "l")) {
+            log.warn("line not implemented", .{});
         } else if (str.eql(cmd, "s")) {
             const smoothing = try parseSmoothing(&iter);
             log.debug("parsed smoothing group {x}", .{smoothing});

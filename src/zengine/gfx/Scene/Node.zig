@@ -5,9 +5,11 @@
 const std = @import("std");
 const assert = std.debug.assert;
 
+const allocators = @import("../../allocators.zig");
 const global = @import("../../global.zig");
 const math = @import("../../math.zig");
 const ui = @import("../../ui.zig");
+const ecs = @import("../../ecs.zig");
 const Transform = @import("Transform.zig");
 
 const log = std.log.scoped(.gfx_scene_camera);
@@ -23,53 +25,15 @@ const Self = @This();
 
 pub const excluded_properties: ui.property_editor.PropertyList = &.{.matrix};
 
-pub const Id = enum(u64) {
-    invalid = 0,
-    _,
-
-    pub const Meta = enum(u16) { invalid, valid };
-    pub const Gen = u16;
-    pub const Idx = u32;
-    pub const Decomposed = packed struct(u64) {
-        meta: Meta = .valid,
-        gen: Gen,
-        idx: Idx,
-    };
-
-    pub inline fn compose(id: Decomposed) Id {
-        return @enumFromInt(@as(u64, @bitCast(id)));
-    }
-
-    pub inline fn decompose(id: Id) Decomposed {
-        return @bitCast(@intFromEnum(id));
-    }
-
-    pub inline fn isValid(id: Id) bool {
-        return id != .invalid;
-    }
-
-    pub inline fn gen(id: Id) Idx {
-        return id.decompose().gen;
-    }
-
-    pub inline fn idx(id: Id) Idx {
-        return id.decompose().idx;
-    }
-
-    pub fn format(self: @This(), writer: *std.Io.Writer) std.Io.Writer.Error!void {
-        const d = self.decompose();
-        switch (d.meta) {
-            .invalid => _ = try writer.write("invalid"),
-            .valid => try writer.print("{}@{}", .{ d.idx, d.gen }),
-        }
-    }
-};
+pub const Id = ecs.Id;
 
 pub const Type = enum {
     empty,
     camera,
     light,
     object,
+    ui,
+    text,
 };
 
 pub const Target = struct {
@@ -91,6 +55,14 @@ pub const Target = struct {
     pub fn object(key: [:0]const u8) Target {
         return .{ .key = key, .type = .object };
     }
+
+    pub fn ui(key: [:0]const u8) Target {
+        return .{ .key = key, .type = .ui };
+    }
+
+    pub fn text(key: [:0]const u8) Target {
+        return .{ .key = key, .type = .text };
+    }
 };
 
 pub const Flags = packed struct {
@@ -106,10 +78,8 @@ pub fn Flat(comptime T: type) type {
 }
 
 pub const Tree = struct {
-    data: std.MultiArrayList(Self) = .empty,
-    gens: std.ArrayList(Id.Gen) = .empty,
-    free: std.ArrayList(Id.Idx) = .empty,
-    present: std.DynamicBitSetUnmanaged = .{},
+    storage: ecs.MultiComponentStorage(Self) = .empty,
+    removed: std.ArrayList(Id) = .empty,
     head: Id = .invalid,
     tail: Id = .invalid,
 
@@ -118,8 +88,12 @@ pub const Tree = struct {
     pub const Slice = struct {
         slice: std.MultiArrayList(Self).Slice,
 
+        pub fn nodeIdx(self: Slice, idx: Id.Idx) *Node {
+            return &self.slice.items(.node)[idx];
+        }
+
         pub fn node(self: Slice, id: Id) *Node {
-            return &self.slice.items(.node)[id.idx()];
+            return self.nodeIdx(id.idx());
         }
 
         pub fn name(self: Slice, id: Id) [:0]const u8 {
@@ -162,10 +136,8 @@ pub const Tree = struct {
     };
 
     pub fn deinit(self: *Tree, gpa: std.mem.Allocator) void {
-        self.data.deinit(gpa);
-        self.gens.deinit(gpa);
-        self.free.deinit(gpa);
-        self.present.deinit(gpa);
+        self.storage.deinit(gpa);
+        self.removed.deinit(gpa);
         self.head = .invalid;
         self.tail = .invalid;
     }
@@ -196,7 +168,6 @@ pub const Tree = struct {
             tail_node.next = id;
         }
         self.tail = id;
-        log.info("{any} {any} {any} {any}", .{ self.head, self.tail, id, self.data.items(.node) });
         return id;
     }
 
@@ -208,7 +179,6 @@ pub const Tree = struct {
         target: Target,
         transform: *const Transform,
     ) !Id {
-        self.assertPresent(parent);
         const id = try self.addOne(gpa);
         const s = self.slice();
         const parent_node = s.node(parent);
@@ -240,51 +210,61 @@ pub const Tree = struct {
     }
 
     fn addOne(self: *Tree, gpa: std.mem.Allocator) !Id {
-        if (self.free.pop()) |idx| {
-            const gen = self.gens.items[idx];
-            self.present.set(idx);
-            return .compose(.{ .gen = gen, .idx = idx });
-        } else {
-            const idx = try self.data.addOne(gpa);
-            const gen = 0;
-            try self.gens.append(gpa, gen);
-            if (self.present.bit_length <= idx) try self.present.resize(gpa, idx + 1, false);
-            self.present.set(idx);
-            return .compose(.{ .gen = gen, .idx = @intCast(idx) });
-        }
+        return self.storage.addOne(gpa);
     }
 
     pub fn remove(self: *Tree, gpa: std.mem.Allocator, id: Id) !void {
-        const d = id.decompose();
-        self.assertPresent(d);
-        self.gens.items[d.idx] += 1;
-        self.present.unset(d.idx);
-        try self.free.append(gpa, d.idx);
+        assert(self.storage.isPresent(id));
+        try self.removed.append(gpa, id);
+    }
+
+    pub fn cleanupRemoved(self: *Tree, gpa: std.mem.Allocator) !void {
+        const s = self.slice();
+        while (self.removed.pop()) |id| {
+            const node = s.node(id);
+            if (node.parent.isValid()) {
+                const parent = s.node(node.parent);
+                if (parent.child == id) parent.child = node.next;
+            }
+            try self.cleanupNode(gpa, &s, id);
+        }
+    }
+
+    fn cleanupNode(self: *Tree, gpa: std.mem.Allocator, s: *const Slice, id: Id) !void {
+        const node = s.node(id);
+        if (self.head == id) self.head = .invalid;
+        if (self.tail == id) self.tail = .invalid;
+        if (node.prev.isValid()) s.node(node.prev).next = node.next;
+        if (node.next.isValid()) s.node(node.next).prev = node.prev;
+        node.parent = .invalid;
+        node.prev = .invalid;
+        node.next = .invalid;
+        if (node.child.isValid()) {
+            var walk = node.child;
+            node.child = .invalid;
+            while (walk.isValid()) {
+                const next = s.node(walk).next;
+                try @call(.always_tail, cleanupNode, .{ self, gpa, s, walk });
+                walk = next;
+            }
+        }
+        try self.storage.remove(gpa, id);
     }
 
     pub fn get(self: *const Tree, id: Id) Self {
-        const d = id.decompose();
-        self.assertPresent(d);
-        return self.data.get(d.idx);
+        return self.storage.get(id);
     }
 
     pub fn set(self: *const Tree, id: Id, value: Self) void {
-        const d = id.decompose();
-        self.assertPresent(d);
-        self.data.set(d.idx, value);
+        self.storage.set(id, value);
     }
 
     pub fn slice(self: *const Tree) Slice {
-        return .{ .slice = self.data.slice() };
+        return .{ .slice = self.storage.data.slice() };
     }
 
-    fn assertPresent(self: *const Tree, id: Id) void {
-        const d = id.decompose();
-        assert(d.idx < self.data.len);
-        assert(d.idx < self.present.bit_length);
-        assert(self.present.isSet(d.idx));
-        assert(d.idx < self.gens.items.len);
-        assert(d.gen == self.gens.items[d.idx]);
+    pub fn isPresent(self: *const Tree, id: Id) bool {
+        return self.storage.isPresent(id);
     }
 
     pub fn propertyEditor(self: *const Tree, s: *const Slice, id: Id) !ui.Element {
@@ -302,4 +282,25 @@ pub const Tree = struct {
 
 pub fn hasChildren(self: *const Self) bool {
     return self.node.child != .invalid;
+}
+
+test Tree {
+    const gpa = std.testing.allocator;
+    const self: Tree = .empty;
+    defer self.deinit(gpa);
+    const a = try self.insert(gpa, "A", .node(), &.{});
+    std.testing.expectEqual(self.data.len, 1);
+    std.testing.expectEqual(self.gens.items.len, 1);
+    std.testing.expectEqual(self.removed.items.len, 0);
+    std.testing.expectEqual(self.free.items.len, 0);
+    std.testing.expectEqual(self.present.is, 1);
+    std.testing.expectEqual(self.head, a);
+    std.testing.expectEqual(self.tail, a);
+    {
+        const s = self.slice();
+        std.testing.expectEqual(s.node(a).parent, .invalid);
+        std.testing.expectEqual(s.node(a).prev, .invalid);
+        std.testing.expectEqual(s.node(a).next, .invalid);
+        std.testing.expectEqual(s.node(a).child, .invalid);
+    }
 }

@@ -6,6 +6,7 @@ const std = @import("std");
 const assert = std.debug.assert;
 
 pub const allocators = @import("allocators.zig");
+pub const ChunkAllocator = @import("ChunkAllocator.zig");
 pub const containers = @import("containers.zig");
 pub const controls = @import("controls.zig");
 pub const ecs = @import("ecs.zig");
@@ -32,7 +33,8 @@ var global_self: ?*Zengine = null;
 
 pub const Zengine = struct {
     engine: *Engine,
-    scene: if (options.has_scene) *gfx.Scene else void,
+    // scene: if (options.has_scene) *gfx.Scene else void,
+    scene: *gfx.Scene,
     renderer: *gfx.Renderer,
     ui: if (options.has_ui) *ui.UI else void,
     handlers: Handlers = .{},
@@ -63,6 +65,8 @@ pub const Zengine = struct {
             .sections(&.{ .init, .input, .update, .render })
             .register();
 
+        try gfx.register();
+
         try global.init();
         errdefer global.deinit();
 
@@ -74,7 +78,8 @@ pub const Zengine = struct {
         const renderer = try gfx.Renderer.create(engine);
         errdefer renderer.deinit();
 
-        const scene = if (comptime options.has_scene) try gfx.Scene.create(renderer) else {};
+        // const scene = if (comptime options.has_scene) try gfx.Scene.create(renderer) else {};
+        const scene = if (comptime options.has_scene) try gfx.Scene.create(renderer) else undefined;
         errdefer if (comptime options.has_scene) scene.deinit();
 
         const ui_ptr = if (comptime options.has_ui) try ui.UI.create(renderer) else {};
@@ -101,8 +106,8 @@ pub const Zengine = struct {
     pub fn deinit(self: *Self) void {
         assert(self == global_self);
         perf.releaseGraph();
-        self.ui.deinit();
-        self.scene.deinit();
+        if (comptime options.has_ui) self.ui.deinit();
+        if (comptime options.has_scene) self.scene.deinit();
         self.renderer.deinit();
         global.deinit();
         perf.deinit();

@@ -13,63 +13,14 @@ pub fn ComponentArrayList(comptime C: type) type {
 
         pub const Self = @This();
         pub const Item = C;
-        pub const ArrayList = std.MultiArrayList(C);
-
-        pub fn init(allocator: std.mem.Allocator, capacity: usize, component_flag: ComponentFlag) !Self {
-            var self = Self{
-                .allocator = allocator,
-                .component_flag = component_flag,
-            };
-            try self.components.ensureTotalCapacity(allocator, capacity);
-            return self;
-        }
-
-        pub fn deinit(self: *Self) void {
-            self.components.deinit(self.allocator);
-        }
-
-        pub fn push(self: *Self, value: C) !Entity {
-            const entity = try self.components.addOne(self.allocator);
-            self.components.set(entity, value);
-            return @intCast(entity);
-        }
-
-        pub fn set(self: *Self, entity: Entity, value: C) void {
-            assert(entity < self.len());
-            self.components.set(entity, value);
-        }
-
-        pub fn get(self: *const Self, entity: Entity) C {
-            assert(entity < self.len());
-            return self.components.get(entity);
-        }
-
-        pub fn len(self: *const Self) usize {
-            return self.components.len;
-        }
-
-        pub fn cap(self: *const Self) usize {
-            return self.components.capacity;
-        }
-    };
-}
-
-pub fn PrimitiveComponentArrayList(comptime C: type) type {
-    return struct {
-        allocator: std.mem.Allocator = undefined,
-        components: ArrayList = .{},
-        component_flag: ComponentFlag = 0,
-
-        pub const Self = @This();
-        pub const Item = C;
         pub const ArrayList = std.ArrayList(C);
 
-        pub fn init(allocator: std.mem.Allocator, capacity: usize, component_flag: ComponentFlag) !Self {
+        pub fn init(gpa: std.mem.Allocator, capacity: usize, component_flag: ComponentFlag) !Self {
             var self = Self{
-                .allocator = allocator,
+                .allocator = gpa,
                 .component_flag = component_flag,
             };
-            try self.components.ensureTotalCapacity(allocator, capacity);
+            try self.components.ensureTotalCapacity(gpa, capacity);
             return self;
         }
 
@@ -100,6 +51,55 @@ pub fn PrimitiveComponentArrayList(comptime C: type) type {
 
         pub fn len(self: *const Self) usize {
             return self.components.items.len;
+        }
+
+        pub fn cap(self: *const Self) usize {
+            return self.components.capacity;
+        }
+    };
+}
+
+pub fn MultiComponentArrayList(comptime C: type) type {
+    return struct {
+        allocator: std.mem.Allocator = undefined,
+        components: ArrayList = .{},
+        component_flag: ComponentFlag = 0,
+
+        pub const Self = @This();
+        pub const Item = C;
+        pub const ArrayList = std.MultiArrayList(C);
+
+        pub fn init(gpa: std.mem.Allocator, capacity: usize, component_flag: ComponentFlag) !Self {
+            var self = Self{
+                .allocator = gpa,
+                .component_flag = component_flag,
+            };
+            try self.components.ensureTotalCapacity(gpa, capacity);
+            return self;
+        }
+
+        pub fn deinit(self: *Self) void {
+            self.components.deinit(self.allocator);
+        }
+
+        pub fn push(self: *Self, value: C) !Entity {
+            const entity = try self.components.addOne(self.allocator);
+            self.components.set(entity, value);
+            return @intCast(entity);
+        }
+
+        pub fn set(self: *Self, entity: Entity, value: C) void {
+            assert(entity < self.len());
+            self.components.set(entity, value);
+        }
+
+        pub fn get(self: *const Self, entity: Entity) C {
+            assert(entity < self.len());
+            return self.components.get(entity);
+        }
+
+        pub fn len(self: *const Self) usize {
+            return self.components.len;
         }
 
         pub fn cap(self: *const Self) usize {

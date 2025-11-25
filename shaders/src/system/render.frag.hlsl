@@ -1,7 +1,8 @@
 #include <zengine.hlsl>
 
-#define RENDER_CONFIG_HAS_AGX (1 << 0)
-#define RENDER_CONFIG_HAS_LUT (1 << 1)
+#define RENDER_CONFIG_HAS_AGX  (1 << 0)
+#define RENDER_CONFIG_HAS_LUT  (1 << 1)
+#define RENDER_CONFIG_HAS_SRGB (1 << 2)
 
 cbuffer FragUniformBuffer : register(b0, space3) {
     float exposure;
@@ -19,8 +20,10 @@ SamplerState LUTSampler  : register(s1, space2);
 #define LUT_SCALE (LUT_SIZE - 1) / LUT_SIZE
 #define LUT_OFFSET 1 / (2 * LUT_SIZE)
 
-float3 agxDefaultContrastApprox( float3 x );
+float3 LinearTosRGB(float3 color);
+float3 sRGBToLinear(float3 color);
 float3 AgXToneMapping(float3 color);
+float3 agxDefaultContrastApprox(float3 x);
 
 float4 main(float2 screen_pos : TEXCOORD) : SV_Target {
     const float2 uv = screen_pos * 0.5f + 0.5f; 
@@ -29,18 +32,24 @@ float4 main(float2 screen_pos : TEXCOORD) : SV_Target {
     float3 ldr = src.rgb * exposure + exposure_bias;
     [branch] if (config & RENDER_CONFIG_HAS_AGX)
         ldr = AgXToneMapping(ldr);
-    [branch] if (config & RENDER_CONFIG_HAS_LUT) {
+    [branch] if (config & RENDER_CONFIG_HAS_LUT)
         ldr = LUTMap.Sample(LUTSampler, ldr * LUT_SCALE + LUT_OFFSET).rgb;
-        // const float3 black3 = LUTMap.Sample(LUTSampler, float1(LUT_OFFSET).xxx).rgb;
-        // const float3 white3 = LUTMap.Sample(LUTSampler, float1(1 - LUT_OFFSET).xxx).rgb;
-        // const float3 black = min(black3.r, min(black3.g, black3.b)).xxx;
-        // const float3 white = min(white3.r, min(white3.g, white3.b)).xxx;
-        // ldr = (ldr - black) / (white - black);
-        // ldr = pow(max(0, ldr), 2.2);
-    }
+    [branch] if (config & RENDER_CONFIG_HAS_SRGB)
+        ldr = sRGBToLinear(ldr);
 
     const float3 color = saturate(pow(ldr, 1 / gamma));
     return float4(color, src.a);
+}
+
+float3 LinearTosRGB(float3 color) {
+    const float3 s1 = sqrt(color);
+    const float3 s2 = sqrt(s1);
+    const float3 s3 = sqrt(s2);
+    return 0.662002687 * s1 + 0.684122060 * s2 - 0.323583601 * s3 - 0.0225411470 * color;
+}
+
+float3 sRGBToLinear(float3 color) {
+    return color * (color * (color * 0.305306011 + 0.682171111) + 0.012522878);
 }
 
 // AgX Tone Mapping implementation based on Three.js, which in turn is based
@@ -102,7 +111,7 @@ float3 AgXToneMapping(float3 color) {
 
 // https://iolite-engine.com/blog_posts/minimal_agx_implementation
 // Mean error^2: 3.6705141e-06
-float3 agxDefaultContrastApprox( float3 x ) {
+float3 agxDefaultContrastApprox(float3 x) {
     float3 x2 = x * x;
     float3 x4 = x2 * x2;
     return + 15.5 * x4 * x2

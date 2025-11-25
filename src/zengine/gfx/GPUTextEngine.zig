@@ -9,6 +9,7 @@ const c = @import("../ext.zig").c;
 const global = @import("../global.zig");
 const math = @import("../math.zig");
 const ui = @import("../ui.zig");
+const ttf = @import("ttf.zig");
 const Error = @import("error.zig").Error;
 const GPUDevice = @import("GPUDevice.zig");
 const types = @import("types.zig");
@@ -40,6 +41,11 @@ pub fn create(gpu_device: GPUDevice) !*c.TTF_TextEngine {
 
 pub fn destroy(ptr: *c.TTF_TextEngine) void {
     c.TTF_DestroyGPUTextEngine(ptr);
+}
+
+pub fn text(self: Self, font: ttf.Font, str: []const u8) !ttf.Text {
+    assert(self.isValid());
+    return .init(self, font, str);
 }
 
 pub fn fromOwned(ptr: *c.TTF_TextEngine) Self {

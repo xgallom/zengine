@@ -249,7 +249,7 @@ pub fn InputField(comptime C: type, comptime field: StdType.StructField) type {
         component: *C,
 
         pub const Self = @This();
-        pub const name = field_resolver.default(field_name, field.name);
+        pub const name: [:0]const u8 = field_resolver.default(field_name, field.name);
 
         pub fn init(component: *C) Self {
             return .{ .component = component };
@@ -285,7 +285,7 @@ pub fn InputField(comptime C: type, comptime field: StdType.StructField) type {
                         .one => switch (@typeInfo(field_info.child)) {
                             .bool => inputBool(field_ptr.*, ui, is_open),
                             .int, .float => inputIntOrFloat(field_info.child, field_ptr.*, ui, is_open),
-                            .array => inputArray(field_info.child, field_ptr.*, ui, is_open),
+                            .array => inputAnyArray(field_info.child, field_ptr.*, ui, is_open),
                             .@"struct" => inputStruct(field_info.child, field_ptr.*, ui, is_open),
                             .@"enum" => inputEnum(field_info.child, field_ptr.*, ui, is_open),
                             inline else => {
@@ -293,13 +293,13 @@ pub fn InputField(comptime C: type, comptime field: StdType.StructField) type {
                                 @compileError("Unsupported pointer property");
                             },
                         },
-                        .slice => inputSlice(StripOptional(field.type), field_ptr, ui, is_open),
+                        .slice => inputAnySlice(StripOptional(field.type), field_ptr, ui, is_open),
                         inline else => {
                             @compileLog(field_info);
                             @compileError("Unsupported pointer size");
                         },
                     },
-                    .array => inputArray(field.type, field_ptr, ui, is_open),
+                    .array => inputAnyArray(field.type, field_ptr, ui, is_open),
                     .@"struct" => inputStruct(field.type, field_ptr, ui, is_open),
                     .@"enum" => inputEnum(field.type, field_ptr, ui, is_open),
                     inline else => |field_info| {
@@ -336,22 +336,80 @@ pub fn InputField(comptime C: type, comptime field: StdType.StructField) type {
             comptime assert(@typeInfo(T) == .pointer);
             const field_info = @typeInfo(T).pointer;
 
-            comptime {
-                assert(field_info.size == .slice);
-                if (field_info.child != u8) {
-                    @compileLog(field_info);
-                    @compileError("Only string slices supported");
+            const input_type = comptime field_resolver.default(
+                field_type,
+                if (field_info.child == u8 and field_info.sentinel() == 0) InputType.text else InputType.scalar,
+            );
+            if (input_type == .text and field_info.sentinel() != 0) {
+                @compileError("Only zero-terminated strings supported");
+            }
+            const len = ptr.*.len;
+
+            switch (comptime input_type) {
+                .text => _ = InputText(.{
+                    .name = name,
+                    .read_only = field_info.is_const,
+                }).drawImpl(@constCast(ptr.*[0..len :0]), ui, is_open),
+                .scalar => |scalar_type| {
+                    for (0..len) |n| {
+                        _ = InputScalar(field_info.child, 1, .{
+                            .name = name,
+                            .min = field_resolver.optional(field_min),
+                            .max = field_resolver.optional(field_max),
+                            .speed = field_resolver.optional(field_speed),
+                            .speed_type = field_resolver.optional(field_speed_type),
+                            .input_type = scalar_type,
+                        }).drawImpl(&ptr.*[n], ui, is_open);
+                    }
+                },
+                else => @compileError("Unsupported array type"),
+            }
+        }
+
+        fn inputAnySlice(comptime T: type, ptr: *T, ui: *const UI, is_open: *bool) void {
+            comptime assert(@typeInfo(T) == .pointer);
+
+            if (comptime field_resolver.has(field_type)) {
+                inputSlice(T, ptr, ui, is_open);
+            } else {
+                switch (comptime @typeInfo(std.meta.Child(T))) {
+                    .int, .float => {
+                        inputSlice(T, ptr, ui, is_open);
+                        return;
+                    },
+                    .pointer => |ptr_info| switch (ptr_info.size) {
+                        .one => switch (@typeInfo(ptr_info.child)) {
+                            .int, .float => {
+                                inputSlice(ptr_info.child, ptr.*, ui, is_open);
+                                return;
+                            },
+                            inline else => {},
+                        },
+                        inline else => {},
+                    },
+                    inline else => {},
                 }
-                if (field_info.sentinel() != 0) {
-                    @compileLog(field_info);
-                    @compileError("Only zero-terminated string slices supported");
+
+                for (0..ptr.*.len) |n| {
+                    // switch (comptime @typeInfo(std.meta.Child(T))) {}
+                    const struct_field = StdType.StructField{
+                        .name = "value",
+                        .type = std.meta.Child(T),
+                        .default_value_ptr = null,
+                        .is_comptime = false,
+                        .alignment = @alignOf(T),
+                    };
+                    const Struct = @Type(.{
+                        .@"struct" = .{
+                            .layout = .auto,
+                            .fields = &.{struct_field},
+                            .decls = &.{},
+                            .is_tuple = false,
+                        },
+                    });
+                    InputField(Struct, struct_field).drawFieldImpl(@ptrCast(&ptr.*[n]), ui, is_open);
                 }
             }
-
-            _ = InputText(.{
-                .name = name,
-                .read_only = field_info.is_const,
-            }).drawImpl(@constCast(ptr.*), ui, is_open);
         }
 
         fn inputArray(comptime T: type, ptr: *T, ui: *const UI, is_open: *bool) void {
@@ -378,6 +436,56 @@ pub fn InputField(comptime C: type, comptime field: StdType.StructField) type {
                     .input_type = scalar_type,
                 }).drawImpl(ptr, ui, is_open),
                 else => @compileError("Unsupported array type"),
+            }
+        }
+
+        fn inputAnyArray(
+            comptime T: type,
+            ptr: *[@typeInfo(T).array.len]std.meta.Child(T),
+            ui: *const UI,
+            is_open: *bool,
+        ) void {
+            comptime assert(@typeInfo(T) == .array);
+            const field_info = @typeInfo(T).array;
+
+            if (comptime field_resolver.has(field_type)) {
+                inputArray(T, ptr, ui, is_open);
+            } else {
+                switch (@typeInfo(std.meta.Child(T))) {
+                    .int, .float => {
+                        inputArray(T, ptr, ui, is_open);
+                        return;
+                    },
+                    .pointer => |ptr_info| switch (ptr_info.size) {
+                        .one => switch (@typeInfo(ptr_info.child)) {
+                            .int, .float => {
+                                inputArray(ptr_info.child, ptr.*, ui, is_open);
+                                return;
+                            },
+                            inline else => {},
+                        },
+                        inline else => {},
+                    },
+                    inline else => {},
+                }
+
+                inline for (0..field_info.len) |n| {
+                    const struct_field = StdType.StructField{
+                        .name = std.fmt.comptimePrint(name ++ "[{}]", .{n}),
+                        .type = std.meta.Child(T),
+                        .default_value_ptr = null,
+                        .is_comptime = false,
+                        .alignment = @alignOf(T),
+                    };
+                    InputField(@Type(.{
+                        .@"struct" = .{
+                            .layout = .auto,
+                            .fields = &.{struct_field},
+                            .decls = &.{},
+                            .is_tuple = false,
+                        },
+                    }), struct_field).drawFieldImpl(&ptr[n], ui, is_open);
+                }
             }
         }
 
@@ -427,7 +535,7 @@ pub fn InputFields(comptime C: type, comptime options: Options.InputFields) type
             }
 
             pub fn drawImpl(component: *C, ui: *const UI, is_open: *bool) void {
-                if (comptime name != null) {
+                if (name != null) {
                     InputNull(.{
                         .name = name.?,
                         .show_value = false,
@@ -777,7 +885,10 @@ pub fn InputScalar(comptime C: type, comptime count: usize, comptime options: Op
                 .max = std.math.inf(C),
             },
         },
-        else => @compileError("Unsupported scalar property " ++ options.name),
+        else => @compileError(std.fmt.comptimePrint(
+            "Unsupported scalar property " ++ options.name ++ " of type [{}]" ++ @typeName(C),
+            .{count},
+        )),
     };
 
     const CPtr = if (count == 1) *C else [*]C;

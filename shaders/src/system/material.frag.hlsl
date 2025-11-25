@@ -49,7 +49,7 @@ float4 main(Vertex world) : SV_Target {
     [branch] if (mtl_config & MTL_CONFIG_HAS_NORMAL_MAP) 
         normal = normalMap(tex_uv, world.normal, world.tangent, world.binormal);
 
-    const Light light = processLights(world.position, normal, camera_dir, mtl_specular_exp);
+    const Light light = processLights(world.position, normal, camera_dir, mtl_specular_exp, mtl_ior);
 
     float3 ambient_tex = float3(1, 1, 1);
     float3 diffuse_tex = float3(1, 1, 1);

@@ -4,6 +4,7 @@
 
 const std = @import("std");
 
+pub const AtlasDrawSequence = @import("ttf/AtlasDrawSequence.zig");
 pub const Font = @import("ttf/Font.zig");
 pub const Text = @import("ttf/Text.zig");
 

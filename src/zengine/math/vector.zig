@@ -209,6 +209,14 @@ pub fn vectorNT(comptime N: comptime_int, comptime T: type) type {
             for (0..len) |n| self[n] /= other[n];
         }
 
+        pub fn shl(self: *Self, bits: std.math.Log2Int(@sizeOf(Scalar))) void {
+            for (0..len) |n| self[n] <<= bits;
+        }
+
+        pub fn shr(self: *Self, bits: std.math.Log2Int(Scalar)) void {
+            for (0..len) |n| self[n] >>= bits;
+        }
+
         pub fn mulAdd(self: *Self, other: *const Self, multiplier: Scalar) void {
             for (0..len) |n| self[n] = @mulAdd(Scalar, other[n], multiplier, self[n]);
         }
@@ -424,7 +432,7 @@ pub fn vectorNT(comptime N: comptime_int, comptime T: type) type {
 
             const det = dot(&lhs, &ray_c_rhs);
             if (det > -scalar.eps and det < scalar.eps) return null;
-            const inv_det = scalar.@"1" / det;
+            const inv_det = scalar.recip(det);
 
             var s = ray_pos.*;
             sub(&s, tri[0]);

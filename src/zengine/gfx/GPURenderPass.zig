@@ -114,6 +114,10 @@ pub fn bindStorageBuffers(
     call(self.ptr, first_slot, bufs.ptr, @intCast(bufs.len));
 }
 
+pub fn drawScreen(self: Self) void {
+    self.drawPrimitives(3, 1, 0, 0);
+}
+
 pub fn drawPrimitives(
     self: Self,
     num_vertices: u32,
