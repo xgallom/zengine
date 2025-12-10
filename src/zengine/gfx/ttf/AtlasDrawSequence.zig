@@ -72,7 +72,7 @@ pub fn indices(self: Self) []c_int {
 
 pub fn imageType(self: Self) ImageType {
     assert(self.isValid());
-    return @intFromEnum(self.ptr.?.image_type);
+    return @enumFromInt(self.ptr.?.image_type);
 }
 
 pub fn next(self: Self) ?Self {

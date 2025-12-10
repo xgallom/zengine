@@ -36,7 +36,7 @@ pub const Item = struct {
     };
 
     pub const Text = struct {
-        atlas: *ttf.AtlasDrawSequence,
+        atlas: ttf.AtlasDrawSequence,
         transform: *const math.Matrix4x4,
     };
 
@@ -82,11 +82,11 @@ pub const Items = struct {
             return .{ .items = flat.text_objs.slice() };
         }
 
-        pub fn next(self: *@This()) ?Item.Text {
+        pub fn next(self: *@This()) !?Item.Text {
             if (self.idx < self.items.len) {
                 defer self.idx += 1;
                 return .{
-                    .atlas = self.items.items(.target)[self.idx].drawData(),
+                    .atlas = try self.items.items(.target)[self.idx].drawData(),
                     .transform = &self.items.items(.transform)[self.idx],
                 };
             }
@@ -130,7 +130,10 @@ pub fn renderScene(
     section.begin();
 
     section.sub(.acquire).begin();
-    _ = text_iter;
+
+    while (try text_iter.next()) |item| {
+        log.info("{t}", .{item.atlas.imageType()});
+    }
 
     const material_pipeline = self.pipelines.graphics.get("material");
     const line_pipeline = self.pipelines.graphics.get("line");

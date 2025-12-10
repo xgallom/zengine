@@ -86,7 +86,7 @@ pub const Tree = struct {
     pub const empty: Tree = .{};
 
     pub const Slice = struct {
-        slice: std.MultiArrayList(Self).Slice,
+        slice: ecs.MultiComponentStorage(Self).Slice,
 
         pub fn nodeIdx(self: Slice, idx: Id.Idx) *Node {
             return &self.slice.items(.node)[idx];

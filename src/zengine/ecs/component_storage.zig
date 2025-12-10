@@ -37,19 +37,22 @@ pub fn ComponentStorage(comptime C: type) type {
 
         pub fn addOne(self: *Self, gpa: Allocator) !Id {
             if (self.free.pop()) |idx| {
-                self.present.set(idx);
                 self.gens.items[idx] += 1;
+                self.present.set(idx);
                 return .compose(.{ .gen = self.gens.items[idx], .idx = idx });
             } else {
                 const idx = self.len();
-                try self.data.addOne(gpa);
+                _ = try self.data.addOne(gpa);
+                log.debug("add one {} {}", .{ idx, self.len() });
                 if (self.gens.capacity < self.capacity()) {
+                    log.debug("resize gens {} {}", .{ self.gens.capacity, self.capacity() });
+                    log.debug("lens {} {}", .{ self.gens.items.len, self.len() });
                     try self.gens.ensureTotalCapacityPrecise(gpa, self.capacity());
                     self.gens.appendNTimesAssumeCapacity(0, self.capacity() - self.gens.items.len);
                 }
-                if (self.present.capacity() < self.capacity()) self.present.resize(gpa, self.capacity(), false);
+                if (self.present.capacity() < self.capacity()) try self.present.resize(gpa, self.capacity(), false);
                 self.present.set(idx);
-                return .compose(.{ .gen = 0, .idx = idx });
+                return .compose(.{ .gen = self.gens.items[idx], .idx = idx });
             }
         }
 
@@ -99,6 +102,7 @@ pub fn MultiComponentStorage(comptime C: type) type {
 
         pub const Self = @This();
         pub const ArrayList = std.MultiArrayList(C);
+        pub const Slice = ArrayList.Slice;
         pub const empty: Self = .{};
 
         pub fn deinit(self: *Self, gpa: Allocator) void {
@@ -168,6 +172,10 @@ pub fn MultiComponentStorage(comptime C: type) type {
 
         pub inline fn capacity(self: *const Self) usize {
             return self.data.capacity;
+        }
+
+        pub fn slice(self: *const Self) Slice {
+            return self.data.slice();
         }
     };
 }

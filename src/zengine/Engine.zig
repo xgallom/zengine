@@ -73,6 +73,7 @@ pub fn deinit(self: *Self) void {
     self.windows.deinit(allocators.gpa());
     global_registry.deinit();
     global_self = null;
+    c.TTF_Quit();
     c.SDL_Quit();
 }
 
