@@ -36,13 +36,6 @@ pub const BufferFlagsType = enum(u8) {
     }
 };
 
-pub const face_vert_counts: std.EnumArray(mesh.FaceType, usize) = .init(.{
-    .invalid = 0,
-    .point = 1,
-    .line = 2,
-    .triangle = 3,
-});
-
 mesh_bufs: Buffers = .initUndefined(),
 sections: Sections = .empty,
 groups: Groups = .empty,
@@ -110,7 +103,16 @@ pub fn deinit(self: *Self, gpa: std.mem.Allocator) void {
 }
 
 pub fn beginSection(self: *Self, gpa: std.mem.Allocator, offset: usize, material: ?[:0]const u8) !void {
-    self.endSection(offset);
+    if (self.has_active.section) {
+        assert(self.sections.items.len > 0);
+        const section = &self.sections.items[self.sections.items.len - 1];
+        if (section.offset == offset) {
+            section.material = material;
+            return;
+        }
+        section.len = offset - section.offset;
+    }
+
     try self.sections.append(gpa, .{
         .offset = offset,
         .material = material,
@@ -127,7 +129,15 @@ pub fn endSection(self: *Self, offset: usize) void {
 }
 
 pub fn beginGroup(self: *Self, gpa: std.mem.Allocator, offset: usize, name: [:0]const u8) !void {
-    self.endGroup(offset);
+    if (self.has_active.group) {
+        assert(self.groups.items.len > 0);
+        const group = &self.groups.items[self.groups.items.len - 1];
+        if (group.offset == offset) {
+            group.name = name;
+            return;
+        }
+        group.len = offset - group.offset;
+    }
     try self.groups.append(gpa, .{
         .offset = offset,
         .name = name,

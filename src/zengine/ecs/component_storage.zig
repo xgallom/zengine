@@ -8,6 +8,7 @@ const Allocator = std.mem.Allocator;
 const Alignment = std.mem.Alignment;
 
 const Id = @import("types.zig").Id;
+const typeId = @import("../type_id.zig").typeId;
 
 const log = std.log.scoped(.ecs_component_storage);
 
@@ -21,6 +22,7 @@ pub fn ComponentStorage(comptime C: type) type {
         pub const Self = @This();
         pub const ArrayList = std.ArrayList(C);
         pub const empty: Self = .{};
+        pub const type_id = typeId(Self);
 
         pub fn deinit(self: *Self, gpa: Allocator) void {
             self.data.deinit(gpa);
@@ -104,6 +106,7 @@ pub fn MultiComponentStorage(comptime C: type) type {
         pub const ArrayList = std.MultiArrayList(C);
         pub const Slice = ArrayList.Slice;
         pub const empty: Self = .{};
+        pub const type_id = typeId(Self);
 
         pub fn deinit(self: *Self, gpa: Allocator) void {
             self.data.deinit(gpa);
@@ -126,10 +129,7 @@ pub fn MultiComponentStorage(comptime C: type) type {
             } else {
                 const idx = self.len();
                 _ = try self.data.addOne(gpa);
-                log.debug("add one {} {}", .{ idx, self.len() });
                 if (self.gens.capacity < self.capacity()) {
-                    log.debug("resize gens {} {}", .{ self.gens.capacity, self.capacity() });
-                    log.debug("lens {} {}", .{ self.gens.items.len, self.len() });
                     try self.gens.ensureTotalCapacityPrecise(gpa, self.capacity());
                     self.gens.appendNTimesAssumeCapacity(0, self.capacity() - self.gens.items.len);
                 }

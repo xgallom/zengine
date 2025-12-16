@@ -69,11 +69,47 @@ pub inline fn format(self: Self) PixelFormat {
     return @enumFromInt(self.ptr.?.format);
 }
 
+pub fn rgba(self: Self, color: math.RGBAu8) u32 {
+    assert(self.isValid());
+    return c.SDL_MapSurfaceRGBA(self.ptr, color[0], color[1], color[2], color[3]);
+}
+
+pub fn readFloat(self: Self, pos: math.Point_i32, color: *math.RGBAf32) !void {
+    if (!c.SDL_ReadSurfacePixelFloat(self.ptr, pos[0], pos[1], &color[0], &color[1], &color[2], &color[3])) {
+        log.err("failed reading surface float {s}", .{c.SDL_GetError()});
+        return Error.SurfaceFailed;
+    }
+}
+
+pub fn writeFloat(self: Self, pos: math.Point_i32, color: *const math.RGBAf32) !void {
+    if (!c.SDL_WriteSurfacePixelFloat(self.ptr, pos[0], pos[1], color[0], color[1], color[2], color[3])) {
+        log.err("failed writing surface float {s}", .{c.SDL_GetError()});
+        return Error.SurfaceFailed;
+    }
+}
+
 pub fn slice(self: Self, comptime T: type) []T {
     assert(self.isValid());
     assert(self.ptr.?.pixels != null);
     const ptr: [*]align(@alignOf(u32)) u8 = @ptrCast(@alignCast(self.ptr.?.pixels));
     return std.mem.bytesAsSlice(T, ptr[0..self.byteLen()]);
+}
+
+pub fn blit(dst: Self, dst_rect: *const math.Rect_i32, src: Self, src_rect: *const math.Rect_i32) !void {
+    if (!c.SDL_BlitSurface(src.ptr, &.{
+        .x = src_rect[0],
+        .y = src_rect[1],
+        .w = src_rect[2],
+        .h = src_rect[3],
+    }, dst.ptr, &.{
+        .x = dst_rect[0],
+        .y = dst_rect[1],
+        .w = dst_rect[2],
+        .h = dst_rect[3],
+    })) {
+        log.err("blit surface failed: {s}", .{c.SDL_GetError()});
+        return Error.SurfaceFailed;
+    }
 }
 
 pub fn convert(self: *Self, pixel_format: PixelFormat) !void {

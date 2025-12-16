@@ -18,6 +18,7 @@ const ui_mod = @import("../ui.zig");
 const cube_loader = @import("cube_loader.zig");
 const Error = @import("error.zig").Error;
 const GPUBuffer = @import("GPUBuffer.zig");
+const GPUFence = @import("GPUFence.zig");
 const GPUGraphicsPipeline = @import("GPUGraphicsPipeline.zig");
 const GPUShader = @import("GPUShader.zig");
 const img_loader = @import("img_loader.zig");
@@ -94,12 +95,14 @@ pub fn cancel(self: *Self) void {
     self.modifs.getPtr(.look_up_table).clearRetainingCapacity();
 }
 
-pub fn commit(self: *Self) !void {
+pub fn commit(self: *Self) !GPUFence {
     try self.createGPUData();
-    try self.uploadTransferBuffers();
+    var fence = try self.uploadTransferBuffers();
+    errdefer self.renderer.gpu_device.release(&fence);
     try self.commitSurfaceTextures();
     try self.commitLookUpTables();
     self.cancel();
+    return fence;
 }
 
 pub fn flagModified(self: *Self, comptime target: Target, key: []const u8) !void {
@@ -463,16 +466,26 @@ pub fn createTestingMaterial(self: *Self) !*MaterialInfo {
     });
 }
 
-pub fn createDefaultTexture(self: *Self) !*SurfaceTexture {
-    const key = "default";
-    const surf: Surface = try .init(.{ 1, 1 }, .default);
-    assert(surf.pitch() == @sizeOf(u32));
-    surf.slice(u32)[0] = c.SDL_MapSurfaceRGBA(surf.ptr, 0xff, 0x00, 0xff, 0xff);
-
+pub fn createSurfaceTexture(
+    self: *Self,
+    key: []const u8,
+    size: math.Point_u32,
+    pixel_format: Surface.PixelFormat,
+) !*SurfaceTexture {
+    const surf: Surface = try .init(size, pixel_format);
     const tex = try self.surface_textures.insert(key, .init(surf));
     _ = try tex.createProperties();
     try self.flagModified(.surface_texture, key);
     return tex;
+}
+
+pub fn createDefaultTexture(self: *Self) !*SurfaceTexture {
+    const key = "default";
+    const surf_tex = try self.createSurfaceTexture(key, .{ 1, 1 }, .default);
+    const surf = surf_tex.surf;
+    assert(surf.pitch() == @sizeOf(u32));
+    surf.slice(u32)[0] = surf.rgba(.{ 255, 255, 255, 255 });
+    return surf_tex;
 }
 
 pub fn createLightsBuffer(self: *Self, flat: ?*const Scene.Flattened) !*mesh.Buffer {
@@ -523,6 +536,28 @@ pub fn createLightsBuffer(self: *Self, flat: ?*const Scene.Flattened) !*mesh.Buf
     return lights_buf;
 }
 
+// Takes ownership of an existing texture from renderer
+pub fn rendererSurfaceTexture(
+    self: *Self,
+    key: []const u8,
+) !*SurfaceTexture {
+    const surf_tex = self.surface_textures.getPtr(key);
+    if (!surf_tex.gpu_tex.isValid()) {
+        surf_tex.gpu_tex = .fromOwned(self.renderer.textures.getPtr(key).toOwned());
+        try self.flagModified(.surface_texture, key);
+    }
+    return surf_tex;
+}
+
+pub fn renderText(self: *Self, font: ttf.Font, text: []const u8, fg: math.RGBAu8) !*SurfaceTexture {
+    const surf = try font.renderText(text, fg);
+    const surf_tex = try self.surface_textures.insert(text, .init(surf));
+    const props = try surf_tex.createProperties();
+    try props.put(.bool, "is_sRGB", true);
+    try self.flagModified(.surface_texture, text);
+    return surf_tex;
+}
+
 fn createGPUData(self: *Self) !void {
     const gpu_device = self.renderer.gpu_device;
 
@@ -538,6 +573,8 @@ fn createGPUData(self: *Self) !void {
 
     for (self.modifs.getPtrConst(.surface_texture).items) |key| {
         const tex = self.surface_textures.getPtr(key);
+        if (tex.gpu_tex.isValid()) continue;
+        log.debug("create gpu surface texture \"{s}\"", .{key});
         try tex.createGPUTexture(gpu_device);
     }
 
@@ -547,7 +584,7 @@ fn createGPUData(self: *Self) !void {
     }
 }
 
-fn uploadTransferBuffers(self: *Self) !void {
+fn uploadTransferBuffers(self: *Self) !GPUFence {
     const gpu_device = self.renderer.gpu_device;
     const gpa = self.renderer.allocator;
 
@@ -584,6 +621,7 @@ fn uploadTransferBuffers(self: *Self) !void {
     }
 
     for (self.modifs.getPtrConst(.surface_texture).items) |key| {
+        log.debug("upload surface texture \"{s}\"", .{key});
         const surf_tex = self.surface_textures.getPtr(key);
         tb.surf_texes.appendAssumeCapacity(surf_tex);
     }
@@ -594,6 +632,7 @@ fn uploadTransferBuffers(self: *Self) !void {
     }
 
     try tb.createGPUTransferBuffer(gpu_device);
+    log.debug("map transfer buffer {Bi:.3}", .{tb.len});
     try tb.map(gpu_device);
 
     var command_buffer = try gpu_device.commandBuffer();
@@ -605,18 +644,24 @@ fn uploadTransferBuffers(self: *Self) !void {
         copy_pass.end();
     }
 
-    try command_buffer.submit();
+    return command_buffer.submitFence();
 }
 
+// Transfers texture ownership to renderer
 fn commitSurfaceTextures(self: *Self) !void {
     for (self.modifs.getPtrConst(.surface_texture).items) |key| {
-        const tex = self.surface_textures.getPtr(key);
-        _ = try self.renderer.insertTexture(key, tex.toOwnedGPUTexture());
+        const surf_tex = self.surface_textures.getPtr(key);
+        if (self.renderer.textures.contains(key)) {
+            self.renderer.textures.getPtr(key).* = .fromOwned(surf_tex.toOwnedGPUTexture());
+        } else {
+            _ = try self.renderer.insertTexture(key, surf_tex.toOwnedGPUTexture());
+        }
     }
 }
 
 fn commitLookUpTables(self: *Self) !void {
     for (self.modifs.getPtrConst(.look_up_table).items) |key| {
+        if (self.renderer.textures.contains(key)) continue;
         const tex = self.look_up_tables.getPtr(key);
         log.info("{s}", .{key});
         _ = try self.renderer.insertTexture(key, tex.toOwnedGPUTexture());

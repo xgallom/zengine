@@ -61,6 +61,7 @@ pub fn build(b: *std.Build) !void {
         .link_libc = true,
         .link_libcpp = true,
         .pic = true,
+        .strip = false,
     });
 
     zengine.addLibraryPath(b.path("external/build/bin"));
@@ -96,6 +97,7 @@ pub fn build(b: *std.Build) !void {
             .target = target,
             .optimize = optimize,
             .pic = true,
+            .strip = false,
         }),
     });
 
@@ -245,7 +247,6 @@ pub fn addCompileShaders(b: *std.Build, options: struct {
     compile_shaders_cmd.addDirectoryArg(options.src orelse zb.path("shaders/src"));
     compile_shaders_cmd.addArg("--output-dir");
     const shaders_output = compile_shaders_cmd.addOutputDirectoryArg("shaders");
-    log.info("compile shaders opt: {}", .{options.options.compile_shaders});
     compile_shaders_cmd.has_side_effects = options.options.compile_shaders;
 
     return b.addInstallDirectory(.{

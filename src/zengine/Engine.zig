@@ -63,7 +63,7 @@ pub fn createMainWindow(self: *Self) !*Window {
     return self.createWindow("main", &.{
         .title = "Zengine",
         .size = .{ 1920, 1080 },
-        .flags = .initMany(&.{.high_pixel_density}),
+        .flags = .initMany(&.{ .high_pixel_density, .resizable }),
     });
 }
 

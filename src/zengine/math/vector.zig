@@ -174,19 +174,26 @@ pub fn vectorNT(comptime N: comptime_int, comptime T: type) type {
 
         pub fn eqlAbs(self: *const Self, other: *const Self, comptime tolerance: Scalar) bool {
             comptime if (!scalar.is_float) @compileError("eqlAbs not supported for vector of " ++ @typeName(Scalar));
-            for (0..len) |n| if (!std.math.approxEqAbs(Scalar, self[n], other[n], tolerance)) return false;
+            for (0..len) |n| if (!scalar.approxEqAbs(self[n], other[n], tolerance)) return false;
             return true;
         }
 
         pub fn eqlRel(self: *const Self, other: *const Self, comptime tolerance: Scalar) bool {
             comptime if (!scalar.is_float) @compileError("eqlRel not supported for vector of " ++ @typeName(Scalar));
-            for (0..len) |n| if (!std.math.approxEqRel(Scalar, self[n], other[n], tolerance)) return false;
+            for (0..len) |n| if (!scalar.approxEqRel(self[n], other[n], tolerance)) return false;
             return true;
         }
 
         pub fn eqlExact(self: *const Self, other: *const Self) bool {
             for (0..len) |n| if (self[n] != other[n]) return false;
             return true;
+        }
+
+        pub fn lerp(result: *Self, t0: *const Self, t1: *const Self, t: types.Scalar) void {
+            result.* = t1.*;
+            sub(result, t0);
+            scale(result, scalar.init(t));
+            add(result, t0);
         }
 
         pub fn neg(self: *Self) void {
@@ -209,7 +216,7 @@ pub fn vectorNT(comptime N: comptime_int, comptime T: type) type {
             for (0..len) |n| self[n] /= other[n];
         }
 
-        pub fn shl(self: *Self, bits: std.math.Log2Int(@sizeOf(Scalar))) void {
+        pub fn shl(self: *Self, bits: std.math.Log2Int(Scalar)) void {
             for (0..len) |n| self[n] <<= bits;
         }
 
@@ -303,14 +310,14 @@ pub fn vectorNT(comptime N: comptime_int, comptime T: type) type {
         pub fn angle(lhs: *const Self, rhs: *const Self, n: *const Self) Scalar {
             var c: Self = undefined;
             cross(&c, rhs, lhs); // rhs is further clockwise
-            return std.math.atan2(dot(&c, n), dot(lhs, rhs));
+            return scalar.atan2(dot(&c, n), dot(lhs, rhs));
         }
 
         /// returns angle from 0 to pi
         pub fn absAngle(lhs: *const Self, rhs: *const Self) Scalar {
             var c: Self = undefined;
             cross(&c, rhs, lhs);
-            return std.math.atan2(mag(&c), dot(lhs, rhs));
+            return scalar.atan2(mag(&c), dot(lhs, rhs));
         }
 
         pub fn triAngle(comptime S: comptime_int, tri: [3]*const Self, n: *const Self) Scalar {
@@ -382,7 +389,10 @@ pub fn vectorNT(comptime N: comptime_int, comptime T: type) type {
             tri: [3]*const Self,
             p: *const Self,
             n: *const Self,
-        ) std.math.Order {
+        ) switch (scalar.is_vec) {
+            false => std.math.Order,
+            true => [scalar.len]std.math.Order,
+        } {
             assert(S >= 0);
             assert(S <= 2);
             const a = switch (comptime S) {
@@ -409,9 +419,27 @@ pub fn vectorNT(comptime N: comptime_int, comptime T: type) type {
                 },
                 else => unreachable,
             };
-            if (std.math.approxEqAbs(Scalar, a, scalar.@"0", scalar.eps)) return .eq;
-            if (a > 0) return .gt;
-            return .lt;
+
+            return switch (scalar.is_vec) {
+                false => {
+                    if (scalar.approxEqAbs(a, scalar.@"0", scalar.eps)) return .eq;
+                    if (a > 0) return .gt;
+                    return .lt;
+                },
+                true => blk: {
+                    var result: [scalar.len]std.math.Order = undefined;
+                    const v_eq: @Vector(scalar.len, u8) = @splat(@as(u8, @intFromEnum(std.math.Order.eq)));
+                    const v_gt: @Vector(scalar.len, u8) = @splat(@as(u8, @intFromEnum(std.math.Order.gt)));
+                    const v_lt: @Vector(scalar.len, u8) = @splat(@as(u8, @intFromEnum(std.math.Order.lt)));
+                    var acc: @Vector(scalar.len, u8) = undefined;
+                    acc = @select(u8, a > scalar.@"0", v_gt, v_lt);
+                    acc = @select(u8, scalar.approxEqAbs(a, scalar.@"0", scalar.eps), v_eq, acc);
+                    inline for (0..scalar.len) |i| {
+                        result[i] = @enumFromInt(acc[i]);
+                    }
+                    break :blk result;
+                },
+            };
         }
 
         pub fn triContainsPoint(tri: [3]*const Self, p: *const Self, n: *const Self) bool {
@@ -421,41 +449,98 @@ pub fn vectorNT(comptime N: comptime_int, comptime T: type) type {
         }
 
         /// Performs the Möller–Trumbore intersection algorithm.
-        pub fn rayIntersectTri(tri: [3]*const Self, ray_pos: *const Self, ray_dir: *const Self) ?Self {
-            var lhs = tri[1].*;
-            var rhs = tri[2].*;
-            sub(&lhs, tri[0]);
-            sub(&rhs, tri[0]);
+        pub fn rayIntersectTri(
+            tri: [3]*const Self,
+            ray_pos: *const Self,
+            ray_dir: *const Self,
+        ) switch (scalar.is_vec) {
+            false => ?Self,
+            true => struct {
+                mask: scalar.Pred = @splat(false),
+                result: Self = zero,
+            },
+        } {
+            switch (comptime scalar.is_vec) {
+                false => {
+                    var lhs = tri[1].*;
+                    var rhs = tri[2].*;
+                    sub(&lhs, tri[0]);
+                    sub(&rhs, tri[0]);
 
-            var ray_c_rhs: Self = undefined;
-            cross(&ray_c_rhs, ray_dir, &rhs);
+                    var ray_c_rhs: Self = undefined;
+                    cross(&ray_c_rhs, ray_dir, &rhs);
 
-            const det = dot(&lhs, &ray_c_rhs);
-            if (det > -scalar.eps and det < scalar.eps) return null;
-            const inv_det = scalar.recip(det);
+                    const det = dot(&lhs, &ray_c_rhs);
+                    if (det > -scalar.eps and det < scalar.eps) return null;
+                    const inv_det = scalar.recip(det);
 
-            var s = ray_pos.*;
-            sub(&s, tri[0]);
+                    var s = ray_pos.*;
+                    sub(&s, tri[0]);
 
-            const u = inv_det * dot(&s, &ray_c_rhs);
-            if ((u < scalar.@"0" and @abs(u) > scalar.eps) or
-                (u > 1 and @abs(u - scalar.@"1") > scalar.eps)) return null;
+                    const u = inv_det * dot(&s, &ray_c_rhs);
+                    if ((u < scalar.@"0" and @abs(u) > scalar.eps) or
+                        (u > 1 and @abs(u - scalar.@"1") > scalar.eps)) return null;
 
-            var s_c_lhs: Self = undefined;
-            cross(&s_c_lhs, &s, &lhs);
+                    var s_c_lhs: Self = undefined;
+                    cross(&s_c_lhs, &s, &lhs);
 
-            const v = inv_det * dot(ray_dir, &s_c_lhs);
-            if ((v < 0 and @abs(v) > scalar.eps) or
-                (u + v > 1 and @abs(u + v - scalar.@"1") > scalar.eps)) return null;
+                    const v = inv_det * dot(ray_dir, &s_c_lhs);
+                    if ((v < 0 and @abs(v) > scalar.eps) or
+                        (u + v > 1 and @abs(u + v - scalar.@"1") > scalar.eps)) return null;
 
-            const t = inv_det * dot(&rhs, &s_c_lhs);
-            if (t > scalar.eps) {
-                var result = ray_dir.*;
-                scale(&result, t);
-                add(&result, ray_pos);
-                return result;
+                    const t = inv_det * dot(&rhs, &s_c_lhs);
+                    if (t > scalar.eps) {
+                        var result = ray_dir.*;
+                        scale(&result, t);
+                        add(&result, ray_pos);
+                        return result;
+                    }
+                    return null;
+                },
+                true => {
+                    var lhs = tri[1].*;
+                    var rhs = tri[2].*;
+                    sub(&lhs, tri[0]);
+                    sub(&rhs, tri[0]);
+
+                    var ray_c_rhs: Self = undefined;
+                    cross(&ray_c_rhs, ray_dir, &rhs);
+
+                    const det = dot(&lhs, &ray_c_rhs);
+                    const is_null_1 = (det > -scalar.eps) & (det < scalar.eps);
+                    if (@reduce(.And, is_null_1)) return .{};
+                    const inv_det = scalar.recip(det);
+
+                    var s = ray_pos.*;
+                    sub(&s, tri[0]);
+
+                    const u = inv_det * dot(&s, &ray_c_rhs);
+                    const is_null_2 = ((u < scalar.@"0") & (@abs(u) > scalar.eps)) |
+                        ((u > scalar.@"1") & (@abs(u - scalar.@"1") > scalar.eps));
+                    if (@reduce(.And, is_null_2)) return .{};
+
+                    var s_c_lhs: Self = undefined;
+                    cross(&s_c_lhs, &s, &lhs);
+
+                    const v = inv_det * dot(ray_dir, &s_c_lhs);
+                    const is_null_3 = ((v < scalar.@"0") & (@abs(v) > scalar.eps)) |
+                        ((u + v > scalar.@"1") & (@abs(u + v - scalar.@"1") > scalar.eps));
+                    if (@reduce(.And, is_null_3)) return .{};
+
+                    const t = inv_det * dot(&rhs, &s_c_lhs);
+                    const is_null_4 = t <= scalar.eps;
+                    if (@reduce(.And, is_null_4)) return .{};
+
+                    var result = ray_dir.*;
+                    scale(&result, t);
+                    add(&result, ray_pos);
+
+                    return .{
+                        .mask = !(is_null_1 | is_null_2 | is_null_3 | is_null_4),
+                        .result = result,
+                    };
+                },
             }
-            return null;
         }
 
         pub fn triNormal(result: *Self, tri: [3]*const Self) void {
@@ -473,7 +558,7 @@ pub fn vectorNT(comptime N: comptime_int, comptime T: type) type {
 
             result.z = direction.*;
             normalize(&result.z);
-            scale(&result.z, -1);
+            scale(&result.z, scalar.@"-1");
             cross(&result.x, &result.z, up);
             normalize(&result.x);
             cross(&result.y, &result.x, &result.z);
@@ -510,6 +595,14 @@ test "vector3" {
     result = lhs;
     ns.div(&result, &rhs);
     try std.testing.expectEqualSlices(ns.Scalar, &.{ 2, 2, 2 }, ns.sliceConst(&result));
+    {
+        const i_ns = vectorNT(3, i32);
+        var i_result = i_ns.Self{ 2, 4, 6 };
+        i_ns.shl(&i_result, 2);
+        try std.testing.expectEqualSlices(i_ns.Scalar, &.{ 8, 16, 24 }, i_ns.sliceConst(&i_result));
+        i_ns.shr(&i_result, 2);
+        try std.testing.expectEqualSlices(i_ns.Scalar, &.{ 2, 4, 6 }, i_ns.sliceConst(&i_result));
+    }
     result = lhs;
     ns.mulAdd(&result, &rhs, 2);
     try std.testing.expectEqualSlices(ns.Scalar, &.{ 4, 8, 12 }, ns.sliceConst(&result));
@@ -541,6 +634,15 @@ test "vector3" {
     try std.testing.expectEqualSlices(ns.Scalar, &ns.zero, &result);
     ns.cross(&result, &lhs, &.{ 6, 2, 4 });
     try std.testing.expectEqualSlices(ns.Scalar, &.{ 4, 28, -20 }, &result);
+    try std.testing.expectApproxEqAbs(ns.angle(
+        &.{ 1, 0, 0 },
+        &.{ 1, 1, 0 },
+        &.{ 0, 0, 1 },
+    ), -ns.scalar.pi / 4.0, ns.scalar.eps);
+    try std.testing.expectApproxEqAbs(ns.absAngle(
+        &.{ 1, 0, 0 },
+        &.{ 1, 1, 0 },
+    ), ns.scalar.pi / 4.0, ns.scalar.eps);
     {
         var coords: ns.Coords = undefined;
         ns.localCoords(&coords, &.{ 0, 0, 1 }, &.{ 0, 1, 0 });
@@ -614,3 +716,5 @@ test "vector3f64" {
         // try std.testing.expectEqualSlices(ns.Scalar, &.{ 0, 0, -1 }, &coords.z);
     }
 }
+
+test "dense_vector" {}

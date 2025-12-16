@@ -421,6 +421,7 @@ fn processFile(
             m.lock();
             defer m.unlock();
             try writeComputeJsonFile(info, output_filename, output_dir);
+            try installFile(arguments, output_filename);
         }
     } else {
         const info = c.SDL_ShaderCross_ReflectGraphicsSPIRV(spirv_code.ptr, spirv_code.len, 0);
@@ -430,6 +431,7 @@ fn processFile(
             m.lock();
             defer m.unlock();
             try writeGraphicsJsonFile(info, output_filename, output_dir);
+            try installFile(arguments, output_filename);
         }
     }
 }

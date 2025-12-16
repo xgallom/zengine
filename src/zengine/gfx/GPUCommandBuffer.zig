@@ -16,6 +16,7 @@ const Error = @import("error.zig").Error;
 const GPUComputePass = @import("GPUComputePass.zig");
 const GPUCopyPass = @import("GPUCopyPass.zig");
 const GPUDevice = @import("GPUDevice.zig");
+const GPUFence = @import("GPUFence.zig");
 const GPURenderPass = @import("GPURenderPass.zig");
 const GPUTexture = @import("GPUTexture.zig");
 const types = @import("types.zig");
@@ -42,6 +43,15 @@ pub fn submit(self: *Self) !void {
         log.err("failed submitting command buffer: {s}", .{c.SDL_GetError()});
         return Error.CommandBufferFailed;
     }
+}
+
+pub fn submitFence(self: *Self) !GPUFence {
+    const ptr = c.SDL_SubmitGPUCommandBufferAndAcquireFence(self.toOwned());
+    if (ptr == null) {
+        log.err("failed submitting command buffer with fence: {s}", .{c.SDL_GetError()});
+        return Error.CommandBufferFailed;
+    }
+    return .fromOwned(ptr.?);
 }
 
 pub fn cancel(self: *Self) !void {

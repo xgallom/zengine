@@ -11,14 +11,15 @@ const math = @import("../math.zig");
 const gfx_options = @import("../options.zig").gfx_options;
 const perf = @import("../perf.zig");
 const ui_mod = @import("../ui.zig");
-const Error = @import("error.zig").Error;
-const mesh = @import("mesh.zig");
-const ttf = @import("ttf.zig");
-const pass = @import("pass.zig");
 const Camera = @import("Camera.zig");
+const Error = @import("error.zig").Error;
+const GPUFence = @import("GPUFence.zig");
+const mesh = @import("mesh.zig");
+const pass = @import("pass.zig");
 const Renderer = @import("Renderer.zig");
 const sections = Renderer.sections;
 const Scene = @import("Scene.zig");
+const ttf = @import("ttf.zig");
 
 const log = std.log.scoped(.gfx_render);
 
@@ -54,6 +55,7 @@ pub const Items = struct {
         idx: usize = 0,
 
         pub fn init(flat: *const Scene.Flattened, comptime field: @TypeOf(.enum_literal)) @This() {
+            comptime assert(@hasField(Scene.Flattened, @tagName(field)));
             return .{ .items = @field(flat, @tagName(field)).slice() };
         }
 
@@ -124,15 +126,22 @@ pub fn renderScene(
     ui_iter: *Items.Object,
     text_iter: *Items.Text,
     bloom: *const pass.Bloom,
+    fence: ?*GPUFence,
 ) !bool {
     assert(self == flat.scene.renderer);
     const section = sections.sub(.render);
     section.begin();
 
-    section.sub(.acquire).begin();
+    if (fence) |f| {
+        if (f.isValid()) {
+            try self.gpu_device.wait(.any, &.{f.*});
+            self.gpu_device.release(f);
+        }
+    }
 
     while (try text_iter.next()) |item| {
-        log.info("{t}", .{item.atlas.imageType()});
+        _ = item;
+        // log.info("{t}", .{item.atlas.imageType()});
     }
 
     const material_pipeline = self.pipelines.graphics.get("material");
@@ -155,13 +164,13 @@ pub fn renderScene(
 
     const fa = allocators.frame();
 
+    section.sub(.acquire).begin();
     log.debug("command buffer", .{});
     var command_buffer = try self.gpu_device.commandBuffer();
     errdefer command_buffer.cancel() catch {};
 
     log.debug("swapchain texture", .{});
     const swapchain = try command_buffer.swapchainTexture(self.window);
-
     section.sub(.acquire).end();
 
     if (!swapchain.isValid()) {
@@ -375,7 +384,7 @@ pub fn renderScene(
             .{ .texture = output_buffer, .sampler = screen_sampler },
             .{ .texture = lut_map, .sampler = lut_sampler },
         });
-        render_pass.drawPrimitives(3, 1, 0, 0);
+        render_pass.drawScreen();
         render_pass.end();
     }
 
@@ -402,6 +411,7 @@ pub fn renderScene(
             while (items_iter.next()) |item| {
                 const mesh_obj = item.mesh_obj;
                 if (!mesh_obj.is_visible.contains(.from(mesh_type))) continue;
+                log.info("{s} {t}", .{ item.key, mesh_type });
 
                 @memcpy(uniform_buf[16..32], math.matrix4x4.sliceConst(item.transform));
                 command_buffer.pushUniformData(.vertex, 0, uniform_buf);
@@ -511,7 +521,10 @@ pub fn renderScene(
 
     section.sub(.submit).begin();
     log.debug("submit command buffer", .{});
-    try command_buffer.submit();
+    if (fence) |f| {
+        assert(!f.isValid());
+        f.* = try command_buffer.submitFence();
+    } else try command_buffer.submit();
     section.sub(.submit).end();
 
     section.end();

@@ -106,8 +106,8 @@ pub const FilterMode = enum {
 
     const configs: std.EnumArray(FilterMode, Config) = .init(.{
         .nearest = .{ .filter = .nearest, .mipmap_mode = .nearest },
-        .linear = .{ .filter = .linear, .mipmap_mode = .nearest },
-        .bilinear = .{ .filter = .nearest, .mipmap_mode = .linear },
+        .linear = .{ .filter = .nearest, .mipmap_mode = .linear },
+        .bilinear = .{ .filter = .linear, .mipmap_mode = .nearest },
         .trilinear = .{ .filter = .linear, .mipmap_mode = .linear },
     });
 

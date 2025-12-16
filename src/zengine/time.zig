@@ -156,6 +156,7 @@ pub const Clock = struct {
     start_time: u64 = 0,
 
     const Self = @This();
+    pub const default: Self = .{};
 
     pub fn init(now: u64) Self {
         return .{
@@ -192,13 +193,101 @@ pub const Clock = struct {
     }
 };
 
+/// Struct for measuring time decremented by periodic interval
+pub fn StaticCounter(comptime _interval: u64) type {
+    return struct {
+        remaining: u64 = 0,
+
+        const Self = @This();
+        pub const init: Self = .{};
+        pub const interval = _interval;
+
+        pub fn add(self: *Self, time: u64) void {
+            self.remaining += time;
+        }
+
+        pub fn subOne(self: *Self) void {
+            assert(self.remaining >= interval);
+            self.remaining -= interval;
+        }
+
+        pub fn sub(self: *Self, periods_to_sub: u64) void {
+            const to_sub = periods_to_sub * interval;
+            assert(self.remaining >= to_sub);
+            self.remaining -= to_sub;
+        }
+
+        pub fn periods(self: *const Self) u64 {
+            return self.remaining / interval;
+        }
+
+        pub fn overflow(self: *const Self) u64 {
+            return self.remaining % interval;
+        }
+
+        pub fn run(self: *Self) bool {
+            if (self.remaining >= interval) {
+                self.subOne();
+                return true;
+            }
+            return false;
+        }
+    };
+}
+
+/// Struct for measuring time decremented by periodic interval
+pub const Counter = struct {
+    remaining: u64 = 0,
+    interval: u64,
+
+    const Self = @This();
+
+    pub fn init(interval: u64) Self {
+        return .{ .interval = interval };
+    }
+
+    pub fn add(self: *Self, time: u64) void {
+        self.remaining += time;
+    }
+
+    pub fn subOne(self: *Self) void {
+        assert(self.remaining >= self.interval);
+        self.remaining -= self.interval;
+    }
+
+    pub fn sub(self: *Self, periods_to_sub: u64) void {
+        const to_sub = periods_to_sub * self.interval;
+        assert(self.remaining >= to_sub);
+        self.remaining -= to_sub;
+    }
+
+    pub fn periods(self: *const Self) u64 {
+        return self.remaining / self.interval;
+    }
+
+    pub fn overflow(self: *const Self) u64 {
+        return self.remaining % self.interval;
+    }
+
+    pub fn run(self: *Self) bool {
+        if (self.remaining >= self.interval) {
+            self.subOne();
+            return true;
+        }
+        return false;
+    }
+};
+
+const TimerUpdateBehavior = enum { set, periodic };
+
 /// Struct for firing intervals with comptime interval
-pub fn StaticTimer(comptime interval: u64) type {
+pub fn StaticTimer(comptime _interval: u64) type {
     return struct {
         updated_at: u64 = 0,
 
         pub const Self = @This();
         pub const init: Self = .{};
+        pub const interval = _interval;
 
         pub fn isArmed(self: *const Self, now: u64) bool {
             return now -| self.updated_at >= interval;
@@ -208,20 +297,31 @@ pub fn StaticTimer(comptime interval: u64) type {
             self.updated_at = now;
         }
 
+        pub fn addInterval(self: *Self) void {
+            self.updated_at += interval;
+        }
+
         pub fn reset(self: *Self) void {
             self.updated_at = 0;
         }
 
-        pub fn updated(self: *Self, now: u64) bool {
+        pub fn updated(self: *Self, now: u64, comptime behavior: TimerUpdateBehavior) bool {
             if (self.isArmed(now)) {
-                self.set(now);
+                switch (comptime behavior) {
+                    .set => self.set(now),
+                    .periodic => self.addInterval(),
+                }
                 return true;
             }
             return false;
         }
 
-        pub inline fn update(self: *Self, now: u64) void {
-            _ = self.updated(now);
+        pub inline fn update(self: *Self, now: u64, comptime behavior: TimerUpdateBehavior) void {
+            _ = self.updated(now, behavior);
+        }
+
+        pub fn remaining(self: *const Self, now: u64) u64 {
+            return (now - self.updated_at) / interval;
         }
     };
 }
@@ -245,20 +345,31 @@ pub const Timer = struct {
         self.updated_at = now;
     }
 
+    pub fn addInterval(self: *Self) void {
+        self.updated_at += self.interval;
+    }
+
     pub fn reset(self: *Self) void {
         self.updated_at = 0;
     }
 
-    pub fn updated(self: *Self, now: u64) bool {
+    pub fn updated(self: *Self, now: u64, comptime behavior: TimerUpdateBehavior) bool {
         if (self.isArmed(now)) {
-            self.set(now);
+            switch (comptime behavior) {
+                .set => self.set(now),
+                .periodic => self.addInterval(),
+            }
             return true;
         }
         return false;
     }
 
-    pub inline fn update(self: *Self, now: u64) void {
-        _ = self.updated(now);
+    pub inline fn update(self: *Self, now: u64, comptime behavior: TimerUpdateBehavior) void {
+        _ = self.updated(now, behavior);
+    }
+
+    pub fn remaining(self: *const Self, now: u64) u64 {
+        return (now - self.updated_at) / self.interval;
     }
 };
 

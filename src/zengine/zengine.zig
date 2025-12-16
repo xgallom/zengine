@@ -6,6 +6,7 @@ const std = @import("std");
 const assert = std.debug.assert;
 
 pub const allocators = @import("allocators.zig");
+pub const anim = @import("anim.zig");
 pub const ChunkAllocator = @import("ChunkAllocator.zig");
 pub const containers = @import("containers.zig");
 pub const controls = @import("controls.zig");
@@ -65,6 +66,7 @@ pub const Zengine = struct {
             .sections(&.{ .init, .input, .update, .render })
             .register();
 
+        if (handlers.register) |register| try register();
         try gfx.register();
 
         try global.init();
@@ -125,41 +127,37 @@ pub const Zengine = struct {
 
         return while (true) {
             defer perf.reset();
-
             const section = sections.sub(.frame);
             main_section.push();
             section.begin();
 
             section.sub(.init).begin();
-
-            defer allocators.frameReset();
-
             global.startFrame();
             defer global.finishFrame();
-
+            defer allocators.frameReset();
             const now = global.engineNow();
             perf.update(now);
             perf.updateStats(now, false);
-
             section.sub(.init).end();
-            section.sub(.input).begin();
 
-            if (self.handlers.input) |input| {
-                if (!try input(self)) return;
+            {
+                section.sub(.input).begin();
+                defer section.sub(.input).end();
+                if (self.handlers.input) |input| {
+                    if (!try input(self)) return;
+                }
             }
 
-            section.sub(.input).end();
-            section.sub(.update).begin();
-
-            if (self.handlers.update) |update| {
-                if (!try update(self)) return;
+            {
+                section.sub(.update).begin();
+                defer section.sub(.update).end();
+                if (self.handlers.update) |update| {
+                    if (!try update(self)) return;
+                }
             }
 
-            section.sub(.update).end();
             section.sub(.render).begin();
-
             if (self.handlers.render) |render| try render(self);
-
             section.sub(.render).end();
 
             if (global.isFirstFrame()) {
@@ -174,6 +172,7 @@ pub const Zengine = struct {
     }
 
     pub const Handlers = struct {
+        register: ?*const fn () anyerror!void = null,
         init: ?*const fn (self: *const Self) anyerror!void = null,
         load: ?*const fn (self: *const Self) anyerror!bool = null,
         unload: ?*const fn (self: *const Self) void = null,
@@ -184,5 +183,6 @@ pub const Zengine = struct {
 };
 
 test {
+    std.testing.log_level = .debug;
     std.testing.refAllDecls(@This());
 }

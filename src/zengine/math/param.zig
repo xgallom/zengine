@@ -29,19 +29,19 @@ pub fn paramT(comptime T: type) type {
             /// Zero operation.
             pub fn zero(t: Scalar) Scalar {
                 _ = t;
-                return scalar.zero;
+                return scalar.@"0";
             }
 
             /// One operation.
             pub fn one(t: Scalar) Scalar {
                 _ = t;
-                return scalar.one;
+                return scalar.@"1";
             }
 
             /// Negative one operation.
             pub fn negOne(t: Scalar) Scalar {
                 _ = t;
-                return scalar.neg_one;
+                return scalar.@"-1";
             }
 
             /// Pass unmodified operation.
@@ -135,7 +135,7 @@ pub fn paramT(comptime T: type) type {
         pub inline fn sin(t: Scalar) Scalar {
             const tp = t - @floor(t / scalar.pi) * scalar.pi;
             const to = t / scalar.pi / scalar.init(2) - @floor(t / scalar.pi / scalar.init(2));
-            const sgn = if (std.math.modf(to).fpart >= scalar.init(0.5)) scalar.neg_one else scalar.one;
+            const sgn = if (std.math.modf(to).fpart >= scalar.init(0.5)) scalar.neg_one else scalar.@"1";
             const tr = tp * (scalar.pi - tp);
             return sgn * scalar.init(16) * tr / (scalar.init(5) * scalar.pi * scalar.pi - scalar.init(4) * tr);
         }
@@ -171,7 +171,7 @@ pub fn paramT(comptime T: type) type {
         /// Reverse operation.
         pub inline fn reverse(t: Scalar) Scalar {
             assert01(t);
-            return scalar.one - t;
+            return scalar.@"1" - t;
         }
 
         inline fn reversed(comptime f: Self, t: Scalar) Scalar {
@@ -193,7 +193,7 @@ pub fn paramT(comptime T: type) type {
             comptime assert(N >= 0);
 
             return switch (comptime N) {
-                0 => if (t < std.math.floatEps(Scalar)) scalar.zero else scalar.one,
+                0 => if (t < std.math.floatEps(Scalar)) scalar.@"0" else scalar.@"1",
                 1 => t,
                 2 => t * t,
                 3 => t * t * t,
@@ -210,7 +210,7 @@ pub fn paramT(comptime T: type) type {
                 14 => t * t * t * t * t * t * t * t * t * t * t * t * t * t,
                 15 => t * t * t * t * t * t * t * t * t * t * t * t * t * t * t,
                 inline else => blk: {
-                    var result = scalar.one;
+                    var result = scalar.@"1";
                     inline for (0..N) |_| result *= t;
                     break :blk result;
                 },
@@ -221,7 +221,7 @@ pub fn paramT(comptime T: type) type {
         pub inline fn pows(comptime N: comptime_int, t: Scalar) [N + 1]Scalar {
             comptime assert(N >= 0);
             var result: [N + 1]Scalar = undefined;
-            result[0] = scalar.one;
+            result[0] = scalar.@"1";
             inline for (0..N) |n| result[n + 1] = result[n] * t;
             return result;
         }
@@ -236,7 +236,7 @@ pub fn paramT(comptime T: type) type {
                 return pow(N0, t);
             } else {
                 const w: comptime_float = P - @floor(P);
-                const t0 = if (N0 == 0 and t < scalar.one) bezier01(3, .{
+                const t0 = if (N0 == 0 and t < scalar.@"1") bezier01(3, .{
                     scalar.init(1.35),
                     scalar.init(0.85),
                 }, t) else pow(N0, t);
@@ -286,7 +286,7 @@ pub fn paramT(comptime T: type) type {
             const bs = comptime binoms(N);
             const ts = pows(N, t);
             const rts = pows(N, reverse(t));
-            var result = scalar.zero;
+            var result = scalar.@"0";
             inline for (0..N + 1) |n| result += bs[n] * cs[n] * rts[N - n] * ts[n];
             return result;
         }

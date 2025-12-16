@@ -23,6 +23,7 @@ const Engine = zengine.Engine;
 const ui = zengine.ui;
 
 const log = std.log.scoped(.main);
+const sections = perf.sections(@This(), &.{.execute_raycast});
 
 pub const std_options: std.Options = .{
     .log_level = .info,
@@ -100,6 +101,7 @@ var config: Config = .{};
 
 var gfx_loader: gfx.Loader = undefined;
 var gfx_passes: RenderPasses = .{};
+var gfx_fence: gfx.GPUFence = .invalid;
 var flat_scene: Scene.Flattened = undefined;
 var scene_map: zengine.containers.ArrayMap(Scene.Node.Id) = .empty;
 
@@ -161,6 +163,7 @@ pub fn main() !void {
     defer log_window.deinit();
 
     const engine = try Zengine.create(.{
+        .register = &register,
         .load = &load,
         .unload = &unload,
         .input = &input,
@@ -169,6 +172,10 @@ pub fn main() !void {
     });
     defer engine.deinit();
     return engine.run();
+}
+
+fn register() !void {
+    try sections.register();
 }
 
 fn load(self: *const Zengine) !bool {
@@ -190,7 +197,6 @@ fn load(self: *const Zengine) !bool {
         _ = try gfx_loader.loadMesh("mountain.obj");
         _ = try gfx_loader.loadMesh("cube.obj");
         _ = try gfx_loader.loadMesh("cottage.obj");
-        // _ = try gfx_loader.loadMesh("audi_A3.obj");
 
         try gfx_loader.createGraphicsPipelines();
         _ = try gfx_loader.createOriginMesh();
@@ -220,10 +226,52 @@ fn load(self: *const Zengine) !bool {
         // self.renderer.settings.lut = "lut/SoftBlackAndWhite.cube";
         _ = try gfx_loader.loadLut(self.renderer.settings.lut);
 
-        const font = try gfx_loader.loadFont("fonts/minecraft.ttf", 12);
-        _ = try self.renderer.createText("Test", font, "Test");
+        const font = try gfx_loader.loadFont("fonts/minecraft.ttf", 64);
+        _ = try self.renderer.createText("Test", font, "Use WASD and mouse to move");
 
-        try gfx_loader.commit();
+        gfx_fence = try gfx_loader.commit();
+    }
+    {
+        const mesh_buf = self.renderer.mesh_bufs.getPtr("cube.obj");
+        const mesh = mesh_buf.cpu_bufs.getPtrConst(.vertex).slice(math.Vertex);
+
+        log.info("mesh:", .{});
+        for (mesh, 0..) |*vertex, n| {
+            log.info("mesh[{}]: {any}", .{ n, vertex.* });
+        }
+
+        var iter = self.renderer.mesh_objs.map.iterator();
+        while (iter.next()) |e| {
+            const obj = e.value_ptr.*;
+            const key = e.key_ptr.*;
+            const mesh_ptr = obj.mesh_bufs.get(.mesh);
+            if (mesh_ptr != mesh_buf) continue;
+
+            log.info("object: '{s}'", .{key});
+            log.info("groups:", .{});
+
+            for (obj.groups.items, 0..) |*group, n| {
+                log.info("group[{}]: [{}..{}][{}] '{s}'", .{
+                    n,
+                    group.offset,
+                    group.offset + group.len,
+                    group.len,
+                    group.name,
+                });
+            }
+
+            log.info("sections:", .{});
+
+            for (obj.sections.items, 0..) |*section, n| {
+                log.info("section[{}]: [{}..{}][{}] '{s}'", .{
+                    n,
+                    section.offset,
+                    section.offset + section.len,
+                    section.len,
+                    section.material orelse "",
+                });
+            }
+        }
     }
 
     Zengine.sections.sub(.load).sub(.gfx).end();
@@ -360,6 +408,10 @@ fn load(self: *const Zengine) !bool {
 }
 
 fn unload(self: *const Zengine) void {
+    if (gfx_fence.isValid()) {
+        self.renderer.gpu_device.wait(.any, &.{gfx_fence}) catch unreachable;
+        self.renderer.gpu_device.release(&gfx_fence);
+    }
     scene_map.deinit(self.scene.allocator);
     gfx_loader.deinit();
     debug_ui.deinit();
@@ -500,7 +552,11 @@ fn update(self: *const Zengine) !bool {
         errdefer gfx_loader.cancel();
         flat_scene = try self.scene.flatten();
         _ = try gfx_loader.createLightsBuffer(&flat_scene);
-        try gfx_loader.commit();
+        if (gfx_fence.isValid()) {
+            try self.renderer.gpu_device.wait(.any, &.{gfx_fence});
+            self.renderer.gpu_device.release(&gfx_fence);
+        }
+        gfx_fence = try gfx_loader.commit();
     }
 
     if (execute_raycast) executeRaycast(self);
@@ -530,47 +586,66 @@ fn render(self: *const Zengine) !void {
     var items: gfx.render.Items.Object = .init(&flat_scene, .mesh_objs);
     var ui_items: gfx.render.Items.Object = .init(&flat_scene, .ui_objs);
     var texts: gfx.render.Items.Text = .init(&flat_scene);
-    _ = try flat_scene.render(self.ui, &items, &ui_items, &texts, &gfx_passes.bloom);
+    _ = try flat_scene.render(self.ui, &items, &ui_items, &texts, &gfx_passes.bloom, &gfx_fence);
 }
 
 fn executeRaycast(self: *const Zengine) void {
+    sections.sub(.execute_raycast).begin();
+    defer sections.sub(.execute_raycast).end();
+
     execute_raycast = false;
     const camera = self.scene.renderer.activeCamera();
+    const cam_pos: math.batch.DenseVector3 = .{
+        @splat(camera.position[0]),
+        @splat(camera.position[1]),
+        @splat(camera.position[2]),
+    };
+    const cam_dir: math.batch.DenseVector3 = .{
+        @splat(camera.direction[0]),
+        @splat(camera.direction[1]),
+        @splat(camera.direction[2]),
+    };
 
-    const s = flat_scene.mesh_objs.slice();
-    for (0..s.len) |n| {
-        const obj: *const gfx.mesh.Object = s.items(.target)[n];
-        const obj_key: []const u8 = s.items(.key)[n];
-        const mesh_buf = obj.mesh_bufs.get(.mesh);
-        const tr: *const math.Matrix4x4 = &s.items(.transform)[n];
-        const buf: []const math.Vertex = @ptrCast(mesh_buf.slice(.vertex));
-        for (obj.sections.items, 0..) |section, section_n| {
-            var mesh_n: usize = 0;
-            while (mesh_n < section.len) : (mesh_n += 3) {
-                const vertexes = [_]math.vertex.CMap{
-                    math.vertex.cmap(&buf[section.offset + mesh_n]),
-                    math.vertex.cmap(&buf[section.offset + mesh_n + 1]),
-                    math.vertex.cmap(&buf[section.offset + mesh_n + 2]),
+    var iter = flat_scene.batchTriIterator(.mesh_objs, .initOne(.position));
+    while (iter.next()) |item| {
+        // @compileLog("item", @sizeOf(@TypeOf(item)));
+        // @compileLog("transform", @sizeOf(@TypeOf(item.transform)));
+        // @compileLog("verts", @sizeOf(@TypeOf(item.verts)));
+        // @compileLog("verts[0]", @sizeOf(@TypeOf(item.verts[0].get(.position))));
+        // for (0..item.len) |n| log.info("item {s}[{}][{}]", .{ item.keys[n], item.sections[n], item.offsets[n] });
+        // log.info("{any}", .{item.verts[0].get(.position)});
+        // log.info("{any}", .{item.verts[1].get(.position)});
+        // log.info("{any}", .{item.verts[2].get(.position)});
+        var pos: [3]math.batch.DenseVector4 = undefined;
+        for (0..3) |vert_n| {
+            math.batch.dense_matrix4x4.apply(
+                &pos[vert_n],
+                &item.transform,
+                item.verts[vert_n].getPtrConst(.position),
+            );
+        }
+        const tri: [3]*const math.batch.DenseVector3 = .{
+            pos[0][0..3],
+            pos[1][0..3],
+            pos[2][0..3],
+        };
+        const result = math.batch.dense_vector3.rayIntersectTri(tri, &cam_pos, &cam_dir);
+        for (0..item.len) |n| {
+            if (result.mask[n]) {
+                const int_n: math.Vector3 = .{
+                    result.result[0][n],
+                    result.result[1][n],
+                    result.result[2][n],
                 };
-                var verts: [3]math.Vector4 = undefined;
-                for (0..3) |vert_n| {
-                    math.matrix4x4.apply(
-                        &verts[vert_n],
-                        tr,
-                        &math.vector4.makeTranslatable(vertexes[vert_n].getPtrConst(.position).*),
-                    );
-                }
-                const tri: [3]*const math.Vector3 = .{
-                    verts[0][0..3],
-                    verts[1][0..3],
-                    verts[2][0..3],
+                const pos_n: [3]math.Vector3 = .{
+                    .{ tri[0][0][n], tri[0][1][n], tri[0][2][n] },
+                    .{ tri[1][0][n], tri[1][1][n], tri[1][2][n] },
+                    .{ tri[2][0][n], tri[2][1][n], tri[2][2][n] },
                 };
-                const int_opt = math.vector3.rayIntersectTri(tri, &camera.position, &camera.direction);
-                if (int_opt) |int| {
-                    log.info("{s}[{}]: {}", .{ obj_key, section_n, @divExact(mesh_n, 3) });
-                    log.info("verts: {any}", .{verts});
-                    log.info("intersect point: {any}", .{int});
-                }
+
+                log.debug("{s}[{}]: {} {}", .{ item.keys[n], item.sections[n], item.offsets[n] / 3, n });
+                log.debug("position: {any}", .{pos_n});
+                log.debug("intersection point: {any}", .{int_n});
             }
         }
     }

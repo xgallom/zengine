@@ -107,21 +107,31 @@ pub fn draw(self: *const Self, element: Element, is_open: *bool) void {
 }
 
 pub fn drawMainMenuBar(self: *const Self, config: struct {
-    allocs_open: *bool,
-    property_editor_open: *bool,
-    perf_open: *bool,
-    log_open: *bool,
-    debug_ui_open: *bool,
+    allocs_open: ?*bool = null,
+    property_editor_open: ?*bool = null,
+    perf_open: ?*bool = null,
+    log_open: ?*bool = null,
+    debug_ui_open: ?*bool = null,
 }) void {
     if (!self.render_ui) return;
     if (c.igBeginMainMenuBar()) {
         if (c.igBeginMenu("Window", true)) {
-            if (c.igMenuItem_Bool("Property Editor", null, false, true)) config.property_editor_open.* = true;
-            if (c.igMenuItem_Bool("Performance", null, false, true)) config.perf_open.* = true;
-            if (c.igMenuItem_Bool("Allocations", null, false, true)) config.allocs_open.* = true;
-            if (c.igMenuItem_Bool("Debug Log", null, false, true)) config.log_open.* = true;
+            if (config.property_editor_open) |is_open| {
+                if (c.igMenuItem_Bool("Property Editor", null, false, true)) is_open.* = true;
+            }
+            if (config.perf_open) |is_open| {
+                if (c.igMenuItem_Bool("Performance", null, false, true)) is_open.* = true;
+            }
+            if (config.allocs_open) |is_open| {
+                if (c.igMenuItem_Bool("Allocations", null, false, true)) is_open.* = true;
+            }
+            if (config.log_open) |is_open| {
+                if (c.igMenuItem_Bool("Debug Log", null, false, true)) is_open.* = true;
+            }
             if (comptime options.has_debug_ui) {
-                if (c.igMenuItem_Bool("Debug UI", null, false, true)) config.debug_ui_open.* = true;
+                if (config.debug_ui_open) |is_open| {
+                    if (c.igMenuItem_Bool("Debug UI", null, false, true)) is_open.* = true;
+                }
             }
             c.igEndMenu();
         }

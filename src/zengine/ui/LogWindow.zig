@@ -43,6 +43,7 @@ pub fn deinit(self: *Self) void {
 }
 
 pub fn clear(self: *Self) void {
+    assert(self.is_init);
     self.buf.clearAndFree(self.allocator);
     self.line_offsets.clearRetainingCapacity();
     self.line_offsets.appendAssumeCapacity(0);
@@ -53,7 +54,7 @@ pub fn print(self: *Self, comptime fmt: []const u8, args: anytype) !void {
     if (!self.is_init) return;
     const start = self.buf.items.len;
     {
-        var w: std.io.Writer.Allocating = .fromArrayList(self.allocator, &self.buf);
+        var w: std.Io.Writer.Allocating = .fromArrayList(self.allocator, &self.buf);
         errdefer w.deinit();
         try w.writer.print(fmt, args);
         self.buf = w.toArrayList();
@@ -65,6 +66,7 @@ pub fn print(self: *Self, comptime fmt: []const u8, args: anytype) !void {
 
 pub fn draw(self: *Self, ui: *const UI, is_open: *bool) void {
     _ = ui;
+    assert(self.is_init);
     c.igSetNextWindowSize(.{ .x = 630, .y = 240 }, c.ImGuiCond_FirstUseEver);
     if (!c.igBegin(window_name, is_open, 0)) {
         c.igEnd();

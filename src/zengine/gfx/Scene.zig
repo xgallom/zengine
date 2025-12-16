@@ -18,6 +18,7 @@ const Camera = @import("Camera.zig");
 const Light = @import("Light.zig");
 const mesh = @import("mesh.zig");
 const ttf = @import("ttf.zig");
+const GPUFence = @import("GPUFence.zig");
 const gfx_render = @import("render.zig");
 const Renderer = @import("Renderer.zig");
 pub const Node = @import("Scene/Node.zig");
@@ -59,41 +60,208 @@ pub const Flattened = struct {
         ui_iter: *gfx_render.Items.Object,
         text_iter: *gfx_render.Items.Text,
         bloom: *const pass.Bloom,
+        fence: ?*GPUFence,
     ) !bool {
-        return gfx_render.renderScene(self.scene.renderer, self, ui_ptr, items_iter, ui_iter, text_iter, bloom);
+        return gfx_render.renderScene(
+            self.scene.renderer,
+            self,
+            ui_ptr,
+            items_iter,
+            ui_iter,
+            text_iter,
+            bloom,
+            fence,
+        );
     }
 
-    pub fn rayCast(flat: *const Flattened, ray_pos: *const math.Vector3, ray_dir: *const math.Vector3) void {
-        const s = flat.mesh_objs.slice();
-        for (0..s.len) |n| {
-            const item = s.get(n);
-            const obj = item.target;
-            const mesh_buf = obj.mesh_bufs.get(.mesh);
-            const verts: []const math.Vertex = mesh_buf.slice(.vertex);
-            if (obj.face_type != .triangle) continue;
-            for (obj.sections.items) |section| {
-                const start = section.offset;
-                const end = section.offset + section.len;
-                var vn0 = start;
-                while (vn0 < end) : (vn0 += 3) {
-                    const tri = .{
-                        math.vertex.cmap(&verts[vn0]).getPtrConst(.position),
-                        math.vertex.cmap(&verts[vn0 + 1]).getPtrConst(.position),
-                        math.vertex.cmap(&verts[vn0 + 2]).getPtrConst(.position),
-                    };
-                    const result = math.vector3.rayIntersectTri(tri, ray_pos, ray_dir);
-                    if (result) |point| {
-                        log.info("intersected {s} offset {}: {any}", .{ item.key, section.offset, point });
-                        log.info(
-                            "triangle: [{}]: {any} [{}]: {any} [{}]: {any}",
-                            .{ vn0, tri[0].*, vn0 + 1, tri[1].*, vn0 + 2, tri[2].* },
-                        );
-                    }
-                }
-            }
-        }
+    pub fn batchTriIterator(
+        flat: *const Flattened,
+        comptime flat_field: @TypeOf(.enum_literal),
+        comptime vertex_fields: std.EnumSet(math.VertexAttr),
+    ) BatchTriangleIterator(vertex_fields) {
+        comptime assert(@hasField(Flattened, @tagName(flat_field)));
+        return .{ .items = @field(flat, @tagName(flat_field)).slice() };
     }
 };
+
+pub fn BatchTriangleIterator(comptime fields: std.EnumSet(math.VertexAttr)) type {
+    comptime var field_list: []const std.builtin.Type.EnumField = &.{};
+    {
+        var iter = fields.iterator();
+        const enum_fields = @typeInfo(math.VertexAttr).@"enum".fields;
+        while (iter.next()) |e| {
+            const field: std.builtin.Type.EnumField = blk: for (enum_fields) |enum_field| {
+                if (enum_field.value == @intFromEnum(e)) break :blk enum_field;
+            } else unreachable;
+            field_list = field_list ++ &[_]std.builtin.Type.EnumField{field};
+        }
+    }
+    assert(field_list.len > 0);
+    const FieldsEnum = @Type(.{ .@"enum" = .{
+        .tag_type = u8,
+        .fields = field_list,
+        .decls = &.{},
+        .is_exhaustive = true,
+    } });
+
+    return struct {
+        items: FlatList(mesh.Object).Slice,
+        idx: usize = 0,
+        section: usize = 0,
+        offset: usize = 0,
+
+        const Iter = @This();
+
+        pub fn next(self: *@This()) ?Item {
+            var s: State = undefined;
+            while (true) {
+                switch (self.currentState(&s)) {
+                    .invalid => return null,
+                    .next_object => if (!self.nextObject(&s)) return null,
+                    .next_section => if (!self.nextSection(&s)) return null,
+                    .valid => break,
+                }
+            }
+
+            var item: Item = .{};
+            inline for (0..math.batch.batch_len) |N| {
+                assert(self.offset % 3 == 0);
+                item.setTri(N, self, &s);
+                if (!self.nextOffset(&s)) break;
+            }
+            return item;
+        }
+
+        const State = struct {
+            obj: *const mesh.Object,
+            mesh_buf: []const math.Vertex,
+            section: *const mesh.Object.Section,
+            vertex: *const math.Vertex,
+        };
+
+        fn currentState(self: *@This(), s: *State) enum { invalid, next_object, next_section, valid } {
+            if (self.idx >= self.items.len) return .invalid;
+            s.obj = self.items.items(.target)[self.idx];
+            if (s.obj.face_type != .triangle) return .next_object;
+            const mesh_buf = s.obj.mesh_bufs.get(.mesh);
+            s.mesh_buf = @ptrCast(mesh_buf.slice(.vertex));
+            if (self.section >= s.obj.sections.items.len) return .next_object;
+            s.section = &s.obj.sections.items[self.section];
+            if (self.offset >= s.section.len) return .next_section;
+            s.vertex = @ptrCast(s.obj.mesh_bufs.get(.mesh).slice(.vertex)[self.offset..]);
+            return .valid;
+        }
+
+        fn nextObject(self: *@This(), s: *State) bool {
+            self.section = 0;
+            self.offset = 0;
+            while (true) {
+                self.idx += 1;
+                if (self.idx >= self.items.len) return false;
+                s.obj = self.items.items(.target)[self.idx];
+                if (s.obj.face_type != .triangle) continue;
+                const mesh_buf = s.obj.mesh_bufs.get(.mesh);
+                s.mesh_buf = @ptrCast(mesh_buf.slice(.vertex));
+                assert(s.mesh_buf.len % 3 == 0);
+                return true;
+            }
+        }
+
+        fn nextSection(self: *@This(), s: *State) bool {
+            self.section += 1;
+            self.offset = 0;
+            while (self.section >= s.obj.sections.items.len) {
+                if (!self.nextObject(s)) return false;
+            }
+
+            s.section = &s.obj.sections.items[self.section];
+            return true;
+        }
+
+        fn nextOffset(self: *@This(), s: *State) bool {
+            self.offset += 1;
+            while (self.offset >= s.section.len) {
+                if (!self.nextSection(s)) return false;
+            }
+
+            assert(s.section.offset + self.offset < s.mesh_buf.len);
+            assert((s.section.offset + self.offset) % 3 == 0);
+            s.vertex = &s.mesh_buf[s.section.offset + self.offset];
+            return true;
+        }
+
+        fn advanceTri(self: *@This(), s: *State) bool {
+            self.offset += 1;
+            if (self.offset >= s.section.len) return false;
+            assert(s.section.offset + self.offset < s.mesh_buf.len);
+            s.vertex = &s.mesh_buf[s.section.offset + self.offset];
+            return true;
+        }
+
+        pub const Item = struct {
+            len: usize = 0,
+            keys: [math.batch.batch_len][:0]const u8 = @splat(""),
+            sections: [math.batch.batch_len]usize = @splat(0),
+            offsets: [math.batch.batch_len]usize = @splat(0),
+            transform: math.batch.DenseMatrix4x4 = math.batch.dense_matrix4x4.zero,
+            verts: [3]Vertex = @splat(.initFill(math.batch.dense_vector4.zero)),
+
+            pub const Vertex = std.EnumArray(FieldsEnum, math.batch.DenseVector4);
+
+            fn setTri(
+                item: *Item,
+                comptime N: comptime_int,
+                self: *Iter,
+                s: *State,
+            ) void {
+                comptime assert(N >= 0 and N < math.batch.batch_len);
+                assert(N >= item.len);
+                item.len = N + 1;
+                item.keys[N] = self.items.items(.key)[self.idx];
+                item.sections[N] = self.section;
+                item.offsets[N] = self.offset;
+
+                if (std.mem.eql(u8, "Cube", item.keys[N][0..4])) log.info("key: {s}", .{item.keys[N]});
+                if (std.mem.eql(u8, "Cube", item.keys[N][0..4])) log.info("section: {}", .{self.section});
+                if (std.mem.eql(u8, "Cube", item.keys[N][0..4])) log.info("offset: {}", .{s.section.offset + self.offset});
+                {
+                    const src = &self.items.items(.transform)[self.idx];
+                    const dst = &item.transform;
+                    for (0..4) |y| {
+                        for (0..4) |x| {
+                            dst[y][x][N] = src[y][x];
+                        }
+                    }
+                }
+
+                item.setTriVertex(N, 0, s);
+                assert(self.advanceTri(s));
+                item.setTriVertex(N, 1, s);
+                assert(self.advanceTri(s));
+                item.setTriVertex(N, 2, s);
+            }
+
+            fn setTriVertex(
+                item: *Item,
+                comptime N: comptime_int,
+                comptime TN: comptime_int,
+                s: *const State,
+            ) void {
+                comptime assert(N >= 0 and N < math.batch.batch_len);
+                comptime assert(TN >= 0 and TN < 3);
+                if (std.mem.eql(u8, "Cube", item.keys[N][0..4])) log.info("vertex[{}][{}]: {any}", .{ TN, N, s.vertex });
+                inline for (field_list) |field| {
+                    const src = &s.vertex[field.value];
+                    const dst = item.verts[TN].getPtr(@enumFromInt(field.value));
+                    for (0..3) |n| dst[n][N] = src[n];
+                    dst[3][N] = @as(math.VertexAttr, @enumFromInt(field.value)).transformableElement();
+                    if (std.mem.eql(u8, "Cube", item.keys[N][0..4])) log.info("tri[{}][0..3][{}]: {any}", .{ TN, N, src.* });
+                    if (std.mem.eql(u8, "Cube", item.keys[N][0..4])) log.info("tri[{}][{}][{}]: {any}", .{ TN, 3, N, dst[3][N] });
+                }
+            }
+        };
+    };
+}
 
 pub fn create(renderer: *Renderer) !*Self {
     const allocator = allocators.gpa();
@@ -139,7 +307,7 @@ pub fn flatten(self: *const Self) !Flattened {
     sections.sub(.flatten).begin();
     defer sections.sub(.flatten).end();
 
-    var flat = Flattened{ .scene = self };
+    var flat: Flattened = .{ .scene = self };
     var tr_scratch: math.Matrix4x4 = undefined;
 
     const s = self.nodes.slice();

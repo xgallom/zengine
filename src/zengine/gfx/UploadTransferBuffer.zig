@@ -45,7 +45,7 @@ pub fn deinit(self: *Self, gpa: std.mem.Allocator, gpu_device: GPUDevice) void {
         log.warn("transfer buffer mapped but not uploaded", .{});
         self.state = .upload;
     }
-    self.tr_buf.deinit(gpu_device);
+    self.releaseGPUTransferBuffer(gpu_device);
 }
 
 pub fn createGPUTransferBuffer(self: *Self, gpu_device: GPUDevice) !void {
@@ -153,6 +153,7 @@ pub fn upload(self: *Self, copy_pass: GPUCopyPass) void {
             .texture = surf_tex.gpu_tex,
             .w = surf_tex.surf.width(),
             .h = surf_tex.surf.height(),
+            .d = 1,
         }, false);
         tb_offset += surf_tex.surf.byteLen();
     }

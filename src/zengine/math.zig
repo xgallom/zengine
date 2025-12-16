@@ -15,6 +15,7 @@ pub const Scalar = types.Scalar;
 pub const Scalar64 = types.Scalar64;
 pub const Param = types.Param;
 pub const Param64 = types.Param64;
+pub const VectorNT = types.VectorNT;
 pub const Vector2 = types.Vector2;
 pub const Vector2f64 = types.Vector2f64;
 pub const Vector2i32 = types.Vector2i32;
@@ -25,6 +26,7 @@ pub const Vector3i32 = types.Vector3i32;
 pub const Vector3u32 = types.Vector3u32;
 pub const Vector4 = types.Vector4;
 pub const Vector4f64 = types.Vector4f64;
+pub const MatrixMxNT = types.MatrixMxNT;
 pub const Matrix3x3 = types.Matrix3x3;
 pub const Matrix3x3f64 = types.Matrix3x3f64;
 pub const Matrix4x4 = types.Matrix4x4;
@@ -37,6 +39,10 @@ pub const Point_i32 = types.Point_i32;
 pub const Point_u32 = types.Point_u32;
 pub const Point_f32 = types.Point_f32;
 pub const Point_f64 = types.Point_f64;
+pub const Rect_i32 = types.Rect_i32;
+pub const Rect_u32 = types.Rect_u32;
+pub const Rect_f32 = types.Rect_f32;
+pub const Rect_f64 = types.Rect_f64;
 pub const RGBu8 = types.RGBu8;
 pub const RGBf16 = types.RGBf16;
 pub const RGBf32 = types.RGBf32;
@@ -85,6 +91,8 @@ pub fn matrix4x4T(comptime T: type) type {
 
 pub const scalar = scalarT(types.Scalar);
 pub const scalar64 = scalarT(types.Scalar64);
+pub const scalar_i32 = scalarT(i32);
+pub const scalar_u32 = scalarT(u32);
 
 pub const param = paramT(types.Scalar);
 pub const param64 = paramT(types.Scalar64);

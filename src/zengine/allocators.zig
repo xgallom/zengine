@@ -69,14 +69,14 @@ const Self = struct {
     }
 
     fn logCapacities(self: *const Self) void {
-        log.info("gpa: {B:.3} / {B:.3}", .{
+        log.info("gpa: {Bi:.3} / {Bi:.3}", .{
             self.gpa_state.total_requested_bytes,
             self.gpa_state.requested_memory_limit,
         });
 
         var iter = global_state.arena_states.iterator();
         while (iter.next()) |item| log.info(
-            "{t}: {B:.3}",
+            "{t}: {Bi:.3}",
             .{ item.key, item.value.queryCapacity() },
         );
     }

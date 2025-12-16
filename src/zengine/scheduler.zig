@@ -4,6 +4,7 @@
 
 const std = @import("std");
 const assert = std.debug.assert;
+const allocators = @import("allocators.zig");
 const AnyTaskList = std.DoublyLinkedList;
 
 const log = std.log.scoped(.scheduler);
@@ -140,11 +141,25 @@ pub const TaskScheduler = struct {
         self.workers.deinit(self.allocator);
     }
 
+    pub fn parallelFor(self: *Self, comptime invoke: anytype, args: []std.meta.ArgsTuple(@TypeOf(invoke))) !*Task(invokeJoin(invoke)) {
+        const tasks = try allocators.scratch().alloc(*Task(invoke), args.len);
+        for (args, 0..) |args_n, n| tasks[n] = try self.prepend(invoke, args_n);
+        return self.prepend(invokeJoin(invoke));
+    }
+
+    inline fn invokeJoin(comptime invoke: anytype) fn ([]*Task(invoke)) []*Task(invoke) {
+        return struct {
+            pub fn impl(tasks: []*Task(invoke)) []*Task(invoke) {
+                for (tasks) |task| _ = task.promise.get();
+                return tasks;
+            }
+        }.impl;
+    }
+
     /// Creates a new task immediately scheduling it for execution
     pub fn prepend(self: *Self, comptime invoke: anytype, args: std.meta.ArgsTuple(@TypeOf(invoke))) !*Task(invoke) {
         self.mutex.lock();
         defer self.mutex.unlock();
-
         const task = try self.allocator.create(Task(invoke));
         task.init(args);
         self.scheduled_tasks.prepend(&task.any.node);
@@ -174,10 +189,9 @@ pub const TaskScheduler = struct {
     pub fn run(self: *Self) !void {
         self.mutex.lock();
         defer self.mutex.unlock();
-
         assert(self.running == false);
-
         self.running = true;
+
         for (0..self.workers.capacity) |_| {
             const w = self.workers.addOneAssumeCapacity();
             try w.init(self);
@@ -188,7 +202,6 @@ pub const TaskScheduler = struct {
         blk: {
             self.mutex.lock();
             defer self.mutex.unlock();
-
             if (!self.running) break :blk;
             log.info("running = false", .{});
             self.running = false;
@@ -205,7 +218,6 @@ pub const TaskScheduler = struct {
     pub fn cleanup(self: *Self) void {
         self.mutex.lock();
         defer self.mutex.unlock();
-
         self.cleanupTaskList(self.finished_tasks);
     }
 

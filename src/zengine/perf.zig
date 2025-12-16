@@ -160,7 +160,7 @@ const Self = struct {
 
     fn updateStats(self: *Self, now: u64, comptime force_update: bool) void {
         if (!force_update) {
-            if (!self.update_stats_timer.updated(now)) return;
+            if (!self.update_stats_timer.updated(now, .set)) return;
         } else {
             @branchHint(.cold);
             self.update_stats_timer.set(now);
@@ -232,6 +232,7 @@ const Self = struct {
 
     fn beginSection(self: *Self, comptime tag: []const u8, ptr: *Section, ret_addr: usize) !void {
         if (ptr.first_address[0] != ret_addr) {
+            @branchHint(.cold);
             ptr.first_address[0] = ret_addr;
             ptr.stack_trace[0].instruction_addresses = &ptr.stack_trace_buf[0];
             ptr.stack_trace[0].index = 0;
@@ -242,6 +243,7 @@ const Self = struct {
 
     fn endSection(self: *Self, ptr: *Section, ret_addr: usize) !void {
         if (ptr.first_address[1] != ret_addr) {
+            @branchHint(.cold);
             ptr.first_address[1] = ret_addr;
             ptr.stack_trace[1].instruction_addresses = &ptr.stack_trace_buf[1];
             ptr.stack_trace[1].index = 0;

@@ -5,15 +5,18 @@
 const std = @import("std");
 const assert = std.debug.assert;
 
+const allocators = @import("../allocators.zig");
 const c = @import("../ext.zig").c;
 const global = @import("../global.zig");
 const math = @import("../math.zig");
+const sdl = @import("../sdl.zig");
 const ui = @import("../ui.zig");
 const Window = @import("../Window.zig");
 const Error = @import("error.zig").Error;
 const GPUBuffer = @import("GPUBuffer.zig");
 const GPUCommandBuffer = @import("GPUCommandBuffer.zig");
 const GPUComputePipeline = @import("GPUComputePipeline.zig");
+const GPUFence = @import("GPUFence.zig");
 const GPUGraphcisPipeline = @import("GPUGraphicsPipeline.zig");
 const GPUSampler = @import("GPUSampler.zig");
 const GPUShader = @import("GPUShader.zig");
@@ -103,6 +106,23 @@ pub fn destroy(self: Self, item: anytype) void {
 
 pub fn release(self: Self, item: anytype) void {
     std.meta.Child(@TypeOf(item)).release(self, item.toOwned());
+}
+
+pub fn query(self: Self, fence: GPUFence) bool {
+    return fence.query(self);
+}
+
+pub fn wait(self: Self, comptime behavior: GPUFence.WaitBehavior, fences: []const GPUFence) !void {
+    assert(self.isValid());
+    log.debug("wait for {t} fences: {any}", .{ behavior, fences });
+    var arena = allocators.initArena();
+    defer arena.deinit();
+    const gpa = arena.allocator();
+    const fens = try sdl.sliceFrom(gpa, fences);
+    if (!c.SDL_WaitForGPUFences(self.ptr, behavior == .all, fens.ptr, @intCast(fens.len))) {
+        log.err("failed waiting for fences: {s}", .{c.SDL_GetError()});
+        return Error.FenceFailed;
+    }
 }
 
 pub fn map(self: Self, tr_buf: GPUTransferBuffer, cycle: bool) !GPUTransferBuffer.Mapping {

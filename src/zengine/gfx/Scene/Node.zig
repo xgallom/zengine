@@ -12,7 +12,7 @@ const ui = @import("../../ui.zig");
 const ecs = @import("../../ecs.zig");
 const Transform = @import("Transform.zig");
 
-const log = std.log.scoped(.gfx_scene_camera);
+const log = std.log.scoped(.gfx_scene_node);
 
 node: Tree.Node = .{},
 name: [:0]const u8,
@@ -84,6 +84,7 @@ pub const Tree = struct {
     tail: Id = .invalid,
 
     pub const empty: Tree = .{};
+    pub const type_id = ecs.MultiComponentStorage(Self).type_id;
 
     pub const Slice = struct {
         slice: ecs.MultiComponentStorage(Self).Slice,
@@ -286,21 +287,21 @@ pub fn hasChildren(self: *const Self) bool {
 
 test Tree {
     const gpa = std.testing.allocator;
-    const self: Tree = .empty;
+    var self: Tree = .empty;
     defer self.deinit(gpa);
     const a = try self.insert(gpa, "A", .node(), &.{});
-    std.testing.expectEqual(self.data.len, 1);
-    std.testing.expectEqual(self.gens.items.len, 1);
-    std.testing.expectEqual(self.removed.items.len, 0);
-    std.testing.expectEqual(self.free.items.len, 0);
-    std.testing.expectEqual(self.present.is, 1);
-    std.testing.expectEqual(self.head, a);
-    std.testing.expectEqual(self.tail, a);
+    try std.testing.expectEqual(self.storage.data.len, 1);
+    try std.testing.expectEqual(self.storage.gens.items.len, self.storage.capacity());
+    try std.testing.expectEqual(self.removed.items.len, 0);
+    try std.testing.expectEqual(self.storage.free.items.len, 0);
+    try std.testing.expect(self.storage.present.isSet(0));
+    try std.testing.expectEqual(self.head, a);
+    try std.testing.expectEqual(self.tail, a);
     {
         const s = self.slice();
-        std.testing.expectEqual(s.node(a).parent, .invalid);
-        std.testing.expectEqual(s.node(a).prev, .invalid);
-        std.testing.expectEqual(s.node(a).next, .invalid);
-        std.testing.expectEqual(s.node(a).child, .invalid);
+        try std.testing.expectEqual(s.node(a).parent, .invalid);
+        try std.testing.expectEqual(s.node(a).prev, .invalid);
+        try std.testing.expectEqual(s.node(a).next, .invalid);
+        try std.testing.expectEqual(s.node(a).child, .invalid);
     }
 }

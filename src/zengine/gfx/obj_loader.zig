@@ -539,7 +539,7 @@ fn ProcessFaces(comptime config: struct {
             }
 
             const faces = self.faces.items[faces_offset .. faces_offset + faces_len];
-            const face_vert_count = mesh.Object.face_vert_counts.get(config.face_type);
+            const face_vert_count = mesh.face_vert_counts.get(config.face_type);
 
             var face_count: usize = 0;
             for (faces) |*face| {

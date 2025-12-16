@@ -11,13 +11,13 @@ const Self = struct {
     exe_path: []const u8,
     assets_path: []const u8,
     frame_idx: u64 = 0,
-    engine_now: u64,
-    engine_clock: time.Clock,
-    frame_clock: time.Clock,
+    engine_now_ns: u64,
+    engine_clock_ns: time.Clock,
+    frame_clock_ns: time.Clock,
     spaces_buf: []const u8,
 
     pub fn init(self: *Self) !void {
-        const engine_now = time.getNow();
+        const engine_now_ns = time.getNano();
         const exe_path = try std.fs.selfExeDirPathAlloc(allocators.global());
         const assets_path = try std.fs.path.joinZ(
             allocators.global(),
@@ -29,9 +29,9 @@ const Self = struct {
         self.* = .{
             .exe_path = exe_path,
             .assets_path = assets_path,
-            .engine_now = engine_now,
-            .engine_clock = .init(engine_now),
-            .frame_clock = .init(engine_now),
+            .engine_now_ns = engine_now_ns,
+            .engine_clock_ns = .init(engine_now_ns),
+            .frame_clock_ns = .init(engine_now_ns),
             .spaces_buf = spaces_buf,
         };
     }
@@ -42,11 +42,11 @@ const Self = struct {
 
     pub fn startFrame(self: *Self, now: u64) void {
         self.frame_idx += 1;
-        self.engine_now = now;
+        self.engine_now_ns = now;
     }
 
     pub fn finishFrame(self: *Self) void {
-        self.frame_clock.start(self.engine_now);
+        self.frame_clock_ns.start(self.engine_now_ns);
     }
 };
 
@@ -72,7 +72,7 @@ pub fn isFirstFrame() bool {
 
 pub fn startFrame() void {
     assert(is_init);
-    global_state.startFrame(time.getNow());
+    global_state.startFrame(time.getNano());
 }
 
 pub fn finishFrame() void {
@@ -90,7 +90,7 @@ pub inline fn assetsPath() []const u8 {
     return global_state.assets_path;
 }
 
-pub inline fn assetPath(path: []const u8) ![]const u8 {
+pub inline fn assetPath(path: []const u8) ![:0]const u8 {
     assert(is_init);
     return std.fs.path.joinZ(
         allocators.scratch(),
@@ -110,34 +110,66 @@ pub inline fn frameIndex() u64 {
 
 pub inline fn engineStart() u64 {
     assert(is_init);
-    return global_state.engine_clock.start_time;
+    return global_state.engine_clock_ns.start_time / std.time.ns_per_ms;
+}
+
+pub inline fn engineStartNano() u64 {
+    assert(is_init);
+    return global_state.engine_clock_ns.start_time;
 }
 
 pub inline fn engineNow() u64 {
     assert(is_init);
-    return global_state.engine_clock.elapsed(global_state.engine_now);
+    return global_state.engine_clock_ns.elapsed(global_state.engine_now_ns) / std.time.ns_per_ms;
+}
+
+pub inline fn engineNowNano() u64 {
+    assert(is_init);
+    return global_state.engine_clock_ns.elapsed(global_state.engine_now_ns);
 }
 
 pub inline fn engineTime() time.Time {
     return .{ .ms = engineNow() };
 }
 
+pub inline fn engineTimeNano() time.Time {
+    return .{ .ns = engineNowNano() };
+}
+
 pub inline fn sinceStart() u64 {
     assert(is_init);
-    return global_state.engine_clock.elapsed(global_state.engine_now);
+    return global_state.engine_clock_ns.elapsed(global_state.engine_now_ns) / std.time.ns_per_ms;
+}
+
+pub inline fn sinceStartNano() u64 {
+    assert(is_init);
+    return global_state.engine_clock_ns.elapsed(global_state.engine_now_ns);
 }
 
 pub inline fn timeSinceStart() time.Time {
     return .{ .ms = sinceStart() };
 }
 
+pub inline fn timeSinceStartNano() time.Time {
+    return .{ .ns = sinceStartNano() };
+}
+
 pub inline fn sinceLastFrame() u64 {
     assert(is_init);
-    return global_state.frame_clock.elapsed(global_state.engine_now);
+    return global_state.frame_clock_ns.elapsed(global_state.engine_now_ns) / std.time.ns_per_ms;
+}
+
+pub inline fn sinceLastFrameNano() u64 {
+    assert(is_init);
+    return global_state.frame_clock_ns.elapsed(global_state.engine_now_ns);
 }
 
 pub inline fn timeSinceLastFrame() time.Time {
     return .{ .ms = sinceLastFrame() };
+}
+
+pub inline fn timeSinceLastFrameNano() time.Time {
+    return .{ .ns = sinceLastFrameNano() };
 }
 
 pub inline fn spaces(count: usize) []const u8 {

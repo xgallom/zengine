@@ -47,6 +47,7 @@ pub fn uploadToTexture(
     cycle: bool,
 ) void {
     assert(self.isValid());
+    log.debug("upload to texture: {any} {any} {}", .{ source, destination, cycle });
     c.SDL_UploadToGPUTexture(self.ptr, &source.toSDL(), &destination.toSDL(), cycle);
 }
 

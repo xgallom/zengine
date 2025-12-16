@@ -114,9 +114,9 @@ pub const Settings = struct {
 
         pub fn toInt(config: @This()) u32 {
             var result: u32 = 0;
-            if (config.has_agx) result |= 1 << 0;
-            if (config.has_lut) result |= 1 << 1;
-            if (config.has_srgb) result |= 1 << 2;
+            result |= @as(u32, @intFromBool(config.has_agx)) << 0;
+            result |= @as(u32, @intFromBool(config.has_lut)) << 1;
+            result |= @as(u32, @intFromBool(config.has_srgb)) << 2;
             return result;
         }
     } = .{},
@@ -148,7 +148,6 @@ pub const Settings = struct {
 
 pub fn create(engine: *const Engine) !*Self {
     defer allocators.scratchFree();
-
     sections.sub(.init).begin();
 
     const self = try createSelf(allocators.gpa(), engine);
@@ -158,7 +157,6 @@ pub fn create(engine: *const Engine) !*Self {
         log.warn("failed to enable triple-buffering", .{});
     }
     try self.setPresentMode();
-
     try self.createTextures();
     try self.createSamplers();
 

@@ -57,6 +57,34 @@ pub fn quatT(comptime T: type) type {
             return result;
         }
 
+        pub fn lerp(result: *Self, _t0: *const Self, _t1: *const Self, _t: types.Scalar) void {
+            var t0 = _t0.*;
+            var t1 = _t1.*;
+            var d = dot(&t0, &t1);
+            if (d < scalar.@"0") {
+                vector.neg(&t1);
+                d *= scalar.@"-1";
+            }
+
+            // Linear interpolation for close quaternions
+            if (d >= scalar.init(0.9995)) {
+                vector.lerp(result, &t0, &t1, _t);
+                vector.normalize(result);
+                return;
+            }
+
+            // Spherical interpolation
+            const t = scalar.init(_t);
+            const ct = scalar.acos(d);
+            const st = scalar.sin(d);
+            const w0 = scalar.sin(scalar.@"1" - t * ct) / st;
+            const w1 = scalar.sin(t * ct) / st;
+            vector.scale(&t0, w0);
+            vector.scale(&t1, w1);
+            result.* = t0;
+            vector.add(result, &t1);
+        }
+
         pub fn mul(self: *Self, other: *const Self) void {
             const copy = self.*;
             mulInto(self, &copy, other);
@@ -74,14 +102,14 @@ pub fn quatT(comptime T: type) type {
         }
 
         pub fn magSqr(self: *const Self) Scalar {
-            return dot(self, self);
+            return vector.magSqr(self);
         }
 
         pub fn conjugate(self: *Self) void {
             const s = vector.map(self);
-            s.x().* *= -1;
-            s.y().* *= -1;
-            s.z().* *= -1;
+            s.x().* *= scalar.@"-1";
+            s.y().* *= scalar.@"-1";
+            s.z().* *= scalar.@"-1";
         }
 
         pub fn inverse(self: *Self) void {
@@ -91,9 +119,7 @@ pub fn quatT(comptime T: type) type {
         }
 
         pub fn dot(lhs: *const Self, rhs: *const Self) Scalar {
-            var sum = scalar.zero;
-            for (0..len) |n| sum = @mulAdd(Scalar, lhs[n], rhs[n], sum);
-            return sum;
+            return vector.dot(lhs, rhs);
         }
 
         pub fn apply(result: *Self, quat: *const Self, operand: *const Self) void {

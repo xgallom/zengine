@@ -11,6 +11,7 @@ const math = @import("../../math.zig");
 const ui = @import("../../ui.zig");
 const Error = @import("../error.zig").Error;
 const GPUTextEngine = @import("../GPUTextEngine.zig");
+const Surface = @import("../Surface.zig");
 const types = @import("../types.zig");
 
 const log = std.log.scoped(.gfx_ttf_font);
@@ -26,6 +27,21 @@ pub fn deinit(self: *Self) void {
 
 pub fn close(ptr: *c.TTF_Font) void {
     c.TTF_CloseFont(ptr);
+}
+
+pub fn renderText(self: Self, text: []const u8, fg: math.RGBAu8) !Surface {
+    assert(self.isValid());
+    const ptr = c.TTF_RenderText_Blended(
+        self.ptr,
+        text.ptr,
+        text.len,
+        .{ .r = fg[0], .g = fg[1], .b = fg[2], .a = fg[3] },
+    );
+    if (ptr == null) {
+        log.err("failed rendering text \"{s}\": {s}", .{ text, c.SDL_GetError() });
+        return Error.FontFailed;
+    }
+    return .fromOwned(ptr.?);
 }
 
 pub fn fromOwned(ptr: *c.TTF_Font) Self {

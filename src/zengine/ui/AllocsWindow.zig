@@ -58,7 +58,7 @@ pub fn draw(_: *Self, ui: *const UI, is_open: *bool) void {
                 c.igAlignTextToFramePadding();
                 const text = std.fmt.bufPrintZ(
                     &buf,
-                    "{B:.3}",
+                    "{Bi:.3}",
                     .{allocators.memoryLimit()},
                 ) catch unreachable;
                 c.igTextUnformatted(text, null);
@@ -78,7 +78,7 @@ pub fn draw(_: *Self, ui: *const UI, is_open: *bool) void {
                 c.igAlignTextToFramePadding();
                 const text = std.fmt.bufPrintZ(
                     &buf,
-                    "{B:.3}",
+                    "{Bi:.3}",
                     .{allocators.queryCapacity()},
                 ) catch unreachable;
                 c.igTextUnformatted(text, null);
@@ -98,7 +98,7 @@ pub fn draw(_: *Self, ui: *const UI, is_open: *bool) void {
                 c.igAlignTextToFramePadding();
                 const text = std.fmt.bufPrintZ(
                     &buf,
-                    "{B:.3}",
+                    "{Bi:.3}",
                     .{allocators.arenaState(arena_key).queryCapacity()},
                 ) catch unreachable;
                 c.igTextUnformatted(text, null);
@@ -118,7 +118,7 @@ pub fn draw(_: *Self, ui: *const UI, is_open: *bool) void {
                 c.igAlignTextToFramePadding();
                 const text = std.fmt.bufPrintZ(
                     &buf,
-                    "{B:.3}",
+                    "{Bi:.3}",
                     .{allocators.maxAlloc()},
                 ) catch unreachable;
                 c.igTextUnformatted(text, null);

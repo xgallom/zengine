@@ -99,6 +99,13 @@ pub fn DenseMatrix4x4BT(comptime NB: comptime_int, comptime T: type) type {
 
 pub const Batch = BatchNT(batch_len, Scalar);
 pub const Batch64 = BatchNT(batch_len64, Scalar64);
+
+pub const Vector2 = VectorNBT(2, batch_len, Scalar);
+pub const CVector2 = CVectorNBT(2, batch_len, Scalar);
+pub const DenseVector2 = DenseVectorNBT(2, batch_len, Scalar);
+pub const Vector2f64 = VectorNBT(2, batch_len64, Scalar64);
+pub const CVector2f64 = CVectorNBT(2, batch_len64, Scalar64);
+pub const DenseVector2f64 = DenseVectorNBT(2, batch_len64, Scalar64);
 pub const Vector3 = VectorNBT(3, batch_len, Scalar);
 pub const CVector3 = CVectorNBT(3, batch_len, Scalar);
 pub const DenseVector3 = DenseVectorNBT(3, batch_len, Scalar);
@@ -111,9 +118,23 @@ pub const DenseVector4 = DenseVectorNBT(4, batch_len, Scalar);
 pub const Vector4f64 = VectorNBT(4, batch_len64, Scalar64);
 pub const CVector4f64 = CVectorNBT(4, batch_len64, Scalar64);
 pub const DenseVector4f64 = DenseVectorNBT(4, batch_len64, Scalar64);
+
+pub const Matrix3x3 = MatrixMxNBT(3, 3, batch_len, Scalar);
+pub const CMatrix3x3 = CMatrixMxNBT(3, 3, batch_len, Scalar);
+pub const DenseMatrix3x3 = DenseMatrixMxNBT(3, 3, batch_len, Scalar);
+pub const Matrix3x3f64 = MatrixMxNBT(3, 3, batch_len64, Scalar64);
+pub const CMatrix3x3f64 = CMatrixMxNBT(3, 3, batch_len64, Scalar64);
+pub const DenseMatrix3x3f64 = DenseMatrixMxNBT(3, 3, batch_len64, Scalar64);
 pub const Matrix4x4 = MatrixMxNBT(4, 4, batch_len, Scalar);
 pub const CMatrix4x4 = CMatrixMxNBT(4, 4, batch_len, Scalar);
 pub const DenseMatrix4x4 = DenseMatrixMxNBT(4, 4, batch_len, Scalar);
 pub const Matrix4x4f64 = MatrixMxNBT(4, 4, batch_len64, Scalar64);
 pub const CMatrix4x4f64 = CMatrixMxNBT(4, 4, batch_len64, Scalar64);
 pub const DenseMatrix4x4f64 = DenseMatrixMxNBT(4, 4, batch_len64, Scalar64);
+
+pub const Vertex = [types.VertexAttr.len]Vector3;
+pub const CVertex = [types.VertexAttr.len]CVector3;
+pub const DenseVertex = [types.VertexAttr.len]DenseVector3;
+pub const Vertex4 = [types.VertexAttr.len]Vector4;
+pub const CVertex4 = [types.VertexAttr.len]CVector4;
+pub const DenseVertex4 = [types.VertexAttr.len]DenseVector4;

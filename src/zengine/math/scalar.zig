@@ -7,12 +7,15 @@ const assert = std.debug.assert;
 
 const types = @import("types.zig");
 
+const log = std.log.scoped(.math_scalar);
+
 pub fn IntMask(comptime len: comptime_int) type {
-    comptime assert(len > 0);
+    comptime assert(len >= 0);
     return struct {
         pub const uses_mask = @popCount(@as(usize, len)) == 1;
 
         pub inline fn index(elem_index: anytype) @TypeOf(elem_index) {
+            if (comptime len == 0) return elem_index;
             return switch (comptime uses_mask) {
                 true => elem_index >> comptime @ctz(len),
                 false => elem_index / len,
@@ -20,6 +23,7 @@ pub fn IntMask(comptime len: comptime_int) type {
         }
 
         pub inline fn offset(elem_index: anytype) @TypeOf(elem_index) {
+            if (comptime len == 0) return 0;
             return switch (comptime uses_mask) {
                 true => elem_index & comptime (len - 1),
                 false => elem_index % len,
@@ -45,6 +49,8 @@ pub fn scalarT(comptime T: type) type {
             pub const @"-1": Self = -1;
             pub const pi: Self = @floatCast(std.math.pi);
             pub const eps: Self = std.math.floatEps(Scalar);
+            pub const nan: Self = std.math.nan(Scalar);
+            pub const inf: Self = std.math.inf(Scalar);
 
             pub const min_val = -std.math.inf(Self);
             pub const max_val = std.math.inf(Self);
@@ -65,6 +71,43 @@ pub fn scalarT(comptime T: type) type {
                 const tmp = a.*;
                 a.* = b.*;
                 b.* = tmp;
+            }
+
+            pub fn isNan(x: Self) bool {
+                return std.math.isNan(x);
+            }
+
+            pub fn approxEqAbs(x: Self, y: Self, tolerance: Self) bool {
+                return std.math.approxEqAbs(Scalar, x, y, tolerance);
+            }
+
+            pub fn approxEqRel(x: Self, y: Self, tolerance: Self) bool {
+                return std.math.approxEqRel(Scalar, x, y, tolerance);
+            }
+
+            pub fn sin(x: Self) Self {
+                return @sin(x);
+            }
+
+            pub fn cos(x: Self) Self {
+                return @cos(x);
+            }
+
+            pub fn asin(x: Self) Self {
+                return std.math.asin(x);
+            }
+
+            pub fn acos(x: Self) Self {
+                return std.math.acos(x);
+            }
+
+            pub fn atan2(y: Self, x: Self) Self {
+                return std.math.atan2(y, x);
+            }
+
+            pub fn lerp(t0: Self, t1: Self, t: types.Scalar) Self {
+                const st: Self = @floatCast(t);
+                return t0 * (@"1" - st) + t1 * st;
             }
 
             pub fn to(comptime U: type, value: Scalar) U {
@@ -111,6 +154,13 @@ pub fn scalarT(comptime T: type) type {
                 b.* = tmp;
             }
 
+            pub fn lerp(t0: Self, t1: Self, t: types.Scalar) Self {
+                _ = t0;
+                _ = t1;
+                _ = t;
+                @compileError("lerp not implemented for " ++ @typeName(Self));
+            }
+
             pub fn to(comptime U: type, value: Scalar) U {
                 return switch (@typeInfo(U)) {
                     .float, .comptime_float => @floatFromInt(value),
@@ -124,10 +174,11 @@ pub fn scalarT(comptime T: type) type {
                 };
             }
         },
-        .vector => |field_info| switch (@typeInfo(field_info.child)) {
+        .vector => |info| switch (@typeInfo(info.child)) {
             .float, .comptime_float => struct {
                 pub const Self = T;
                 pub const Scalar = @typeInfo(T).vector.child;
+                pub const Pred = @Vector(len, bool);
                 pub const len = @typeInfo(T).vector.len;
                 pub const is_float = true;
                 pub const is_int = false;
@@ -139,9 +190,13 @@ pub fn scalarT(comptime T: type) type {
                 pub const @"-1": Self = @splat(-1);
                 pub const pi: Self = @splat(std.math.pi);
                 pub const eps: Self = @splat(std.math.floatEps(Scalar));
+                pub const nan: Self = @splat(std.math.nan(Scalar));
+                pub const inf: Self = @splat(std.math.inf(Scalar));
+
+                pub const child = scalarT(Scalar);
 
                 pub fn epsAt(value: Scalar) Self {
-                    return @splat(std.math.floatEpsAt(Scalar, value));
+                    return @splat(child.epsAt(value));
                 }
 
                 pub fn init(value: Scalar) Self {
@@ -158,13 +213,84 @@ pub fn scalarT(comptime T: type) type {
                     b.* = tmp;
                 }
 
+                pub fn isNan(x: Self) Pred {
+                    var result: Pred = undefined;
+                    inline for (0..len) |n| {
+                        result[n] = child.isNan(x[n]);
+                    }
+                    return result;
+                }
+
+                pub fn approxEqAbs(x: Self, y: Self, tolerance: Self) Pred {
+                    assert(@reduce(.And, tolerance >= @"0"));
+                    var result: Pred = undefined;
+                    const v_false: Pred = @splat(false);
+                    const v_true: Pred = @splat(true);
+                    result = @abs(x - y) <= tolerance;
+                    result = @select(bool, isNan(x) | isNan(y), v_false, result);
+                    result = @select(bool, x == y, v_true, result);
+                    return result;
+                }
+
+                pub fn approxEqRel(x: Self, y: Self, tolerance: Self) Pred {
+                    _ = x;
+                    _ = y;
+                    _ = tolerance;
+                    @compileError("Not implemented");
+                }
+
+                pub fn sin(x: Self) Self {
+                    var result: Self = undefined;
+                    inline for (0..len) |n| {
+                        result[n] = child.sin(x[n]);
+                    }
+                    return result;
+                }
+
+                pub fn cos(x: Self) Self {
+                    var result: Self = undefined;
+                    inline for (0..len) |n| {
+                        result[n] = child.cos(x[n]);
+                    }
+                    return result;
+                }
+
+                pub fn asin(x: Self) Self {
+                    var result: Self = undefined;
+                    inline for (0..len) |n| {
+                        result[n] = child.asin(x[n]);
+                    }
+                    return result;
+                }
+
+                pub fn acos(x: Self) Self {
+                    var result: Self = undefined;
+                    inline for (0..len) |n| {
+                        result[n] = child.acos(x[n]);
+                    }
+                    return result;
+                }
+
+                pub fn atan2(y: Self, x: Self) Self {
+                    var result: Self = undefined;
+                    inline for (0..len) |n| {
+                        result[n] = child.atan2(y[n], x[n]);
+                    }
+                    return result;
+                }
+
+                pub fn lerp(t0: Self, t1: Self, t: types.Scalar) Self {
+                    const vt = init(@floatCast(t));
+                    return t0 * (@"1" - vt) + t1 * vt;
+                }
+
                 pub fn to(comptime U: type, value: Scalar) U {
                     return switch (@typeInfo(U)) {
                         .float, .comptime_float => @compileError("Can not convert vector to float"),
                         .int, .comptime_int => @compileError("Can not convert vector to int"),
-                        .vector => |u_info| if (comptime field_info.len == u_info.len) blk: {
+                        .vector => |u_info| if (comptime info.len == u_info.len) blk: {
                             var result: U = undefined;
-                            for (0..field_info.len) |n| {
+                            for (0..info.len) |n| {
                                 result[n] = scalarT(Scalar).to(u_info.child, value[n]);
                             }
                             break :blk result;
@@ -196,6 +322,7 @@ pub fn scalarT(comptime T: type) type {
             .int, .comptime_int => struct {
                 pub const Self = T;
                 pub const Scalar = @typeInfo(T).vector.child;
+                pub const Pred = @Vector(len, bool);
                 pub const len = @typeInfo(T).vector.len;
                 pub const is_float = false;
                 pub const is_int = true;
@@ -221,13 +348,20 @@ pub fn scalarT(comptime T: type) type {
                     b.* = tmp;
                 }
 
+                pub fn lerp(t0: Self, t1: Self, t: types.Scalar) Self {
+                    _ = t0;
+                    _ = t1;
+                    _ = t;
+                    @compileError("lerp not implemented for " ++ @typeName(Self));
+                }
+
                 pub fn to(comptime U: type, value: Scalar) U {
                     return switch (@typeInfo(U)) {
                         .float, .comptime_float => @compileError("Can not convert vector to float"),
                         .int, .comptime_int => @compileError("Can not convert vector to int"),
-                        .vector => |u_info| if (comptime field_info.len == u_info.len) blk: {
+                        .vector => |u_info| if (comptime info.len == u_info.len) blk: {
                             var result: U = undefined;
-                            for (0..field_info.len) |n| {
+                            for (0..info.len) |n| {
                                 result[n] = scalarT(Scalar).to(u_info.child, value[n]);
                             }
                             break :blk result;
@@ -256,8 +390,24 @@ pub fn scalarT(comptime T: type) type {
                     return mask.offset(elem_index);
                 }
             },
-            else => @compileError("Unsupported vector scalar type " ++ @typeName(field_info.child)),
+            else => @compileError("Unsupported vector scalar type " ++ @typeName(info.child)),
         },
         else => @compileError("Unsupported scalar type " ++ @typeName(T)),
     };
+}
+
+test "scalar4" {
+    const ns = scalarT(@Vector(4, types.Scalar));
+    const eps = ns.init(0.000001);
+    try std.testing.expectEqual(ns.isNan(.{ 0, ns.child.nan, 0, ns.child.nan }), .{ false, true, false, true });
+    try std.testing.expectEqual(ns.approxEqAbs(
+        ns.atan2(.{ 0, 0.2, -0.2, 0.34 }, .{ 1, 0.2, 0.2, -0.4 }),
+        .{ 0, 0.785398, -0.785398, 2.437099 },
+        eps,
+    ), .{ true, true, true, true });
+    try std.testing.expectEqual(ns.approxEqAbs(
+        .{ ns.child.nan, 1, ns.child.nan, ns.child.inf },
+        .{ 1, 1, ns.child.nan, ns.child.inf },
+        ns.eps,
+    ), .{ false, true, false, true });
 }

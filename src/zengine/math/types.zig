@@ -83,6 +83,11 @@ pub const Point_u32 = Vector2T(u32);
 pub const Point_f32 = Vector2T(f32);
 pub const Point_f64 = Vector2T(f64);
 
+pub const Rect_i32 = Vector4T(i32);
+pub const Rect_u32 = Vector4T(u32);
+pub const Rect_f32 = Vector4T(f32);
+pub const Rect_f64 = Vector4T(f64);
+
 pub const RGBu8 = Vector3T(u8);
 pub const RGBf16 = Vector3T(f16);
 pub const RGBf32 = Vector3T(f32);
@@ -93,8 +98,8 @@ pub const RGBAf16 = Vector4T(f16);
 pub const RGBAf32 = Vector4T(f32);
 pub const RGBAf64 = Vector4T(f64);
 
-pub const Vertex = [VertexAttr.len]Vector3T(f32);
-pub const Vertex4 = [VertexAttr.len]Vector4T(f32);
+pub const Vertex = [VertexAttr.len]Vector3T(Scalar);
+pub const Vertex4 = [VertexAttr.len]Vector4T(Scalar);
 pub const TexCoord = Vector2T(f32);
 pub const Euler = Vector3T(f32);
 pub const Quat = Vector4T(f32);
@@ -148,6 +153,13 @@ pub const VertexAttr = enum {
     tangent,
     binormal,
     pub const len = 5;
+
+    pub fn transformableElement(x: VertexAttr) Scalar {
+        return switch (x) {
+            .position => 1,
+            else => 0,
+        };
+    }
 };
 
 /// Axes of a 3D space
@@ -157,7 +169,7 @@ pub const Axis3 = enum(u2) {
     z,
     pub const len = 3;
 
-    pub fn toAxis4(x: Axis3) Axis4 {
+    pub inline fn toAxis4(x: Axis3) Axis4 {
         return @enumFromInt(@intFromEnum(x));
     }
 };
@@ -170,7 +182,7 @@ pub const Axis4 = enum(u2) {
     w,
     pub const len = 4;
 
-    pub fn toAxis3(x: Axis4) Axis3 {
+    pub inline fn toAxis3(x: Axis4) Axis3 {
         assert(@intFromEnum(x) < Axis3.len);
         return @enumFromInt(@intFromEnum(x));
     }
