@@ -11,7 +11,7 @@ pub const Scalar = f32;
 pub const Scalar64 = f64;
 
 pub fn ParamT(comptime T: type) type {
-    return fn (x: T) T;
+    return fn (x: T) callconv(.@"inline") T;
 }
 
 pub fn VectorNT(comptime N: comptime_int, comptime T: type) type {

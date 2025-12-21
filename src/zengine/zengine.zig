@@ -119,7 +119,7 @@ pub const Zengine = struct {
 
     pub fn run(self: *const Self) !void {
         sections.sub(.load).begin();
-        defer if (self.handlers.unload) |unload| unload(self);
+        defer if (self.handlers.unload) |unload| unload(self) catch unreachable;
         if (self.handlers.load) |load| {
             if (!try load(self)) return;
         }
@@ -175,7 +175,7 @@ pub const Zengine = struct {
         register: ?*const fn () anyerror!void = null,
         init: ?*const fn (self: *const Self) anyerror!void = null,
         load: ?*const fn (self: *const Self) anyerror!bool = null,
-        unload: ?*const fn (self: *const Self) void = null,
+        unload: ?*const fn (self: *const Self) anyerror!void = null,
         input: ?*const fn (self: *const Self) anyerror!bool = null,
         update: ?*const fn (self: *const Self) anyerror!bool = null,
         render: ?*const fn (self: *const Self) anyerror!void = null,

@@ -27,6 +27,9 @@ const ext_optimize = std.EnumArray(std.builtin.OptimizeMode, []const u8).init(.{
     .ReleaseSmall = "MinSizeRel",
 });
 
+var compile_shaders: ?*std.Build.Step.Compile = null;
+var compile_shaders_cmds: std.ArrayList(*std.Build.Step.Run) = .empty;
+
 pub fn build(b: *std.Build) !void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
@@ -180,7 +183,7 @@ pub fn build(b: *std.Build) !void {
         else => std.process.fatal("Unsupported target os: {s}", .{@tagName(target.result.os.tag)}),
     }
 
-    const install_shaders_dir = addCompileShaders(b, .{
+    const install_shaders_dir = try addCompileShaders(b, .{
         .module = zengine,
         .options = options,
         .optimize = optimize,
@@ -226,21 +229,23 @@ pub fn addCompileShaders(b: *std.Build, options: struct {
     module: *std.Build.Module,
     options: Options,
     optimize: std.builtin.OptimizeMode,
-}) *std.Build.Step.InstallDir {
+}) !*std.Build.Step.InstallDir {
     const zb = options.b orelse b;
-    const compile_shaders = b.addExecutable(.{
-        .name = "compile-shaders",
-        .root_module = b.addModule("compile_shaders", .{
-            .root_source_file = zb.path("src/compile_shaders.zig"),
-            .imports = &.{
-                .{ .name = "zengine", .module = options.module },
-            },
-            .target = b.graph.host,
-            .optimize = options.optimize,
-        }),
-    });
+    if (compile_shaders == null) {
+        compile_shaders = b.addExecutable(.{
+            .name = "compile-shaders",
+            .root_module = b.addModule("compile_shaders", .{
+                .root_source_file = zb.path("src/compile_shaders.zig"),
+                .imports = &.{
+                    .{ .name = "zengine", .module = options.module },
+                },
+                .target = b.graph.host,
+                .optimize = options.optimize,
+            }),
+        });
+    }
 
-    const compile_shaders_cmd = b.addRunArtifact(compile_shaders);
+    const compile_shaders_cmd = b.addRunArtifact(compile_shaders.?);
     compile_shaders_cmd.addArg("--include-dir");
     compile_shaders_cmd.addDirectoryArg(zb.path("shaders/include"));
     compile_shaders_cmd.addArg("--input-dir");
@@ -248,6 +253,12 @@ pub fn addCompileShaders(b: *std.Build, options: struct {
     compile_shaders_cmd.addArg("--output-dir");
     const shaders_output = compile_shaders_cmd.addOutputDirectoryArg("shaders");
     compile_shaders_cmd.has_side_effects = options.options.compile_shaders;
+
+    // 1 because the 0-th element is from the zengine build step and we don't want to invoke it
+    if (compile_shaders_cmds.items.len > 1) {
+        compile_shaders_cmd.step.dependOn(&compile_shaders_cmds.getLast().step);
+    }
+    try compile_shaders_cmds.append(b.allocator, compile_shaders_cmd);
 
     return b.addInstallDirectory(.{
         .source_dir = shaders_output,

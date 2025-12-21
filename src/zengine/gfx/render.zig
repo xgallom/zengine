@@ -17,6 +17,7 @@ const GPUFence = @import("GPUFence.zig");
 const mesh = @import("mesh.zig");
 const pass = @import("pass.zig");
 const Renderer = @import("Renderer.zig");
+const GPUTexture = @import("GPUTexture.zig");
 const sections = Renderer.sections;
 const Scene = @import("Scene.zig");
 const ttf = @import("ttf.zig");
@@ -125,7 +126,7 @@ pub fn renderScene(
     items_iter: *Items.Object,
     ui_iter: *Items.Object,
     text_iter: *Items.Text,
-    bloom: *const pass.Bloom,
+    passes: []const pass.TextureInterface,
     fence: ?*GPUFence,
 ) !bool {
     assert(self == flat.scene.renderer);
@@ -372,7 +373,16 @@ pub fn renderScene(
         render_pass.end();
     }
 
-    try bloom.render(self, command_buffer, screen_buffer, output_buffer);
+    // first src is screen_buffer
+    // first dst is output_buffer
+    // they are swapped on the first iteration of the loop
+    var src_buf = output_buffer;
+    var dst_buf = screen_buffer;
+    for (passes) |tex_pass| {
+        std.mem.swap(GPUTexture, &src_buf, &dst_buf);
+        try tex_pass.render(self, command_buffer, src_buf, dst_buf);
+    }
+
     {
         var render_pass = try command_buffer.renderPass(&.{
             .{ .texture = swapchain, .load_op = .clear, .store_op = .store },
@@ -381,7 +391,7 @@ pub fn renderScene(
         render_pass.bindPipeline(render_pipeline);
         command_buffer.pushUniformData(.fragment, 0, &self.settings.uniformBuffer());
         try render_pass.bindSamplers(.fragment, 0, &.{
-            .{ .texture = output_buffer, .sampler = screen_sampler },
+            .{ .texture = dst_buf, .sampler = screen_sampler },
             .{ .texture = lut_map, .sampler = lut_sampler },
         });
         render_pass.drawScreen();

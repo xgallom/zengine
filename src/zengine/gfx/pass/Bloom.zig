@@ -11,6 +11,7 @@ const GPUGraphicsPipeline = @import("../GPUGraphicsPipeline.zig");
 const GPUTexture = @import("../GPUTexture.zig");
 const Loader = @import("../Loader.zig");
 const Renderer = @import("../Renderer.zig");
+const Interface = @import("TextureInterface.zig");
 
 const log = std.log.scoped(.gfx_pass_bloom);
 
@@ -38,7 +39,6 @@ pub fn init(loader: *Loader) !void {
     inline for (0..SAMPLE_COUNT) |n| {
         var res = win_size;
         math.point_u32.shr(&res, getShr(n));
-        log.info("res[{}]: {any}", .{ n, res });
         _ = try loader.renderer.createTexture(std.fmt.comptimePrint("bloom_buffer_{}", .{n}), &.{
             .type = .@"2D",
             .format = .hdr_f,
@@ -179,4 +179,11 @@ pub fn render(
 
         render_pass.drawScreen();
     }
+}
+
+pub fn interface(self: *const Self) Interface {
+    return .{
+        .ptr = @ptrCast(@constCast(self)),
+        .renderFn = @ptrCast(&render),
+    };
 }

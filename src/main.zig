@@ -22,6 +22,8 @@ const time = zengine.time;
 const Engine = zengine.Engine;
 const ui = zengine.ui;
 
+const deathly_grayscale_pass = @import("pass/deathly_grayscale.zig");
+
 const log = std.log.scoped(.main);
 const sections = perf.sections(@This(), &.{.execute_raycast});
 
@@ -205,6 +207,7 @@ fn load(self: *const Zengine) !bool {
         _ = try gfx_loader.createDefaultTexture();
 
         try gfx.pass.Bloom.init(&gfx_loader);
+        try deathly_grayscale_pass.init(&gfx_loader);
 
         {
             var camera_position: math.Vector3 = .{ 4, 8, 10 };
@@ -407,7 +410,7 @@ fn load(self: *const Zengine) !bool {
     return true;
 }
 
-fn unload(self: *const Zengine) void {
+fn unload(self: *const Zengine) !void {
     if (gfx_fence.isValid()) {
         self.renderer.gpu_device.wait(.any, &.{gfx_fence}) catch unreachable;
         self.renderer.gpu_device.release(&gfx_fence);
@@ -586,7 +589,17 @@ fn render(self: *const Zengine) !void {
     var items: gfx.render.Items.Object = .init(&flat_scene, .mesh_objs);
     var ui_items: gfx.render.Items.Object = .init(&flat_scene, .ui_objs);
     var texts: gfx.render.Items.Text = .init(&flat_scene);
-    _ = try flat_scene.render(self.ui, &items, &ui_items, &texts, &gfx_passes.bloom, &gfx_fence);
+    _ = try flat_scene.render(
+        self.ui,
+        &items,
+        &ui_items,
+        &texts,
+        &.{
+            gfx_passes.bloom.interface(),
+            deathly_grayscale_pass.interface(),
+        },
+        &gfx_fence,
+    );
 }
 
 fn executeRaycast(self: *const Zengine) void {

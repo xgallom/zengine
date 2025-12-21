@@ -21,35 +21,33 @@ pub fn paramT(comptime T: type) type {
         const param = @This();
         pub const scalar = scalarT(T);
 
-        // TODO: Bezier curves
-
-        /// These operations are not inline and are composable into operation chains.
+        /// These operations are composable into operation chains.
         /// In release these should still compile down into a single expression.
         pub const op = struct {
             /// Zero operation.
-            pub fn zero(t: Scalar) Scalar {
+            pub inline fn zero(t: Scalar) Scalar {
                 _ = t;
                 return scalar.@"0";
             }
 
             /// One operation.
-            pub fn one(t: Scalar) Scalar {
+            pub inline fn one(t: Scalar) Scalar {
                 _ = t;
                 return scalar.@"1";
             }
 
             /// Negative one operation.
-            pub fn negOne(t: Scalar) Scalar {
+            pub inline fn negOne(t: Scalar) Scalar {
                 _ = t;
                 return scalar.@"-1";
             }
 
             /// Pass unmodified operation.
-            pub fn pass(t: Scalar) Scalar {
+            pub inline fn pass(t: Scalar) Scalar {
                 return t;
             }
 
-            pub fn abs(t: Scalar) Scalar {
+            pub inline fn abs(t: Scalar) Scalar {
                 return @abs(t);
             }
 
@@ -78,7 +76,7 @@ pub fn paramT(comptime T: type) type {
             }
 
             /// Reverse operation.
-            pub fn reverse(t: Scalar) Scalar {
+            pub inline fn reverse(t: Scalar) Scalar {
                 return param.reverse(t);
             }
 
@@ -125,7 +123,7 @@ pub fn paramT(comptime T: type) type {
 
             fn impl(comptime field: [:0]const u8, args: anytype) Self {
                 return struct {
-                    fn impl(t: Scalar) Scalar {
+                    inline fn impl(t: Scalar) Scalar {
                         return @call(.always_inline, @field(param, field), args ++ .{t});
                     }
                 }.impl;
