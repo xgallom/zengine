@@ -9,6 +9,7 @@ const spaces_buf_count = 1 << 10;
 
 const Self = struct {
     exe_path: []const u8,
+    args: []const [:0]const u8,
     assets_path: []const u8,
     frame_idx: u64 = 0,
     engine_now_ns: u64,
@@ -18,6 +19,7 @@ const Self = struct {
 
     pub fn init(self: *Self) !void {
         const engine_now_ns = time.getNano();
+        const app_args = try std.process.argsAlloc(allocators.global());
         const exe_path = try std.fs.selfExeDirPathAlloc(allocators.global());
         const assets_path = try std.fs.path.joinZ(
             allocators.global(),
@@ -27,6 +29,7 @@ const Self = struct {
         for (spaces_buf) |*space| space.* = ' ';
 
         self.* = .{
+            .args = app_args[1..],
             .exe_path = exe_path,
             .assets_path = assets_path,
             .engine_now_ns = engine_now_ns,
@@ -78,6 +81,17 @@ pub fn startFrame() void {
 pub fn finishFrame() void {
     assert(is_init);
     global_state.finishFrame();
+}
+
+pub inline fn args() []const [:0]const u8 {
+    assert(is_init);
+    return global_state.args;
+}
+
+pub inline fn arg(n: usize) [:0]const u8 {
+    assert(is_init);
+    assert(n < global_state.args.len);
+    return global_state.args[n];
 }
 
 pub inline fn exePath() []const u8 {

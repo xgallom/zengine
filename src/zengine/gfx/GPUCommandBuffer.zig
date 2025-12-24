@@ -72,6 +72,17 @@ pub fn swapchainTexture(self: Self, window: Window) !GPUTexture {
     return .{ .ptr = tex };
 }
 
+pub fn swapchainTextureWait(self: Self, window: Window) !GPUTexture {
+    assert(self.isValid());
+    assert(window.isValid());
+    var tex: ?*c.SDL_GPUTexture = undefined;
+    if (!c.SDL_WaitAndAcquireGPUSwapchainTexture(self.ptr, window.ptr, &tex, null, null)) {
+        log.err("failed to acquire gpu swapchain texture: {s}", .{c.SDL_GetError()});
+        return Error.TextureFailed;
+    }
+    return .{ .ptr = tex };
+}
+
 pub fn renderPass(
     self: Self,
     color_target_infos: []const types.ColorTargetInfo,
