@@ -8,6 +8,7 @@ const root = @import("root");
 const math = @import("math.zig");
 
 pub const Options = struct {
+    has_renderer: bool = true,
     has_scene: bool = true,
     has_ui: bool = true,
     has_debug_ui: bool = std.debug.runtime_safety,

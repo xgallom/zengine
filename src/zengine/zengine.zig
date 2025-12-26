@@ -34,10 +34,9 @@ var global_self: ?*Zengine = null;
 
 pub const Zengine = struct {
     engine: *Engine,
-    // scene: if (options.has_scene) *gfx.Scene else void,
-    scene: *gfx.Scene,
-    renderer: *gfx.Renderer,
-    ui: if (options.has_ui) *ui.UI else void,
+    scene: if (options.has_scene) *gfx.Scene else ?*gfx.Scene,
+    renderer: if (options.has_renderer) *gfx.Renderer else ?*gfx.Renderer,
+    ui: if (options.has_ui) *ui.UI else ?*ui.UI,
     handlers: Handlers = .{},
 
     const Self = @This();
@@ -47,6 +46,50 @@ pub const Zengine = struct {
     pub inline fn get() *Self {
         assert(global_self != null);
         return global_self.?;
+    }
+
+    pub fn createHeadless(handlers: Handlers) !*Self {
+        assert(global_self == null);
+        const engine = try Engine.create();
+        errdefer engine.deinit();
+
+        try perf.init();
+        errdefer perf.deinit();
+
+        try main_section.register();
+        try sections.register();
+        try sections.sub(.load)
+            .sections(&.{ .gfx, .scene, .ui })
+            .register();
+        try sections.sub(.frame)
+            .sections(&.{ .init, .input, .update, .render })
+            .register();
+
+        if (handlers.register) |register| try register();
+        // try gfx.register();
+
+        try global.init();
+        errdefer global.deinit();
+
+        main_section.begin();
+        sections.sub(.init).begin();
+
+        const self = try allocators.global().create(Self);
+        self.* = .{
+            .engine = engine,
+            .scene = null,
+            .renderer = null,
+            .ui = null,
+            .handlers = handlers,
+        };
+        global_self = self;
+
+        if (handlers.init) |init| try init(self);
+
+        try perf.commitGraph();
+        sections.sub(.init).end();
+
+        return self;
     }
 
     pub fn create(handlers: Handlers) !*Self {
@@ -74,14 +117,13 @@ pub const Zengine = struct {
 
         main_section.begin();
         sections.sub(.init).begin();
-
         _ = try engine.createMainWindow();
 
-        const renderer = try gfx.Renderer.create(engine);
+        const renderer = if (comptime options.has_renderer) try gfx.Renderer.create(engine) else null;
         errdefer renderer.deinit();
 
         // const scene = if (comptime options.has_scene) try gfx.Scene.create(renderer) else {};
-        const scene = if (comptime options.has_scene) try gfx.Scene.create(renderer) else undefined;
+        const scene = if (comptime options.has_scene) try gfx.Scene.create(renderer) else null;
         errdefer if (comptime options.has_scene) scene.deinit();
 
         const ui_ptr = if (comptime options.has_ui) try ui.UI.create(renderer) else {};
@@ -110,20 +152,25 @@ pub const Zengine = struct {
         perf.releaseGraph();
         if (comptime options.has_ui) self.ui.deinit();
         if (comptime options.has_scene) self.scene.deinit();
-        self.renderer.deinit();
+        if (comptime options.has_renderer) self.renderer.deinit();
         global.deinit();
         perf.deinit();
         self.engine.deinit();
         global_self = null;
     }
 
-    pub fn run(self: *const Self) !void {
+    pub fn run(self: *Self) !void {
         sections.sub(.load).begin();
         defer if (self.handlers.unload) |unload| unload(self) catch unreachable;
         if (self.handlers.load) |load| {
             if (!try load(self)) return;
         }
         sections.sub(.load).end();
+
+        if (self.handlers.run) |run_h| {
+            try run_h(self);
+            return;
+        }
 
         return while (true) {
             defer perf.reset();
@@ -173,12 +220,13 @@ pub const Zengine = struct {
 
     pub const Handlers = struct {
         register: ?*const fn () anyerror!void = null,
-        init: ?*const fn (self: *const Self) anyerror!void = null,
-        load: ?*const fn (self: *const Self) anyerror!bool = null,
-        unload: ?*const fn (self: *const Self) anyerror!void = null,
+        init: ?*const fn (self: *Self) anyerror!void = null,
+        load: ?*const fn (self: *Self) anyerror!bool = null,
+        unload: ?*const fn (self: *Self) anyerror!void = null,
         input: ?*const fn (self: *const Self) anyerror!bool = null,
-        update: ?*const fn (self: *const Self) anyerror!bool = null,
+        update: ?*const fn (self: *Self) anyerror!bool = null,
         render: ?*const fn (self: *const Self) anyerror!void = null,
+        run: ?*const fn (self: *Self) anyerror!void = null,
     };
 };
 

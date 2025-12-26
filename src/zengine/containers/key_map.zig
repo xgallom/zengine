@@ -429,6 +429,13 @@ pub fn ArrayMap(comptime V: type) type {
             try self.map.putNoClobber(gpa, key, value);
         }
 
+        pub fn tryInsert(self: *Self, gpa: std.mem.Allocator, key: []const u8, value: V) !*V {
+            const res = try self.map.getOrPut(gpa, key);
+            if (res.found_existing) return error.AlreadyExists;
+            res.value_ptr.* = value;
+            return res.value_ptr;
+        }
+
         /// Removes existing value from the map
         pub fn remove(self: *Self, key: []const u8) void {
             const idx = self.map.getIndex(key);
@@ -651,10 +658,6 @@ pub fn Map(comptime V: type) type {
 
         pub fn put(self: *Self, gpa: std.mem.Allocator, key: []const u8, value: V) !void {
             try self.map.put(gpa, key, value);
-        }
-
-        pub fn iterator(self: *const Self) HashMap.Iterator {
-            return self.map.iterator();
         }
 
         pub fn valueIterator(self: *const Self) HashMap.ValueIterator {
