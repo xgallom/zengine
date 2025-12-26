@@ -124,7 +124,7 @@ pub fn PropertiesEditor(comptime Registry: type) type {
 
         pub fn drawImpl(component: *Engine.Properties, ui: *const UI, is_open: *bool) void {
             {
-                var iter = component.bool.iterator();
+                var iter = component.bool.map.iterator();
                 while (iter.next()) |e| {
                     const Input = InputCheckbox(.{});
                     const old_name = Input.name;
@@ -138,7 +138,7 @@ pub fn PropertiesEditor(comptime Registry: type) type {
                 }
             }
             {
-                var iter = component.u8.iterator();
+                var iter = component.u8.map.iterator();
                 while (iter.next()) |e| {
                     const Input = InputScalar(u8, 1, .{});
                     const old_name = Input.name;
