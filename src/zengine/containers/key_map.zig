@@ -440,7 +440,7 @@ pub fn ArrayMap(comptime V: type) type {
         pub fn remove(self: *Self, key: []const u8) void {
             const idx = self.map.getIndex(key);
             assert(idx != null);
-            self.map.swapRemoveAt(idx);
+            self.map.swapRemoveAt(idx.?);
         }
 
         pub fn put(self: *Self, gpa: std.mem.Allocator, key: []const u8, value: V) !void {

@@ -149,7 +149,8 @@ pub fn Time(comptime unit: time.Unit) type {
     return struct {
         pub fn format(value: f64, buf: [*c]u8, size: c_int, data: ?*anyopaque) callconv(.c) c_int {
             _ = data;
-            const i_value: u64 = @intFromFloat(time.Unit.convert(unit, .ns, value));
+            const f_value = time.Unit.convert(unit, .ns, value);
+            const i_value: u64 = @intFromFloat(f_value);
             return bufPrintZ(buf, size, "{D}", .{i_value});
         }
 
