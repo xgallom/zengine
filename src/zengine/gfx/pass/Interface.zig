@@ -1,5 +1,5 @@
 //!
-//! The zengine bloom pass implementation
+//! The zengine render pass interface
 //!
 
 const std = @import("std");
@@ -10,10 +10,7 @@ const GPUCommandBuffer = @import("../GPUCommandBuffer.zig");
 const GPUTexture = @import("../GPUTexture.zig");
 const Renderer = @import("../Renderer.zig");
 
-const log = std.log.scoped(.gfx_pass_bloom);
-
-const SAMPLE_COUNT = 5;
-const DOWNSAMPLING = 0;
+const log = std.log.scoped(.gfx_pass_interface);
 
 ptr: ?*anyopaque,
 renderFn: *const RenderFn,

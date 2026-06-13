@@ -7,6 +7,7 @@ const assert = std.debug.assert;
 
 const allocators = @import("allocators.zig");
 const c = @import("ext.zig").c;
+const math = @import("math.zig");
 const Error = @import("error.zig").Error;
 const ArrayMap = @import("containers.zig").ArrayMap;
 pub const Properties = @import("Properties.zig");
@@ -63,6 +64,7 @@ pub fn createMainWindow(self: *Self) !*Window {
     return self.createWindow("main", &.{
         .title = "Zengine",
         .size = .{ 1920, 1080 },
+        // .size = math.point_u32.zero,
         .flags = .initMany(&.{ .high_pixel_density, .resizable }),
     });
 }

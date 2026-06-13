@@ -281,7 +281,7 @@ pub fn createGraphicsPipelines(self: *Self) !void {
     var pipeline: GPUGraphicsPipeline.CreateInfo = .{
         .target_info = .{
             .color_target_descriptions = &.{
-                .{ .format = self.renderer.swapchainFormat(), .blend_state = .blend },
+                .{ .format = .hdr_f, .blend_state = .blend },
             },
         },
     };
@@ -292,6 +292,11 @@ pub fn createGraphicsPipelines(self: *Self) !void {
 
     pipeline.vertex_shader = screen_vert;
     pipeline.fragment_shader = render_frag;
+    pipeline.target_info = .{
+        .color_target_descriptions = &.{
+            .{ .format = self.renderer.swapchainFormat(), .blend_state = .blend },
+        },
+    };
     _ = try self.renderer.createGraphicsPipeline("render", &pipeline);
 
     pipeline.rasterizer_state.enable_depth_clip = true;

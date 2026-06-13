@@ -151,7 +151,7 @@ pub fn MultiComponentStorage(comptime C: type) type {
             return self.data.get(id.idx());
         }
 
-        pub fn set(self: *const Self, id: Id, value: C) void {
+        pub fn set(self: *Self, id: Id, value: C) void {
             assert(self.isPresent(id));
             self.data.set(id.idx(), value);
         }

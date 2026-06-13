@@ -1,5 +1,5 @@
 //!
-//! The zengine gpu render pass implementation
+//! The zengine gpu compute pass implementation
 //!
 
 const std = @import("std");

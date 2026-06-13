@@ -159,7 +159,7 @@ const Self = struct {
     }
 
     fn updateStats(self: *Self, now: u64, comptime force_update: bool) void {
-        if (!force_update) {
+        if (comptime !force_update) {
             if (!self.update_stats_timer.updated(now, .set)) return;
         } else {
             @branchHint(.cold);

@@ -561,7 +561,8 @@ pub fn vectorNT(comptime N: comptime_int, comptime T: type) type {
             scale(&result.z, scalar.@"-1");
             cross(&result.x, &result.z, up);
             normalize(&result.x);
-            cross(&result.y, &result.x, &result.z);
+            cross(&result.z, up, &result.x);
+            result.y = up.*;
         }
 
         pub fn cameraCoords(result: *Coords, direction: *const Self, up: *const Self) void {
