@@ -110,6 +110,7 @@ Compile-time `zengine_options: zengine.Options` on the root file toggles `has_re
 
 | module | holds |
 |---|---|
+| `anim` | interpolation, smooth value implementation |
 | `allocators` | arena/pool allocators used by every other module; global, frame, scratch, gpa lifetimes |
 | `global` | per-frame state: args, paths, frame index, timing |
 | `Engine` / `Window` | SDL window + properties |
@@ -117,7 +118,7 @@ Compile-time `zengine_options: zengine.Options` on the root file toggles `has_re
 | `gfx` | GPU device, pipelines, buffers, textures, `Renderer`, `Scene`, `Loader`, mesh/obj/mtl/lgh/ttf loaders, render passes (`gfx/pass`) |
 | `ecs` | component storage (array-list and pool-backed), component manager, flags bitset |
 | `ui` | ImGui-backed debug windows (allocations, perf, log, property editor) |
-| `math` | scalar/vector/matrix/quaternion types, batch operations |
+| `math` | scalar/vector/matrix/quaternion types, parametrization, batch operations |
 | `containers` | key-indexed maps (`key_map`), `key_tree_map`, `radix_tree`, `tree`, `swap_wrapper` |
 | `perf` | frame-section timing tree, stats, graph |
 | `scheduler` | task list, `Promise(T)` |
