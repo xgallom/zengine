@@ -131,7 +131,7 @@ Compile-time `zengine_options: zengine.Options` on the root file toggles `has_re
 
 ## GPU rendering
 
-`gfx.Renderer` wraps an `SDL_GPUDevice`. `gfx.Loader` uploads meshes/textures/fonts/LUTs and returns handles used by `gfx.Scene` and by direct `SurfaceTexture` access (see `z-chip`'s custom emulator-screen texture for an example of writing directly into a loaded surface). Shaders are `.hlsl`, cross-compiled by `SDL_shadercross`; `addCompileShaders` in `build.zig` wires that step into any build.
+`gfx.Renderer` renders and manages state. `gfx.Loader` uploads meshes/textures/fonts/LUTs and returns handles used by `gfx.Scene` and by direct `SurfaceTexture` access (see [`z-chip`](https://www.github.com/xgallom/z-chip)'s custom emulator-screen texture for an example of writing directly into a loaded surface). Shader sources are `.hlsl`, cross-compiled by a custom build step based on `SDL_shadercross`; `addCompileShaders` in `build.zig` wires that step into any build.
 
 ## Tests
 
