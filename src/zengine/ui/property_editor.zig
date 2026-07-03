@@ -173,12 +173,27 @@ pub fn RefPropertyEditor(comptime C: type, comptime K: type) type {
         ref: CRef = undefined,
 
         pub const Self = @This();
-        pub const CRef = @Type(.{ .@"struct" = .{
-            .layout = .auto,
-            .fields = ref_fields,
-            .decls = &.{},
-            .is_tuple = type_info.is_tuple,
-        } });
+        pub const CRef: type = blk: {
+            var field_names: []const []const u8 = &.{};
+            var field_types: []const type = &.{};
+            var field_attrs: []const std.builtin.Type.StructField.Attributes = &.{};
+            for (ref_fields) |field| {
+                field_names = field_names ++ &.{field.name};
+                field_types = field_types ++ &.{field.type};
+                field_attrs = field_attrs ++ &[_]std.builtin.Type.StructField.Attributes{.{
+                    .@"comptime" = field.is_comptime,
+                    .@"align" = field.alignment,
+                    .default_value_ptr = field.default_value_ptr,
+                }};
+            }
+            break :blk @Struct(
+                .auto,
+                null,
+                field_names,
+                @ptrCast(field_types),
+                @ptrCast(field_attrs),
+            );
+        };
         pub const fields = type_info.fields;
         pub const ref_fields = refFields(fields, excluded_properties);
 
@@ -399,14 +414,17 @@ pub fn InputField(comptime C: type, comptime field: StdType.StructField) type {
                         .is_comptime = false,
                         .alignment = @alignOf(T),
                     };
-                    const Struct = @Type(.{
-                        .@"struct" = .{
-                            .layout = .auto,
-                            .fields = &.{struct_field},
-                            .decls = &.{},
-                            .is_tuple = false,
+                    const Struct = @Struct(
+                        .auto,
+                        null,
+                        &.{struct_field.name},
+                        &.{struct_field.type},
+                        &.{
+                            .@"comptime" = struct_field.is_comptime,
+                            .@"align" = struct_field.alignment,
+                            .default_value_ptr = struct_field.default_value_ptr,
                         },
-                    });
+                    );
                     InputField(Struct, struct_field).drawFieldImpl(@ptrCast(&ptr.*[n]), ui, is_open);
                 }
             }
@@ -477,14 +495,17 @@ pub fn InputField(comptime C: type, comptime field: StdType.StructField) type {
                         .is_comptime = false,
                         .alignment = @alignOf(T),
                     };
-                    InputField(@Type(.{
-                        .@"struct" = .{
-                            .layout = .auto,
-                            .fields = &.{struct_field},
-                            .decls = &.{},
-                            .is_tuple = false,
+                    InputField(@Struct(
+                        .auto,
+                        null,
+                        &.{struct_field.name},
+                        &.{struct_field.type},
+                        &.{
+                            .@"comptime" = struct_field.is_comptime,
+                            .@"align" = struct_field.alignment,
+                            .default_value_ptr = struct_field.default_value_ptr,
                         },
-                    }), struct_field).drawFieldImpl(&ptr[n], ui, is_open);
+                    ), struct_field).drawFieldImpl(&ptr[n], ui, is_open);
                 }
             }
         }
@@ -557,12 +578,27 @@ pub fn InputFields(comptime C: type, comptime options: Options.InputFields) type
         },
         .@"packed" => struct {
             component: *C,
-            unpacked: @Type(.{ .@"struct" = .{
-                .layout = .auto,
-                .fields = unpacked_fields,
-                .decls = &.{},
-                .is_tuple = type_info.is_tuple,
-            } }) = undefined,
+            unpacked: blk: {
+                var field_names: []const []const u8 = &.{};
+                var field_types: []const type = &.{};
+                var field_attrs: []const std.builtin.Type.StructField.Attributes = &.{};
+                for (unpacked_fields) |field| {
+                    field_names = field_names ++ &.{field.name};
+                    field_types = field_types ++ &.{field.type};
+                    field_attrs = field_attrs ++ &[_]std.builtin.Type.StructField.Attributes{.{
+                        .@"comptime" = field.is_comptime,
+                        .@"align" = field.alignment,
+                        .default_value_ptr = field.default_value_ptr,
+                    }};
+                }
+                break :blk @Struct(
+                    .auto,
+                    null,
+                    field_names,
+                    @ptrCast(field_types),
+                    @ptrCast(field_attrs),
+                );
+            } = undefined,
 
             pub const Self = @This();
             pub const name = options.name;
