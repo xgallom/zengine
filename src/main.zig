@@ -79,7 +79,17 @@ const Config = struct {
 };
 
 const RenderPasses = struct {
-    bloom: gfx.pass.Bloom = .{},
+    bloom: gfx.pass.Bloom = .{
+        .intensity = 0.05,
+    },
+    render: gfx.pass.Render = .{
+        .exposure = 2,
+        .gamma = 0.75,
+        .config = .{
+            .has_agx = true,
+            .has_lut = true,
+        },
+    },
 
     pub fn propertyEditor(self: *RenderPasses) ui.Element {
         return ui.PropertyEditor(RenderPasses).init(self).element();
@@ -227,7 +237,7 @@ fn load(self: *const Zengine) !bool {
         _ = try gfx_loader.createLightsBuffer(null);
 
         // self.renderer.settings.lut = "lut/SoftBlackAndWhite.cube";
-        _ = try gfx_loader.loadLut(self.renderer.settings.lut);
+        _ = try gfx_loader.loadLut(gfx_passes.render.lut);
 
         const font = try gfx_loader.loadFont("fonts/minecraft.ttf", 64);
         _ = try self.renderer.createText("Test", font, "Use WASD and mouse to move");
@@ -596,7 +606,8 @@ fn render(self: *const Zengine) !void {
         &texts,
         &.{
             gfx_passes.bloom.interface(),
-            deathly_grayscale_pass.interface(),
+            gfx_passes.render.interface(),
+            // deathly_grayscale_pass.interface(),
         },
         &gfx_fence,
     );

@@ -233,8 +233,8 @@ pub const Tree = struct {
 
     fn cleanupNode(self: *Tree, gpa: std.mem.Allocator, s: *const Slice, id: Id) !void {
         const node = s.node(id);
-        if (self.head == id) self.head = .invalid;
-        if (self.tail == id) self.tail = .invalid;
+        if (self.head == id) self.head = node.next;
+        if (self.tail == id) self.tail = node.prev;
         if (node.prev.isValid()) s.node(node.prev).next = node.next;
         if (node.next.isValid()) s.node(node.next).prev = node.prev;
         node.parent = .invalid;
@@ -256,7 +256,7 @@ pub const Tree = struct {
         return self.storage.get(id);
     }
 
-    pub fn set(self: *const Tree, id: Id, value: Self) void {
+    pub fn set(self: *Tree, id: Id, value: Self) void {
         self.storage.set(id, value);
     }
 

@@ -11,7 +11,7 @@ const GPUGraphicsPipeline = @import("../GPUGraphicsPipeline.zig");
 const GPUTexture = @import("../GPUTexture.zig");
 const Loader = @import("../Loader.zig");
 const Renderer = @import("../Renderer.zig");
-const Interface = @import("TextureInterface.zig");
+const Interface = @import("Interface.zig");
 
 const log = std.log.scoped(.gfx_pass_bloom);
 

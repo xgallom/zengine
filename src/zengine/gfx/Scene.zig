@@ -59,7 +59,7 @@ pub const Flattened = struct {
         items_iter: *gfx_render.Items.Object,
         ui_iter: *gfx_render.Items.Object,
         text_iter: *gfx_render.Items.Text,
-        passes: []const pass.TextureInterface,
+        passes: []const pass.Interface,
         fence: ?*GPUFence,
     ) !bool {
         return gfx_render.renderScene(

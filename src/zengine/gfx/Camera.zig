@@ -26,8 +26,8 @@ pub const Type = enum {
     perspective,
 };
 
-pub const fov_min = 35;
-pub const fov_max = 135;
+pub const fov_min = 1;
+pub const fov_max = 180;
 pub const fov_speed = 0.1;
 pub const orto_scale_min = 1;
 pub const orto_scale_max = 1000;
@@ -43,7 +43,7 @@ pub fn transform(self: *const Self, result: *math.Matrix4x4) void {
 }
 
 pub fn coords(self: *const Self, result: *math.vector3.Coords) void {
-    math.vector3.localCoords(
+    math.vector3.cameraCoords(
         result,
         &self.direction,
         &self.up,
