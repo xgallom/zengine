@@ -31,6 +31,7 @@ const mesh = @import("mesh.zig");
 const shader_loader = @import("shader_loader.zig");
 const ttf = @import("ttf.zig");
 const types = @import("types.zig");
+const pass = @import("pass.zig");
 
 const log = std.log.scoped(.gfx_renderer);
 pub const sections = perf.sections(@This(), &.{ .init, .render });
@@ -52,15 +53,7 @@ textures: Textures,
 samplers: Samplers,
 texts: Texts,
 stencil_format: GPUTexture.Format,
-settings: Settings = .{
-    .exposure = 2,
-    .gamma = 0.75,
-    .config = .{
-        .has_agx = true,
-        .has_lut = true,
-        .has_srgb = false,
-    },
-},
+settings: Settings = .{},
 
 const Self = @This();
 const Pipelines = struct {
@@ -103,43 +96,6 @@ const Texts = ArrayMap(ttf.Text);
 
 pub const Settings = struct {
     camera: [:0]const u8 = "default",
-    lut: [:0]const u8 = "lut/basic.cube",
-    exposure: f32 = 1,
-    exposure_bias: f32 = 0,
-    gamma: f32 = 1,
-    config: packed struct {
-        has_agx: bool = false,
-        has_lut: bool = false,
-        has_srgb: bool = false,
-
-        pub fn toInt(config: @This()) u32 {
-            var result: u32 = 0;
-            result |= @as(u32, @intFromBool(config.has_agx)) << 0;
-            result |= @as(u32, @intFromBool(config.has_lut)) << 1;
-            result |= @as(u32, @intFromBool(config.has_srgb)) << 2;
-            return result;
-        }
-    } = .{},
-
-    pub const exposure_min = 0;
-    pub const exposure_max = 100;
-    pub const exposure_speed = 0.05;
-    pub const exposure_bias_min = 0;
-    pub const exposure_bias_max = 100;
-    pub const exposure_bias_speed = 0.01;
-    pub const gamma_min = 0.1;
-    pub const gamma_max = 4;
-    pub const gamma_speed = 0.05;
-
-    pub fn uniformBuffer(self: *const Settings) [4]f32 {
-        var result: [4]f32 = undefined;
-        result[0] = self.exposure;
-        result[1] = self.exposure_bias;
-        result[2] = self.gamma;
-        const ptr_config: *u32 = @ptrCast(&result[3]);
-        ptr_config.* = self.config.toInt();
-        return result;
-    }
 
     pub fn propertyEditor(self: *@This()) ui_mod.Element {
         return ui_mod.PropertyEditor(@This()).init(self).element();
@@ -200,6 +156,10 @@ pub fn deinit(self: *Self) void {
 
 pub fn activeCamera(self: *const Self) *Camera {
     return self.cameras.getPtr(self.settings.camera);
+}
+
+pub fn activeLut(self: *const Self) *GPUTexture {
+    return self.textures.getPtr(self.settings.render.lut);
 }
 
 pub fn swapchainFormat(self: *const Self) GPUTexture.Format {

@@ -53,7 +53,7 @@ pub fn render(
     }
 }
 
-pub fn interface() gfx.pass.TextureInterface {
+pub fn interface() gfx.pass.Interface {
     return .{
         .ptr = null,
         .renderFn = &render,

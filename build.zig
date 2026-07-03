@@ -90,18 +90,25 @@ pub fn build(b: *std.Build) !void {
     // const install_header = b.addInstallHeaderFile(lib.getEmittedH(), "zengine.h");
     // b.getInstallStep().dependOn(&install_header.step);
 
+    const exe_mod = b.createModule(.{
+        .root_source_file = b.path("src/main.zig"),
+        .imports = &.{
+            .{ .name = "zengine", .module = zengine },
+        },
+        .target = target,
+        .optimize = optimize,
+        .pic = true,
+        .strip = false,
+    });
+
+    const check_exe = b.addExecutable(.{
+        .name = "zengine",
+        .root_module = exe_mod,
+    });
+
     const exe = b.addExecutable(.{
         .name = "zengine",
-        .root_module = b.createModule(.{
-            .root_source_file = b.path("src/main.zig"),
-            .imports = &.{
-                .{ .name = "zengine", .module = zengine },
-            },
-            .target = target,
-            .optimize = optimize,
-            .pic = true,
-            .strip = false,
-        }),
+        .root_module = exe_mod,
     });
 
     const install_assembly = b.addInstallBinFile(exe.getEmittedAsm(), "zengine.S");
@@ -199,8 +206,8 @@ pub fn build(b: *std.Build) !void {
 
     const install_docs = b.addInstallDirectory(.{
         .source_dir = lib.getEmittedDocs(),
-        .install_dir = .prefix,
-        .install_subdir = "docs",
+        .install_dir = .{ .custom = "share" },
+        .install_subdir = "doc/zengine",
     });
 
     const docs_step = b.step("docs", "Install documentation");
@@ -210,6 +217,9 @@ pub fn build(b: *std.Build) !void {
     zengine_step.dependOn(&install_shaders_dir.step);
     zengine_step.dependOn(&install_exe.step);
     zengine_step.dependOn(&install_docs.step);
+
+    const check_step = b.step("check", "Check Zengine");
+    check_step.dependOn(&check_exe.step);
 
     const run_cmd = b.addRunArtifact(exe);
     run_cmd.step.dependOn(zengine_step);

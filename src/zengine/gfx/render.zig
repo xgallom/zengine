@@ -126,7 +126,7 @@ pub fn renderScene(
     items_iter: *Items.Object,
     ui_iter: *Items.Object,
     text_iter: *Items.Text,
-    passes: []const pass.TextureInterface,
+    passes: []const pass.Interface,
     fence: ?*GPUFence,
 ) !bool {
     assert(self == flat.scene.renderer);
@@ -148,19 +148,14 @@ pub fn renderScene(
     const material_pipeline = self.pipelines.graphics.get("material");
     const line_pipeline = self.pipelines.graphics.get("line");
     const ui_pipeline = self.pipelines.graphics.get("ui");
-    // const blend_pipeline = self.pipelines.get("blend");
-    const render_pipeline = self.pipelines.graphics.get("render");
     const origin_mesh = self.mesh_bufs.get("origin");
     const screen_buffer = self.textures.get("screen_buffer");
     const output_buffer = self.textures.get("output_buffer");
     const stencil = self.textures.get("stencil");
     const default_texture = self.textures.get("default");
     const texture_sampler = self.samplers.get("trilinear_mirrored_repeat");
-    const screen_sampler = self.samplers.get("nearest_clamp_to_edge");
-    const lut_sampler = self.samplers.get("trilinear_clamp_to_edge");
     const lights_buffer = self.storage_bufs.getPtr("lights");
 
-    const lut_map = self.textures.get(self.settings.lut);
     const camera = self.activeCamera();
 
     const fa = allocators.frame();
@@ -378,24 +373,10 @@ pub fn renderScene(
     // they are swapped on the first iteration of the loop
     var src_buf = output_buffer;
     var dst_buf = screen_buffer;
-    for (passes) |tex_pass| {
+    assert(passes.len > 0);
+    for (passes, 0..) |tex_pass, n| {
         std.mem.swap(GPUTexture, &src_buf, &dst_buf);
-        try tex_pass.render(self, command_buffer, src_buf, dst_buf);
-    }
-
-    {
-        var render_pass = try command_buffer.renderPass(&.{
-            .{ .texture = swapchain, .load_op = .clear, .store_op = .store },
-        }, null);
-
-        render_pass.bindPipeline(render_pipeline);
-        command_buffer.pushUniformData(.fragment, 0, &self.settings.uniformBuffer());
-        try render_pass.bindSamplers(.fragment, 0, &.{
-            .{ .texture = dst_buf, .sampler = screen_sampler },
-            .{ .texture = lut_map, .sampler = lut_sampler },
-        });
-        render_pass.drawScreen();
-        render_pass.end();
+        try tex_pass.render(self, command_buffer, src_buf, if (n == passes.len - 1) swapchain else dst_buf);
     }
 
     {
@@ -483,48 +464,58 @@ pub fn renderScene(
     }
 
     {
-        var render_pass = try command_buffer.renderPass(&.{
-            .{ .texture = swapchain, .load_op = .load, .store_op = .store },
-        }, null);
-
-        const ui_settings: Renderer.Settings = .{
+        const render_pass = pass.Render{
             .config = .{
                 .has_srgb = true,
+                .clear = false,
             },
         };
-        render_pass.bindPipeline(render_pipeline);
-        command_buffer.pushUniformData(.fragment, 0, &ui_settings.uniformBuffer());
-        try render_pass.bindSamplers(.fragment, 0, &.{
-            .{ .texture = screen_buffer, .sampler = screen_sampler },
-            .{ .texture = lut_map, .sampler = lut_sampler },
-        });
-        render_pass.drawScreen();
-        render_pass.end();
+        try render_pass.render(self, command_buffer, screen_buffer, swapchain);
+        // var render_pass = try command_buffer.renderPass(&.{
+        //     .{ .texture = swapchain, .load_op = .load, .store_op = .store },
+        // }, null);
+        //
+        // const ui_settings: Renderer.Settings = .{
+        //     .config = .{
+        //         .has_srgb = true,
+        //     },
+        // };
+        // render_pass.bindPipeline(render_pipeline);
+        // command_buffer.pushUniformData(.fragment, 0, &ui_settings.uniformBuffer());
+        // try render_pass.bindSamplers(.fragment, 0, &.{
+        //     .{ .texture = screen_buffer, .sampler = screen_sampler },
+        //     .{ .texture = lut_map, .sampler = lut_sampler },
+        // });
+        // render_pass.drawScreen();
+        // render_pass.end();
     }
 
     if (ui_ptr) |ui| {
         section.sub(.ui).begin();
         if (ui.render_ui) {
+            const render_pass = pass.Render{
+                .config = .{
+                    .has_srgb = true,
+                    .clear = false,
+                },
+            };
             try ui.submitPass(command_buffer, screen_buffer);
-            {
-                var render_pass = try command_buffer.renderPass(&.{
-                    .{ .texture = swapchain, .load_op = .load, .store_op = .store },
-                }, null);
-
-                const ui_settings: Renderer.Settings = .{
-                    .config = .{
-                        .has_srgb = true,
-                    },
-                };
-                render_pass.bindPipeline(render_pipeline);
-                command_buffer.pushUniformData(.fragment, 0, &ui_settings.uniformBuffer());
-                try render_pass.bindSamplers(.fragment, 0, &.{
-                    .{ .texture = screen_buffer, .sampler = screen_sampler },
-                    .{ .texture = lut_map, .sampler = lut_sampler },
-                });
-                render_pass.drawScreen();
-                render_pass.end();
-            }
+            try render_pass.render(self, command_buffer, screen_buffer, swapchain);
+            // {
+            //     var render_pass = try command_buffer.renderPass(&.{
+            //         .{ .texture = swapchain, .load_op = .load, .store_op = .store },
+            //     }, null);
+            //
+            //     const ui_settings: Renderer.Settings = .{};
+            //     render_pass.bindPipeline(render_pipeline);
+            //     command_buffer.pushUniformData(.fragment, 0, &ui_settings.uniformBuffer());
+            //     try render_pass.bindSamplers(.fragment, 0, &.{
+            //         .{ .texture = screen_buffer, .sampler = screen_sampler },
+            //         .{ .texture = lut_map, .sampler = lut_sampler },
+            //     });
+            //     render_pass.drawScreen();
+            //     render_pass.end();
+            // }
         }
         section.sub(.ui).end();
     }

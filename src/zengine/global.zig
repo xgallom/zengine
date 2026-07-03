@@ -134,12 +134,12 @@ pub inline fn engineStartNano() u64 {
 
 pub inline fn engineNow() u64 {
     assert(is_init);
-    return global_state.engine_clock_ns.elapsed(global_state.engine_now_ns) / std.time.ns_per_ms;
+    return global_state.engine_now_ns / std.time.ns_per_ms;
 }
 
 pub inline fn engineNowNano() u64 {
     assert(is_init);
-    return global_state.engine_clock_ns.elapsed(global_state.engine_now_ns);
+    return global_state.engine_now_ns;
 }
 
 pub inline fn engineTime() time.Time {
