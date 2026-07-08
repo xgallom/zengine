@@ -156,10 +156,10 @@ const GraphicsMetadataJSON = struct {
 
     fn fromMetadata(info: *const GraphicsMetadata) !GraphicsMetadataJSON {
         return .{
-            .num_samplers = info.num_samplers,
-            .num_storage_textures = info.num_storage_textures,
-            .num_storage_buffers = info.num_storage_buffers,
-            .num_uniform_buffers = info.num_uniform_buffers,
+            .num_samplers = info.resource_info.num_samplers,
+            .num_storage_textures = info.resource_info.num_storage_textures,
+            .num_storage_buffers = info.resource_info.num_storage_buffers,
+            .num_uniform_buffers = info.resource_info.num_uniform_buffers,
             .inputs = try IOVar.fromMetadata(info.inputs, info.num_inputs),
             .outputs = try IOVar.fromMetadata(info.outputs, info.num_outputs),
         };
@@ -349,8 +349,6 @@ fn processFile(
         .entrypoint = "main",
         .include_dir = if (arguments.include_directory) |dir| dir.ptr else null,
         .shader_stage = @intFromEnum(shader_stage),
-        .enable_debug = std.debug.runtime_safety,
-        .name = item.path.ptr,
     };
 
     {
@@ -392,8 +390,6 @@ fn processFile(
         .bytecode_size = spirv_code.len,
         .entrypoint = "main",
         .shader_stage = @intFromEnum(shader_stage),
-        .enable_debug = std.debug.runtime_safety,
-        .name = output_filenames.get(.spirv).ptr,
     };
 
     {

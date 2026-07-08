@@ -64,7 +64,6 @@ pub fn build(b: *std.Build) !void {
         .link_libc = true,
         .link_libcpp = true,
         .pic = true,
-        .strip = false,
     });
 
     zengine.addLibraryPath(b.path("external/build/bin"));
@@ -98,7 +97,6 @@ pub fn build(b: *std.Build) !void {
         .target = target,
         .optimize = optimize,
         .pic = true,
-        .strip = false,
     });
 
     const check_exe = b.addExecutable(.{
