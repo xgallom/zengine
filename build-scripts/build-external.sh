@@ -9,6 +9,7 @@ printf "make install args: \"$4\"\n\n"
 
 source "$PWD/build-scripts/build-sdl.sh" "$@"
 source "$PWD/build-scripts/build-sdl_image.sh" "$@"
+source "$PWD/build-scripts/build-sdl_mixer.sh" "$@"
 source "$PWD/build-scripts/build-sdl_ttf.sh" "$@"
 source "$PWD/build-scripts/build-shadercross.sh" "$@"
 source "$PWD/build-scripts/build-cimgui.sh" "$@"
