@@ -26,10 +26,11 @@ Set-Location $BDir
 $cmakeConfigure = "cmake .. $CMakeArgs `
     -DCMAKE_INSTALL_PREFIX=`"$IDir`" `
     -DCMAKE_BUILD_TYPE=$Target `
-	-DCMAKE_POSITION_INDEPENDENT_CODE=ON `
+    -DCMAKE_POSITION_INDEPENDENT_CODE=ON `
     -DCMAKE_OSX_ARCHITECTURES=`"x86_64;arm64`" `
     -DSDL_VULKAN=ON -DSDL_RENDER_VULKAN=ON `
-	-DSDL_TEST_LIBRARY=OFF
+    -DSDL_X11_XTEST=OFF `
+    -DSDL_TEST_LIBRARY=OFF
 
 Invoke-Expression $cmakeConfigure
 Invoke-Expression "cmake --build . -- $MakeArgs"
