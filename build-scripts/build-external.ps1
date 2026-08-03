@@ -5,6 +5,7 @@ param(
     [string]$MakeInstallArgs = ""
 )
 
+$ErrorActionPreference = "Stop"
 $RootDir = (Get-Item "$PSScriptRoot\..").FullName
 
 Set-Location $RootDir

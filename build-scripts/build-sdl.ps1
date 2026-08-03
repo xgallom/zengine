@@ -30,7 +30,8 @@ $cmakeConfigure = "cmake .. $CMakeArgs `
     -DCMAKE_OSX_ARCHITECTURES=`"x86_64;arm64`" `
     -DSDL_VULKAN=ON -DSDL_RENDER_VULKAN=ON `
     -DSDL_X11_XTEST=OFF `
-    -DSDL_TEST_LIBRARY=OFF
+    -DSDL_TEST_LIBRARY=OFF `
+"
 
 Invoke-Expression $cmakeConfigure
 Invoke-Expression "cmake --build . -- $MakeArgs"
