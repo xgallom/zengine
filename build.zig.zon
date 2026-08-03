@@ -35,6 +35,7 @@
     },
 
     .paths = .{
+        ".gitmodules",
         "build.zig",
         "build.zig.zon",
         "build-scripts",
