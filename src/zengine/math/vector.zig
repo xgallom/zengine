@@ -571,7 +571,7 @@ pub fn vectorNT(comptime N: comptime_int, comptime T: type) type {
 
             result.z = direction.*;
             normalize(&result.z);
-            scale(&result.z, -1);
+            scale(&result.z, scalar.@"-1");
             cross(&result.x, &result.z, up);
             normalize(&result.x);
             cross(&result.y, &result.x, &result.z);

@@ -36,27 +36,12 @@ pub fn build(b: *std.Build) !void {
     const optimize = b.standardOptimizeOption(.{});
 
     const options = getOptions(b);
-    const build_ext_cmd = try std.fs.path.join(b.allocator, &.{
-        "build-scripts",
-        b.fmt("build-{t}.sh", .{options.ext_cmd orelse .external}),
-    });
-    const build_ext = b.addSystemCommand(&.{
-        build_ext_cmd,
-        ext_optimize.get(optimize),
-        options.ext_cmd_cmake_args,
-        options.ext_cmd_make_args,
-        options.ext_cmd_make_install_args,
-    });
-    const build_ext_step = b.step("ext", "Build external dependencies");
-    build_ext_step.dependOn(&build_ext.step);
 
-    const clean_ext_cmd = try std.fs.path.join(b.allocator, &.{
-        "build-scripts",
-        b.fmt("clean-{t}.sh", .{options.ext_cmd orelse .cache}),
+    _ = try addExternal(b, .{
+        .options = options,
+        .target = target,
+        .optimize = optimize,
     });
-    const clean_ext = b.addSystemCommand(&.{clean_ext_cmd});
-    const clean_ext_step = b.step("ext-clean", "Clean external dependencies");
-    clean_ext_step.dependOn(&clean_ext.step);
 
     const zengine = b.addModule("zengine", .{
         .root_source_file = b.path("src/zengine/zengine.zig"),
@@ -67,14 +52,13 @@ pub fn build(b: *std.Build) !void {
         .pic = true,
     });
 
-    zengine.addLibraryPath(b.path("external/build/bin"));
     zengine.addLibraryPath(b.path("external/build/lib"));
     zengine.addIncludePath(b.path("external/build/include"));
     zengine.addIncludePath(b.path("external/cimgui"));
     zengine.addIncludePath(b.path("external/cimplot"));
-
     zengine.linkSystemLibrary("SDL3", .{});
     zengine.linkSystemLibrary("SDL3_image", .{});
+    zengine.linkSystemLibrary("SDL3_mixer", .{});
     zengine.linkSystemLibrary("SDL3_ttf", .{});
     zengine.linkSystemLibrary("SDL3_shadercross", .{});
     zengine.linkSystemLibrary("cimgui", .{});
@@ -110,39 +94,18 @@ pub fn build(b: *std.Build) !void {
         .root_module = exe_mod,
     });
 
+    const install_libs = try addInstallLibs(b, .{
+        .module = zengine,
+        .options = options,
+        .target = target,
+        .optimize = optimize,
+    });
+    exe.step.dependOn(install_libs);
+    exe.each_lib_rpath = false;
+
     const install_assembly = b.addInstallBinFile(exe.getEmittedAsm(), "zengine.S");
     const install_exe = b.addInstallArtifact(exe, .{});
     install_exe.step.dependOn(&install_assembly.step);
-
-    // const build_ext = b.addExecutable(.{
-    //     .name = "build-external",
-    //     .root_module = b.addModule("build_external", .{
-    //         .root_source_file = b.path("src/build_external.zig"),
-    //         .target = b.graph.host,
-    //         .optimize = optimize,
-    //     }),
-    // });
-    //
-    // const build_ext_cmd = b.addRunArtifact(build_ext);
-    // build_ext_cmd.addArg("--input-dir");
-    // build_ext_cmd.addDirectoryArg(b.path("external"));
-    // build_ext_cmd.addArg("--cache-dir");
-    // _ = build_ext_cmd.addOutputDirectoryArg("cache");
-    // build_ext_cmd.addArg("--output-dir");
-    // const build_ext_output = build_ext_cmd.addOutputDirectoryArg("build");
-    //
-    // const build_ext_install = b.addInstallDirectory(.{
-    //     .source_dir = build_ext_output,
-    //     .install_dir = .prefix,
-    //     .install_subdir = "",
-    // });
-    //
-    // b.getInstallStep().dependOn(&build_ext_install.step);
-    //
-    // build_ext_cmd.has_side_effects = compile_ext_opt orelse false;
-    //
-    // const build_ext_step = b.step("ext", "Builds external dependencies");
-    // build_ext_step.dependOn(&build_ext_install.step);
 
     // TODO: use instead of hlsl?
     //
@@ -164,30 +127,7 @@ pub fn build(b: *std.Build) !void {
     //
     // b.installArtifact(compile_shader);
 
-    switch (target.result.os.tag) {
-        .linux => {},
-        .macos => {
-            // zengine.addRPathSpecial("$ORIGIN/../lib");
-            // b.getInstallStep().dependOn(&b.addInstallLibFile(
-            //     b.path("SDL/build/libSDL3.0.dylib"),
-            //     "libSDL3.0.dylib",
-            // ).step);
-            // b.getInstallStep().dependOn(&b.addInstallLibFile(
-            //     b.path("SDL/build/libSDL3.dylib"),
-            //     "libSDL3.dylib",
-            // ).step);
-            // b.getInstallStep().dependOn(&b.addInstallLibFile(
-            //     b.path("cimgui/build/libcimgui_with_backend.dylib"),
-            //     "libcimgui_with_backend.dylib",
-            // ).step);
-            // b.getInstallStep().dependOn(&b.addInstallLibFile(
-            //     b.path("cimgui/build/libcimgui_with_backend.dylib"),
-            //     "libcimgui.dylib",
-            // ).step);
-        },
-        .windows => {},
-        else => std.process.fatal("Unsupported target os: {s}", .{@tagName(target.result.os.tag)}),
-    }
+    const install_assets = try addInstallAssets(b);
 
     const install_shaders_dir = try addCompileShaders(b, .{
         .module = zengine,
@@ -213,6 +153,8 @@ pub fn build(b: *std.Build) !void {
     docs_step.dependOn(&install_docs.step);
 
     const zengine_step = b.step("zengine", "Build Zengine");
+    zengine_step.dependOn(install_libs);
+    zengine_step.dependOn(&install_assets.step);
     zengine_step.dependOn(&install_shaders_dir.step);
     zengine_step.dependOn(&install_exe.step);
     zengine_step.dependOn(&install_docs.step);
@@ -230,6 +172,109 @@ pub fn build(b: *std.Build) !void {
 
     const run_step = b.step("run", "Run Zengine");
     run_step.dependOn(&run_cmd.step);
+}
+
+pub fn addExternal(b: *std.Build, options: struct {
+    b: ?*std.Build = null,
+    options: Options,
+    target: std.Build.ResolvedTarget,
+    optimize: std.builtin.OptimizeMode,
+}) !struct {
+    build: *std.Build.Step.Run,
+    clean: *std.Build.Step.Run,
+} {
+    const zb = options.b orelse b;
+
+    const build_ext_cmd = zb.pathFromRoot(try std.fs.path.join(b.allocator, &.{
+        "build-scripts",
+        b.fmt("build-{t}.sh", .{options.options.ext_cmd orelse .external}),
+    }));
+    const build_ext = b.addSystemCommand(&.{
+        build_ext_cmd,
+        ext_optimize.get(options.optimize),
+        options.options.ext_cmd_cmake_args,
+        options.options.ext_cmd_make_args,
+        options.options.ext_cmd_make_install_args,
+    });
+    const build_ext_step = b.step("ext", "Build external dependencies");
+    build_ext_step.dependOn(&build_ext.step);
+
+    const clean_ext_cmd = zb.pathFromRoot(try std.fs.path.join(b.allocator, &.{
+        "build-scripts",
+        b.fmt("clean-{t}.sh", .{options.options.ext_cmd orelse .cache}),
+    }));
+    const clean_ext = b.addSystemCommand(&.{clean_ext_cmd});
+    const clean_ext_step = b.step("ext-clean", "Clean external dependencies");
+    clean_ext_step.dependOn(&clean_ext.step);
+
+    return .{ .build = build_ext, .clean = clean_ext };
+}
+
+pub fn addInstallLibs(b: *std.Build, options: struct {
+    b: ?*std.Build = null,
+    module: *std.Build.Module,
+    build_ext: ?*std.Build.Step.Run = null,
+    options: Options,
+    target: std.Build.ResolvedTarget,
+    optimize: std.builtin.OptimizeMode,
+}) !*std.Build.Step {
+    const zb = options.b orelse b;
+
+    var path: []const u8 = undefined;
+    switch (options.target.result.os.tag) {
+        .windows => {
+            const install_libs = b.addInstallDirectory(.{
+                .source_dir = zb.path("external/build/bin"),
+                .install_dir = .bin,
+                .install_subdir = "",
+                .include_extensions = &.{".dll"},
+            });
+            if (options.build_ext) |build_ext| install_libs.step.dependOn(&build_ext.step);
+            return &install_libs.step;
+        },
+        .macos => {
+            options.module.addRPathSpecial("@executable_path/../lib");
+            path = zb.pathFromRoot("external/build/lib/*.dylib");
+        },
+        .linux => {
+            options.module.addRPathSpecial("$ORIGIN/../lib");
+            path = zb.pathFromRoot("external/build/lib/*.so");
+        },
+        else => @panic("Unsupported OS"),
+    }
+    const install_lib_dir = b.getInstallPath(.lib, "");
+    const mkdir = b.addSystemCommand(&.{ "mkdir", "-p", install_lib_dir });
+    const cp = b.addSystemCommand(&.{
+        "sh",
+        "-c",
+        b.fmt("cp -P -R {s} {s}", .{
+            path,
+            install_lib_dir,
+        }),
+    });
+    cp.step.dependOn(&mkdir.step);
+
+    const xattr = b.addSystemCommand(&.{ "xattr", "-rc", install_lib_dir });
+    xattr.step.dependOn(&cp.step);
+
+    const install_share = b.addInstallDirectory(.{
+        .source_dir = zb.path("external/build/share"),
+        .install_dir = .prefix,
+        .install_subdir = "share",
+    });
+    const install_libs = b.step("install-libs", "Install libraries");
+    install_libs.dependOn(&xattr.step);
+    install_libs.dependOn(&install_share.step);
+    if (options.build_ext) |build_ext| install_libs.dependOn(&build_ext.step);
+    return install_libs;
+}
+
+pub fn addInstallAssets(b: *std.Build) !*std.Build.Step.InstallDir {
+    return b.addInstallDirectory(.{
+        .source_dir = b.path("assets"),
+        .install_dir = .prefix,
+        .install_subdir = "assets",
+    });
 }
 
 pub fn addCompileShaders(b: *std.Build, options: struct {

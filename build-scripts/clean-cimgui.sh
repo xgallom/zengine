@@ -1,4 +1,7 @@
 #!/bin/bash
 
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
+ROOT_DIR="$SCRIPT_DIR/.."
+
 printf "Cleaning cimgui\n"
-rm -rf "$PWD/external/cimgui-build/build"
+rm -rf "$ROOT_DIR/external/cimgui-build/build"

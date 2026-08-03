@@ -41,6 +41,10 @@ pub fn create() !*Self {
 
     c.SDL_SetLogOutputFunction(@ptrCast(&sdlLog), null);
 
+    if (!c.MIX_Init()) {
+        log.err("mix init failed: {s}", .{c.SDL_GetError()});
+        return Error.EngineFailed;
+    }
     if (!c.TTF_Init()) {
         log.err("ttf init failed: {s}", .{c.SDL_GetError()});
         return Error.EngineFailed;
@@ -62,8 +66,8 @@ pub fn createWindow(self: *Self, key: []const u8, info: *const Window.CreateInfo
 pub fn createMainWindow(self: *Self) !*Window {
     return self.createWindow("main", &.{
         .title = "Zengine",
-        .size = .{ 1920, 1080 },
-        .flags = .initMany(&.{ .high_pixel_density, .resizable }),
+        // .size = .{ 1920, 1080 },
+        .flags = .initMany(&.{ .high_pixel_density, .resizable, .fullscreen }),
     });
 }
 
@@ -74,7 +78,13 @@ pub fn deinit(self: *Self) void {
     global_registry.deinit();
     global_self = null;
     c.TTF_Quit();
+    c.MIX_Quit();
     c.SDL_Quit();
+}
+
+pub fn delay(self: *const Self, delay_ms: u32) void {
+    _ = self;
+    c.SDL_Delay(delay_ms);
 }
 
 pub fn setCursorVisible(self: *const Self, visible: bool) !void {

@@ -384,6 +384,8 @@ pub const ColorTargetBlendState = struct {
         };
     }
 
+    pub const default: @This() = .{};
+
     pub const blend: @This() = .{
         .src_color_blendfactor = .src_alpha,
         .dst_color_blendfactor = .one_minus_src_alpha,

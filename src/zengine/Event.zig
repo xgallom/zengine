@@ -12,6 +12,10 @@ sdl: c.SDL_Event = .{ .type = @intFromEnum(Type.invalid) },
 const Self = @This();
 pub const invalid: Self = .{};
 
+pub fn pump() void {
+    c.SDL_PumpEvents();
+}
+
 pub fn poll() ?Self {
     var result: Self = .invalid;
     if (c.SDL_PollEvent(&result.sdl)) {

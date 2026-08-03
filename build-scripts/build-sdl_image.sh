@@ -3,10 +3,13 @@
 printf "Building SDL3 Image\n"
 printf -- "----------------------------------------------------------------------------------------------------\n\n"
 
-SDIR="$PWD"
-PDIR="$PWD/external/SDL_image"
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
+ROOT_DIR="$SCRIPT_DIR/.."
+
+SDIR="$ROOT_DIR"
+PDIR="$ROOT_DIR/external/SDL_image"
 BDIR="$PDIR/build"
-IDIR="$PWD/external/build"
+IDIR="$ROOT_DIR/external/build"
 
 mkdir -p "$BDIR"
 mkdir -p "$IDIR"
@@ -23,8 +26,8 @@ CMAKE_INSTALL_PREFIX="$IDIR" cmake .. $2 \
 	-DBUILD_SHARED_LIBS=ON \
 	-DSDLIMAGE_INSTALL=ON \
 
-make $3
-make install $4
+cmake --build . -- $3
+cmake --install . $4
 
 cd "$SDIR"
 printf "\n\n"

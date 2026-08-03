@@ -7,6 +7,7 @@ const assert = std.debug.assert;
 
 pub const allocators = @import("allocators.zig");
 pub const anim = @import("anim.zig");
+pub const audio = @import("audio.zig");
 pub const ChunkAllocator = @import("ChunkAllocator.zig");
 pub const containers = @import("containers.zig");
 pub const controls = @import("controls.zig");
@@ -34,6 +35,7 @@ var global_self: ?*Zengine = null;
 
 pub const Zengine = struct {
     engine: *Engine,
+    audio: *audio.System,
     scene: if (options.has_scene) *gfx.Scene else ?*gfx.Scene,
     renderer: if (options.has_renderer) *gfx.Renderer else ?*gfx.Renderer,
     ui: if (options.has_ui) *ui.UI else ?*ui.UI,
@@ -74,9 +76,13 @@ pub const Zengine = struct {
         main_section.begin();
         sections.sub(.init).begin();
 
+        const audio_sys = try audio.System.create();
+        errdefer audio_sys.deinit();
+
         const self = try allocators.global().create(Self);
         self.* = .{
             .engine = engine,
+            .audio = audio_sys,
             .scene = null,
             .renderer = null,
             .ui = null,
@@ -117,7 +123,18 @@ pub const Zengine = struct {
 
         main_section.begin();
         sections.sub(.init).begin();
-        _ = try engine.createMainWindow();
+        const main_win = try engine.createMainWindow();
+
+        const audio_sys = try audio.System.create();
+        errdefer audio_sys.deinit();
+
+        while (true) {
+            const win_size = main_win.logicalSize();
+            if (win_size[0] != 0 and win_size[1] != 0) break;
+            Event.pump();
+            while (Event.poll()) |_| {}
+            engine.delay(1);
+        }
 
         const renderer = if (comptime options.has_renderer) try gfx.Renderer.create(engine) else null;
         errdefer renderer.deinit();
@@ -132,6 +149,7 @@ pub const Zengine = struct {
         const self = try allocators.global().create(Self);
         self.* = .{
             .engine = engine,
+            .audio = audio_sys,
             .scene = scene,
             .renderer = renderer,
             .ui = ui_ptr,
@@ -153,6 +171,7 @@ pub const Zengine = struct {
         if (comptime options.has_ui) self.ui.deinit();
         if (comptime options.has_scene) self.scene.deinit();
         if (comptime options.has_renderer) self.renderer.deinit();
+        self.audio.deinit();
         global.deinit();
         perf.deinit();
         self.engine.deinit();

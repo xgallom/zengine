@@ -29,6 +29,19 @@ pub fn close(ptr: *c.TTF_Font) void {
     c.TTF_CloseFont(ptr);
 }
 
+pub fn renderGlyph(self: Self, glyph: u32, fg: math.RGBAu8) !Surface {
+    const ptr = c.TTF_RenderGlyph_Solid(
+        self.ptr,
+        glyph,
+        .{ .r = fg[0], .g = fg[1], .b = fg[2], .a = fg[3] },
+    );
+    if (ptr == null) {
+        log.err("failed rendering glyph {}: {s}", .{ glyph, c.SDL_GetError() });
+        return Error.FontFailed;
+    }
+    return .fromOwned(ptr.?);
+}
+
 pub fn renderText(self: Self, text: []const u8, fg: math.RGBAu8) !Surface {
     assert(self.isValid());
     const ptr = c.TTF_RenderText_Blended(

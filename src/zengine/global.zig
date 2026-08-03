@@ -23,7 +23,7 @@ const Self = struct {
         const exe_path = try std.fs.selfExeDirPathAlloc(allocators.global());
         const assets_path = try std.fs.path.joinZ(
             allocators.global(),
-            &.{ exe_path, "..", "..", "assets" },
+            &.{ exe_path, "..", "assets" },
         );
         const spaces_buf = try allocators.gpa().alloc(u8, spaces_buf_count);
         for (spaces_buf) |*space| space.* = ' ';

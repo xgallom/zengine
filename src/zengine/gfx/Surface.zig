@@ -95,7 +95,12 @@ pub fn slice(self: Self, comptime T: type) []T {
     return std.mem.bytesAsSlice(T, ptr[0..self.byteLen()]);
 }
 
-pub fn blit(dst: Self, dst_rect: *const math.Rect_i32, src: Self, src_rect: *const math.Rect_i32) !void {
+pub fn blit(
+    dst: Self,
+    dst_rect: *const math.Rect_i32,
+    src: Self,
+    src_rect: *const math.Rect_i32,
+) !void {
     if (!c.SDL_BlitSurface(src.ptr, &.{
         .x = src_rect[0],
         .y = src_rect[1],
@@ -107,6 +112,35 @@ pub fn blit(dst: Self, dst_rect: *const math.Rect_i32, src: Self, src_rect: *con
         .w = dst_rect[2],
         .h = dst_rect[3],
     })) {
+        log.err("blit surface failed: {s}", .{c.SDL_GetError()});
+        return Error.SurfaceFailed;
+    }
+}
+
+pub fn blitScaled(
+    dst: Self,
+    dst_rect: *const math.Rect_i32,
+    src: Self,
+    src_rect: *const math.Rect_i32,
+    mode: ScaleMode,
+) !void {
+    if (!c.SDL_BlitSurfaceScaled(
+        src.ptr,
+        &.{
+            .x = src_rect[0],
+            .y = src_rect[1],
+            .w = src_rect[2],
+            .h = src_rect[3],
+        },
+        dst.ptr,
+        &.{
+            .x = dst_rect[0],
+            .y = dst_rect[1],
+            .w = dst_rect[2],
+            .h = dst_rect[3],
+        },
+        @intFromEnum(mode),
+    )) {
         log.err("blit surface failed: {s}", .{c.SDL_GetError()});
         return Error.SurfaceFailed;
     }
@@ -144,6 +178,13 @@ pub fn toOwned(self: *Self) *c.SDL_Surface {
 pub inline fn isValid(self: Self) bool {
     return self.ptr != null;
 }
+
+pub const ScaleMode = enum(c.SDL_ScaleMode) {
+    invalid = c.SDL_SCALEMODE_INVALID,
+    nearest = c.SDL_SCALEMODE_NEAREST,
+    linear = c.SDL_SCALEMODE_LINEAR,
+    pixelart = c.SDL_SCALEMODE_PIXELART,
+};
 
 pub const PixelFormat = enum(c.SDL_PixelFormat) {
     unknown = c.SDL_PIXELFORMAT_UNKNOWN,
@@ -221,4 +262,5 @@ pub const PixelFormat = enum(c.SDL_PixelFormat) {
     pub const bgrx_32 = .xrgb_8888;
     pub const xbgr_32 = .rgbx_8888;
     pub const default = .abgr_8888;
+    pub const rgba_16f = .abgr_64_f;
 };
