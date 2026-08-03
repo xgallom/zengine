@@ -192,13 +192,30 @@ pub fn addExternal(b: *std.Build, options: struct {
             if (options.target.result.os.tag == .windows) "ps1" else "sh",
         }),
     }));
-    const build_ext = b.addSystemCommand(&.{
-        build_ext_cmd,
-        ext_optimize.get(options.optimize),
-        options.options.ext_cmd_cmake_args,
-        options.options.ext_cmd_make_args,
-        options.options.ext_cmd_make_install_args,
-    });
+    const build_ext = switch (options.target.result.os.tag) {
+        .windows => b.addSystemCommand(&.{
+            "pwsh",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            build_ext_cmd,
+            "-Target",
+            ext_optimize.get(options.optimize),
+            "-CMakeArgs",
+            options.options.ext_cmd_cmake_args,
+            "-MakeArgs",
+            options.options.ext_cmd_make_args,
+            "-MakeInstallArgs",
+            options.options.ext_cmd_make_install_args,
+        }),
+        else => b.addSystemCommand(&.{
+            build_ext_cmd,
+            ext_optimize.get(options.optimize),
+            options.options.ext_cmd_cmake_args,
+            options.options.ext_cmd_make_args,
+            options.options.ext_cmd_make_install_args,
+        }),
+    };
     const build_ext_step = b.step("ext", "Build external dependencies");
     build_ext_step.dependOn(&build_ext.step);
 
@@ -209,7 +226,16 @@ pub fn addExternal(b: *std.Build, options: struct {
             if (options.target.result.os.tag == .windows) "ps1" else "sh",
         }),
     }));
-    const clean_ext = b.addSystemCommand(&.{clean_ext_cmd});
+    const clean_ext = switch (options.target.result.os.tag) {
+        .windows => b.addSystemCommand(&.{
+            "pwsh",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            clean_ext_cmd,
+        }),
+        else => b.addSystemCommand(&.{clean_ext_cmd}),
+    };
     const clean_ext_step = b.step("ext-clean", "Clean external dependencies");
     clean_ext_step.dependOn(&clean_ext.step);
 
