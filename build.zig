@@ -187,7 +187,10 @@ pub fn addExternal(b: *std.Build, options: struct {
 
     const build_ext_cmd = zb.pathFromRoot(try std.fs.path.join(b.allocator, &.{
         "build-scripts",
-        b.fmt("build-{t}.sh", .{options.options.ext_cmd orelse .external}),
+        b.fmt("build-{t}.{s}", .{
+            options.options.ext_cmd orelse .external,
+            if (options.target.result.os.tag == .windows) "ps1" else "sh",
+        }),
     }));
     const build_ext = b.addSystemCommand(&.{
         build_ext_cmd,
@@ -201,7 +204,10 @@ pub fn addExternal(b: *std.Build, options: struct {
 
     const clean_ext_cmd = zb.pathFromRoot(try std.fs.path.join(b.allocator, &.{
         "build-scripts",
-        b.fmt("clean-{t}.sh", .{options.options.ext_cmd orelse .cache}),
+        b.fmt("clean-{t}.{s}", .{
+            options.options.ext_cmd orelse .cache,
+            if (options.target.result.os.tag == .windows) "ps1" else "sh",
+        }),
     }));
     const clean_ext = b.addSystemCommand(&.{clean_ext_cmd});
     const clean_ext_step = b.step("ext-clean", "Clean external dependencies");
