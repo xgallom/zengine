@@ -101,7 +101,7 @@ pub fn setFadeOut(self: @This(), fade_out_ms: u64) !void {
 
 pub fn play(self: @This()) !void {
     assert(self.isValid());
-    if (!c.MIX_PlayTrack(self.ptr, 0)) {
+    if (!c.MIX_PlayTrack(self.ptr, c.MIX_GetTrackProperties(self.ptr))) {
         log.err("failed playing audio track: {s}", .{c.SDL_GetError()});
         return Error.TrackFailed;
     }
