@@ -25,6 +25,12 @@ pub const CreateInfo = struct {
     title: [:0]const u8,
     size: math.Point_u32 = math.point_u32.zero,
     flags: Flags = .initEmpty(),
+
+    pub const Nullable = struct {
+        title: ?[:0]const u8 = null,
+        size: ?math.Point_u32 = null,
+        flags: ?Flags = null,
+    };
 };
 
 pub fn init(info: *const CreateInfo) !Self {

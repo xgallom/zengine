@@ -6,6 +6,7 @@ const std = @import("std");
 const assert = std.debug.assert;
 
 pub const allocators = @import("allocators.zig");
+pub const c = @import("ext.zig").c;
 pub const anim = @import("anim.zig");
 pub const audio = @import("audio.zig");
 pub const ChunkAllocator = @import("ChunkAllocator.zig");
@@ -98,7 +99,7 @@ pub const Zengine = struct {
         return self;
     }
 
-    pub fn create(handlers: Handlers) !*Self {
+    pub fn create(handlers: Handlers, win_info: *const Window.CreateInfo.Nullable) !*Self {
         assert(global_self == null);
         const engine = try Engine.create();
         errdefer engine.deinit();
@@ -123,7 +124,7 @@ pub const Zengine = struct {
 
         main_section.begin();
         sections.sub(.init).begin();
-        const main_win = try engine.createMainWindow();
+        const main_win = try engine.createMainWindow(win_info);
 
         const audio_sys = try audio.System.create();
         errdefer audio_sys.deinit();
