@@ -443,7 +443,7 @@ fn input(self: *const Zengine) !bool {
         controls.reset();
     }
 
-    while (Event.poll()) |event| {
+    while (Event.poll(self.engine)) |event| {
         if (self.ui.show_ui and c.ImGui_ImplSDL3_ProcessEvent(&event.sdl)) {
             switch (event.type) {
                 .quit => return false,
@@ -575,6 +575,15 @@ fn input(self: *const Zengine) !bool {
         }
     }
 
+    return true;
+}
+
+fn resize(self: *const Zengine) !bool {
+    if (gfx_fence.isValid()) {
+        try self.renderer.gpu_device.wait(.any, &.{gfx_fence});
+        self.renderer.gpu_device.release(&gfx_fence);
+    }
+    try self.renderer.resizeTextures();
     return true;
 }
 

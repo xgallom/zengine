@@ -5,6 +5,7 @@
 const std = @import("std");
 
 const c = @import("ext.zig").c;
+const Engine = @import("Engine.zig");
 
 type: Type = .invalid,
 sdl: c.SDL_Event = .{ .type = @intFromEnum(Type.invalid) },
@@ -16,10 +17,11 @@ pub fn pump() void {
     c.SDL_PumpEvents();
 }
 
-pub fn poll() ?Self {
+pub fn poll(engine: *Engine) ?Self {
     var result: Self = .invalid;
     if (c.SDL_PollEvent(&result.sdl)) {
         result.type = @enumFromInt(result.sdl.type);
+        if (result.type == .window_resized) engine.state.resized = true;
         return result;
     }
     return null;

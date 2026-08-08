@@ -216,6 +216,7 @@ fn createSelf(allocator: std.mem.Allocator, engine: *const Engine) !*Self {
 
 fn createTextures(self: *Self) !void {
     const win_size = self.window.pixelSize();
+    log.debug("create textures: {}x{}", .{ win_size[0], win_size[1] });
 
     _ = try self.createTexture("screen_buffer", &.{
         .type = .@"2D",
@@ -237,6 +238,13 @@ fn createTextures(self: *Self) !void {
         .usage = .initOne(.depth_stencil_target),
         .size = win_size,
     });
+}
+
+pub fn resizeTextures(self: *Self) !void {
+    self.deleteTexture("screen_buffer");
+    self.deleteTexture("output_buffer");
+    self.deleteTexture("stencil");
+    try self.createTextures();
 }
 
 const sampler_configs = struct {
@@ -360,6 +368,12 @@ pub fn createTexture(self: *Self, key: []const u8, info: *const GPUTexture.Creat
 pub fn insertTexture(self: *Self, key: []const u8, texture: *c.SDL_GPUTexture) !GPUTexture {
     try self.textures.insert(self.allocator, key, .fromOwned(texture));
     return .fromOwned(texture);
+}
+
+pub fn deleteTexture(self: *Self, key: []const u8) void {
+    var tex = self.textures.get(key);
+    defer tex.deinit(self.gpu_device);
+    self.textures.remove(key);
 }
 
 pub fn createSampler(self: *Self, key: []const u8, info: *const GPUSampler.CreateInfo) !GPUSampler {

@@ -136,7 +136,7 @@ pub const Zengine = struct {
             const win_size = main_win.logicalSize();
             if (win_size[0] != 0 and win_size[1] != 0) break;
             Event.pump();
-            while (Event.poll()) |_| {}
+            while (Event.poll(engine)) |_| {}
             sleep(1);
         }
 
@@ -224,6 +224,13 @@ pub const Zengine = struct {
             {
                 section.sub(.update).begin();
                 defer section.sub(.update).end();
+                if (self.handlers.resize) |resize| {
+                    if (self.engine.state.resized) {
+                        if (!try resize(self)) return;
+                        self.engine.state.resized = false;
+                    }
+                }
+
                 if (self.handlers.update) |update| {
                     if (!try update(self)) return;
                 }
@@ -249,6 +256,7 @@ pub const Zengine = struct {
         init: ?*const fn (self: *Self) anyerror!void = null,
         load: ?*const fn (self: *Self) anyerror!bool = null,
         unload: ?*const fn (self: *Self) anyerror!void = null,
+        resize: ?*const fn (self: *Self) anyerror!bool = null,
         input: ?*const fn (self: *const Self) anyerror!bool = null,
         update: ?*const fn (self: *Self) anyerror!bool = null,
         render: ?*const fn (self: *const Self) anyerror!void = null,

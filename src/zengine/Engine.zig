@@ -24,6 +24,7 @@ const GlobalRegistry = Properties.GlobalRegistry(Properties.registryLists(&.{
 }));
 
 windows: Windows = .empty,
+state: State = .{},
 
 const Self = @This();
 const Windows = ArrayMap(Window);
@@ -31,6 +32,10 @@ const Windows = ArrayMap(Window);
 pub const invalid: Self = .{};
 var global_self: ?*Self = null;
 var global_registry: GlobalRegistry = undefined;
+
+pub const State = packed struct {
+    resized: bool = false,
+};
 
 pub fn create() !*Self {
     if (global_self != null) return global_self.?;
