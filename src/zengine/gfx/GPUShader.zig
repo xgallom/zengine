@@ -8,6 +8,7 @@ const assert = std.debug.assert;
 const c = @import("../ext.zig").c;
 const global = @import("../global.zig");
 const math = @import("../math.zig");
+const sdl = @import("../sdl.zig");
 const ui = @import("../ui.zig");
 const Error = @import("error.zig").Error;
 const GPUDevice = @import("GPUDevice.zig");
@@ -93,4 +94,4 @@ pub const Format = enum(c.SDL_GPUShaderFormat) {
     metallib = c.SDL_GPU_SHADERFORMAT_METALLIB,
     pub const default = .invalid;
 };
-pub const FormatFlags = std.EnumSet(enum { private, spirv, dxbc, dxil, msl, metallib });
+pub const FormatFlags = sdl.Flags(Format);

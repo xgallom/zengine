@@ -61,6 +61,7 @@ pub fn cancel(self: *Self) !void {
     }
 }
 
+/// Acquires swapchain texture. Returned texture can be invalid if draw should be skipped.
 pub fn swapchainTexture(self: Self, window: Window) !GPUTexture {
     assert(self.isValid());
     assert(window.isValid());
@@ -140,7 +141,12 @@ pub fn copyPass(self: Self) !GPUCopyPass {
     return .fromOwned(ptr.?);
 }
 
-pub fn pushUniformData(self: Self, comptime target: BindingTarget, slot_index: u32, data: anytype) void {
+pub fn pushUniformData(
+    self: Self,
+    comptime target: BindingTarget,
+    slot_index: u32,
+    data: anytype,
+) void {
     const call = comptime switch (target) {
         .vertex => c.SDL_PushGPUVertexUniformData,
         .fragment => c.SDL_PushGPUFragmentUniformData,

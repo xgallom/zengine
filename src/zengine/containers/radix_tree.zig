@@ -87,7 +87,7 @@ pub fn RadixTree(comptime V: type, comptime options: std.heap.MemoryPoolOptions)
             };
         }
 
-        /// Searches tree and returns any value with label shorter or equal to searched label
+        /// Searches tree and returns any value with label shorter or equal to searched label.
         pub fn searchPrefix(self: *const Self, label: []const u8) ?*const Node {
             var walk = self.root;
             var needle = label;
@@ -101,7 +101,10 @@ pub fn RadixTree(comptime V: type, comptime options: std.heap.MemoryPoolOptions)
                     if (edge.label.len == 0) continue;
 
                     const common = str.commonStart(edge.label, needle);
-                    log.debug("common {s} ( {s} & {s} )", .{ edge.label[0..common], edge.label, needle });
+                    log.debug(
+                        "common {s} ( {s} & {s} )",
+                        .{ edge.label[0..common], edge.label, needle },
+                    );
 
                     if (common >= edge.label.len) {
                         walk = edge.target;
@@ -124,7 +127,7 @@ pub fn RadixTree(comptime V: type, comptime options: std.heap.MemoryPoolOptions)
             return null;
         }
 
-        /// Searches tree and returns value matching searched label exactly
+        /// Searches tree and returns value matching searched label exactly.
         pub fn searchExact(self: *const Self, label: []const u8) ?*const Node {
             var walk = self.root;
             var needle = label;
@@ -138,7 +141,10 @@ pub fn RadixTree(comptime V: type, comptime options: std.heap.MemoryPoolOptions)
                     if (edge.label.len == 0) continue;
 
                     const common = str.commonStart(edge.label, needle);
-                    log.debug("common {s} ( {s} & {s} )", .{ edge.label[0..common], edge.label, needle });
+                    log.debug(
+                        "common {s} ( {s} & {s} )",
+                        .{ edge.label[0..common], edge.label, needle },
+                    );
 
                     if (common >= edge.label.len) {
                         walk = edge.target;
@@ -161,7 +167,8 @@ pub fn RadixTree(comptime V: type, comptime options: std.heap.MemoryPoolOptions)
             return null;
         }
 
-        /// Searches tree and returns first value with smallest label longer or equal to search label
+        /// Searches tree and returns first value with smallest label longer or equal to search
+        /// label.
         pub fn searchSuffix(self: *const Self, label: []const u8) ?*const Node {
             var walk = self.root;
             var needle = label;
@@ -175,7 +182,10 @@ pub fn RadixTree(comptime V: type, comptime options: std.heap.MemoryPoolOptions)
                     if (edge.label.len == 0) continue;
 
                     const common = str.commonStart(edge.label, needle);
-                    log.debug("common {s} ( {s} & {s} )", .{ edge.label[0..common], edge.label, needle });
+                    log.debug(
+                        "common {s} ( {s} & {s} )",
+                        .{ edge.label[0..common], edge.label, needle },
+                    );
 
                     if (common >= edge.label.len) {
                         walk = edge.target;
@@ -232,7 +242,13 @@ pub fn RadixTree(comptime V: type, comptime options: std.heap.MemoryPoolOptions)
                         break;
                     } else {
                         log.debug("split edge", .{});
-                        try self.splitEdge(edge, base_label, node_label, try self.createLabel(needle), value);
+                        try self.splitEdge(
+                            edge,
+                            base_label,
+                            node_label,
+                            try self.createLabel(needle),
+                            value,
+                        );
                         return;
                     }
                 }
@@ -279,7 +295,14 @@ pub fn RadixTree(comptime V: type, comptime options: std.heap.MemoryPoolOptions)
             }
         }
 
-        fn splitEdge(self: *Self, edge: *Edge, base_label: [:0]const u8, node_label: [:0]const u8, new_label: [:0]const u8, new_value: Value) !void {
+        fn splitEdge(
+            self: *Self,
+            edge: *Edge,
+            base_label: [:0]const u8,
+            node_label: [:0]const u8,
+            new_label: [:0]const u8,
+            new_value: Value,
+        ) !void {
             const parent = try self.createNode(null);
             const old_node = edge.target;
             edge.label = base_label;
@@ -299,14 +322,20 @@ pub fn RadixTree(comptime V: type, comptime options: std.heap.MemoryPoolOptions)
         fn orderedInsert(head: *?*Edges.Node, edge: *Edge) void {
             const edge_node = &edge.edge_node;
 
-            if (head.* == null or order(@fieldParentPtr("edge_node", head.*.?), edge).compare(.gte)) {
+            if (head.* == null or order(
+                @fieldParentPtr("edge_node", head.*.?),
+                edge,
+            ).compare(.gte)) {
                 edge_node.next = head.*;
                 head.* = edge_node;
                 return;
             }
 
             var current = head.*.?;
-            while (current.next != null and order(@fieldParentPtr("edge_node", current.next.?), edge).compare(.lt)) : (current = current.next.?) {}
+            while (current.next != null and
+                order(@fieldParentPtr("edge_node", current.next.?), edge)
+                    .compare(.lt)) : (current = current.next.?)
+            {}
 
             edge_node.next = current.next;
             current.next = edge_node;

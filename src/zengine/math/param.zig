@@ -135,7 +135,8 @@ pub fn paramT(comptime T: type) type {
             const to = t / scalar.pi / scalar.init(2) - @floor(t / scalar.pi / scalar.init(2));
             const sgn = if (std.math.modf(to).fpart >= scalar.init(0.5)) scalar.neg_one else scalar.@"1";
             const tr = tp * (scalar.pi - tp);
-            return sgn * scalar.init(16) * tr / (scalar.init(5) * scalar.pi * scalar.pi - scalar.init(4) * tr);
+            return sgn * scalar.init(16) * tr /
+                (scalar.init(5) * scalar.pi * scalar.pi - scalar.init(4) * tr);
         }
 
         pub inline fn cos(t: Scalar) Scalar {
@@ -261,14 +262,17 @@ pub fn paramT(comptime T: type) type {
             return switch (comptime N) {
                 2 => bs[1] * cs[0] * rts[1] * ts[1] + ts[2],
                 3 => bs[1] * cs[0] * rts[2] * ts[1] + bs[2] * cs[1] * rts[1] * ts[2] + ts[3],
-                4 => bs[1] * cs[0] * rts[3] * ts[1] + bs[2] * cs[1] * rts[2] * ts[2] + bs[3] * cs[2] * rts[1] * ts[3] +
-                    ts[4],
-                5 => bs[1] * cs[0] * rts[4] * ts[1] + bs[2] * cs[1] * rts[3] * ts[2] + bs[3] * cs[2] * rts[2] * ts[3] +
-                    bs[4] * cs[3] * rts[1] * ts[4] + ts[5],
-                6 => bs[1] * cs[0] * rts[5] * ts[1] + bs[2] * cs[1] * rts[4] * ts[2] + bs[3] * cs[2] * rts[3] * ts[3] +
-                    bs[4] * cs[3] * rts[2] * ts[4] + bs[5] * cs[4] * rts[1] * ts[5] + ts[6],
-                7 => bs[1] * cs[0] * rts[6] * ts[1] + bs[2] * cs[1] * rts[5] * ts[2] + bs[3] * cs[2] * rts[4] * ts[3] +
-                    bs[4] * cs[3] * rts[3] * ts[4] + bs[5] * cs[4] * rts[2] * ts[5] + bs[6] * cs[5] * rts[1] * ts[6] +
+                4 => bs[1] * cs[0] * rts[3] * ts[1] + bs[2] * cs[1] * rts[2] * ts[2] +
+                    bs[3] * cs[2] * rts[1] * ts[3] + ts[4],
+                5 => bs[1] * cs[0] * rts[4] * ts[1] + bs[2] * cs[1] * rts[3] * ts[2] +
+                    bs[3] * cs[2] * rts[2] * ts[3] + bs[4] * cs[3] * rts[1] * ts[4] +
+                    ts[5],
+                6 => bs[1] * cs[0] * rts[5] * ts[1] + bs[2] * cs[1] * rts[4] * ts[2] +
+                    bs[3] * cs[2] * rts[3] * ts[3] + bs[4] * cs[3] * rts[2] * ts[4] +
+                    bs[5] * cs[4] * rts[1] * ts[5] + ts[6],
+                7 => bs[1] * cs[0] * rts[6] * ts[1] + bs[2] * cs[1] * rts[5] * ts[2] +
+                    bs[3] * cs[2] * rts[4] * ts[3] + bs[4] * cs[3] * rts[3] * ts[4] +
+                    bs[5] * cs[4] * rts[2] * ts[5] + bs[6] * cs[5] * rts[1] * ts[6] +
                     ts[7],
                 inline else => blk: {
                     var result = ts[N];

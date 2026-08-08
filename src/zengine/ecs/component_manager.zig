@@ -45,17 +45,26 @@ fn AnyComponentManager(comptime C: type, comptime AL: type) type {
             self.lock.lock();
             defer self.lock.unlock();
 
-            // std.Thread.sleep(1_000_000_000);
             const cap = @atomicLoad(usize, &self.components.components.capacity, .seq_cst);
             const bit_len = @atomicLoad(usize, &self.component_flags.bit_length, .seq_cst);
-            log.debug("before 0x{x} 0x{x} {} {}", .{ std.Thread.getCurrentId(), @intFromPtr(self), cap, bit_len });
+            log.debug(
+                "before 0x{x} 0x{x} {} {}",
+                .{ std.Thread.getCurrentId(), @intFromPtr(self), cap, bit_len },
+            );
 
             const entity = try self.components.push(value);
             log.debug("after {} {}", .{ self.components.cap(), self.components.len() });
 
             if (self.component_flags.capacity() < self.components.cap()) {
-                log.debug("resize flags {} {}", .{ self.component_flags.capacity(), self.components.cap() });
-                try self.component_flags.resize(self.components.allocator, self.components.cap(), false);
+                log.debug(
+                    "resize flags {} {}",
+                    .{ self.component_flags.capacity(), self.components.cap() },
+                );
+                try self.component_flags.resize(
+                    self.components.allocator,
+                    self.components.cap(),
+                    false,
+                );
             }
             self.component_flags.set(entity);
             log.debug("flags set", .{});

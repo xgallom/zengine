@@ -66,7 +66,10 @@ pub fn element(self: *Self) UI.Element {
 
 fn drawPlots(self: *Self) void {
     const times = perf.updateStatsTimes();
-    const AxisLimits = plot_fmt.AxisLimits(u32, .{ .range_min = .range_0, .range_max = .range_pos });
+    const AxisLimits = plot_fmt.AxisLimits(
+        u32,
+        .{ .range_min = .range_0, .range_max = .range_pos },
+    );
 
     if (c.igBeginTabBar("##tab_bar", c.ImGuiTabBarFlags_None)) {
         const framerates_avg = perf.frameratesAvg();
@@ -176,7 +179,12 @@ fn drawPlots(self: *Self) void {
     }
 }
 
-fn drawPlotFilled(self: *Self, label: [*:0]const u8, times: []const u32, samples: []const u32) void {
+fn drawPlotFilled(
+    self: *Self,
+    label: [*:0]const u8,
+    times: []const u32,
+    samples: []const u32,
+) void {
     c.ImPlot_PlotShaded_U32PtrU32PtrInt(
         label,
         times.ptr,
@@ -227,7 +235,12 @@ fn drawInspector(self: *Self, ui: *const UI, is_open: *bool) void {
                     c.ImGuiTabItemFlags_NoCloseButton,
                 )) {
                     self.filter.draw(ui, is_open);
-                    if (c.igBeginChild_Str("Module tree##tree", .{}, c.ImGuiChildFlags_NavFlattened, 0)) {
+                    if (c.igBeginChild_Str(
+                        "Module tree##tree",
+                        .{},
+                        c.ImGuiChildFlags_NavFlattened,
+                        0,
+                    )) {
                         if (c.igBeginTable("##bg", 1, c.ImGuiTableFlags_RowBg, .{}, 0)) {
                             var walk = perf.sectionsTree().root.edges.first;
                             while (walk != null) : (walk = walk.?.next) {
@@ -428,7 +441,8 @@ const StackTraceItem = struct {
         const both_no_src = lhs.src == null and rhs.src == null;
         const both_src = lhs.src != null and rhs.src != null;
         const same_file = both_src and str.eql(lhs.src.?.file_name, rhs.src.?.file_name);
-        const same_loc = same_file and lhs.src.?.line == rhs.src.?.line and lhs.src.?.column == rhs.src.?.column;
+        const same_loc = same_file and lhs.src.?.line == rhs.src.?.line and
+            lhs.src.?.column == rhs.src.?.column;
         return .init(.{
             .symbol = str.eql(lhs.mod, rhs.mod) and str.eql(lhs.sym, rhs.sym),
             .file = both_no_src or same_file,
@@ -500,7 +514,11 @@ fn drawTableRowFile(self: *Self, sti: *const StackTraceItem) void {
     self.drawTableRow("##file", name.ptr, value.ptr);
 }
 
-fn drawTableRowSymbols(self: *Self, sti: [2]*const StackTraceItem, sim: StackTraceItem.Similarity) void {
+fn drawTableRowSymbols(
+    self: *Self,
+    sti: [2]*const StackTraceItem,
+    sim: StackTraceItem.Similarity,
+) void {
     if (sim.contains(.symbol)) {
         self.drawTableRowSymbol(sti[0]);
     } else {

@@ -139,7 +139,12 @@ pub fn BatchTriangleIterator(comptime fields: std.EnumSet(math.VertexAttr)) type
             vertex: *const math.Vertex,
         };
 
-        fn currentState(self: *@This(), s: *State) enum { invalid, next_object, next_section, valid } {
+        fn currentState(self: *@This(), s: *State) enum {
+            invalid,
+            next_object,
+            next_section,
+            valid,
+        } {
             if (self.idx >= self.items.len) return .invalid;
             s.obj = self.items.items(.target)[self.idx];
             if (s.obj.face_type != .triangle) return .next_object;
@@ -221,9 +226,18 @@ pub fn BatchTriangleIterator(comptime fields: std.EnumSet(math.VertexAttr)) type
                 item.sections[N] = self.section;
                 item.offsets[N] = self.offset;
 
-                if (std.mem.eql(u8, "Cube", item.keys[N][0..4])) log.info("key: {s}", .{item.keys[N]});
-                if (std.mem.eql(u8, "Cube", item.keys[N][0..4])) log.info("section: {}", .{self.section});
-                if (std.mem.eql(u8, "Cube", item.keys[N][0..4])) log.info("offset: {}", .{s.section.offset + self.offset});
+                if (std.mem.eql(u8, "Cube", item.keys[N][0..4])) log.info(
+                    "key: {s}",
+                    .{item.keys[N]},
+                );
+                if (std.mem.eql(u8, "Cube", item.keys[N][0..4])) log.info(
+                    "section: {}",
+                    .{self.section},
+                );
+                if (std.mem.eql(u8, "Cube", item.keys[N][0..4])) log.info(
+                    "offset: {}",
+                    .{s.section.offset + self.offset},
+                );
                 {
                     const src = &self.items.items(.transform)[self.idx];
                     const dst = &item.transform;
@@ -249,14 +263,26 @@ pub fn BatchTriangleIterator(comptime fields: std.EnumSet(math.VertexAttr)) type
             ) void {
                 comptime assert(N >= 0 and N < math.batch.batch_len);
                 comptime assert(TN >= 0 and TN < 3);
-                if (std.mem.eql(u8, "Cube", item.keys[N][0..4])) log.info("vertex[{}][{}]: {any}", .{ TN, N, s.vertex });
+                if (std.mem.eql(u8, "Cube", item.keys[N][0..4])) log.info(
+                    "vertex[{}][{}]: {any}",
+                    .{ TN, N, s.vertex },
+                );
                 inline for (field_list) |field| {
                     const src = &s.vertex[field.value];
                     const dst = item.verts[TN].getPtr(@enumFromInt(field.value));
                     for (0..3) |n| dst[n][N] = src[n];
-                    dst[3][N] = @as(math.VertexAttr, @enumFromInt(field.value)).transformableElement();
-                    if (std.mem.eql(u8, "Cube", item.keys[N][0..4])) log.info("tri[{}][0..3][{}]: {any}", .{ TN, N, src.* });
-                    if (std.mem.eql(u8, "Cube", item.keys[N][0..4])) log.info("tri[{}][{}][{}]: {any}", .{ TN, 3, N, dst[3][N] });
+                    dst[3][N] = @as(
+                        math.VertexAttr,
+                        @enumFromInt(field.value),
+                    ).transformableElement();
+                    if (std.mem.eql(u8, "Cube", item.keys[N][0..4])) log.info(
+                        "tri[{}][0..3][{}]: {any}",
+                        .{ TN, N, src.* },
+                    );
+                    if (std.mem.eql(u8, "Cube", item.keys[N][0..4])) log.info(
+                        "tri[{}][{}][{}]: {any}",
+                        .{ TN, 3, N, dst[3][N] },
+                    );
                 }
             }
         };

@@ -31,7 +31,10 @@ pub fn SwapWrapper(comptime T: type, comptime options: struct {
             return result;
         }
 
-        pub fn initCall(comptime initFn: anytype) if (returnsError(initFn)) ErrorSet(initFn)!Self else Self {
+        pub fn initCall(comptime initFn: anytype) if (returnsError(initFn))
+            ErrorSet(initFn)!Self
+        else
+            Self {
             comptime assert(!options.copy_on_advance);
             var result = Self{};
             if (comptime returnsError(initFn)) {
@@ -74,6 +77,8 @@ fn returnsError(comptime initFn: anytype) bool {
 fn ErrorSet(comptime initFn: anytype) type {
     if (@typeInfo(@TypeOf(initFn)) != .@"fn") @compileError("initFn must be a function");
     const type_info = @typeInfo(@TypeOf(initFn)).@"fn";
-    if (@typeInfo(type_info.return_type orelse void) != .error_union) @compileError("initFn must return an error union");
+    if (@typeInfo(type_info.return_type orelse void) != .error_union) {
+        @compileError("initFn must return an error union");
+    }
     return @typeInfo(type_info.return_type.?).error_union.error_set;
 }

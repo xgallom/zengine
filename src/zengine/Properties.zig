@@ -25,7 +25,8 @@ pub fn registryLists(comptime registry_list: []const []const type) []const type 
 }
 
 pub fn GlobalRegistry(comptime registries: []const type) type {
-    comptime var inner_fields: []const std.builtin.Type.StructField = &[_]std.builtin.Type.StructField{};
+    comptime var inner_fields: []const std.builtin.Type.StructField =
+        &[_]std.builtin.Type.StructField{};
     for (registries) |Registry| {
         inner_fields = inner_fields ++ &[_]std.builtin.Type.StructField{.{
             .name = @typeName(Registry),
@@ -223,7 +224,11 @@ pub fn get(self: *Self, comptime prop_type: Type, key: []const u8) Representatio
     return @field(self, @tagName(prop_type)).get(key);
 }
 
-pub fn getOrNull(self: *Self, comptime prop_type: Type, key: []const u8) ?Representation(prop_type) {
+pub fn getOrNull(
+    self: *Self,
+    comptime prop_type: Type,
+    key: []const u8,
+) ?Representation(prop_type) {
     return @field(self, @tagName(prop_type)).getOrNull(key);
 }
 
@@ -231,7 +236,11 @@ pub fn getPtr(self: *Self, comptime prop_type: Type, key: []const u8) *Represent
     return @field(self, @tagName(prop_type)).getPtr(key);
 }
 
-pub fn getPtrOrNull(self: *Self, comptime prop_type: Type, key: []const u8) ?*Representation(prop_type) {
+pub fn getPtrOrNull(
+    self: *Self,
+    comptime prop_type: Type,
+    key: []const u8,
+) ?*Representation(prop_type) {
     return @field(self, @tagName(prop_type)).getPtrOrNull(key);
 }
 

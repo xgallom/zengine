@@ -34,7 +34,10 @@ pub const CreateInfo = struct {
     depth_stencil_state: types.DepthStencilState = .{},
     target_info: TargetInfo = .{},
 
-    pub fn toSDL(self: *const @This(), gpa: std.mem.Allocator) !c.SDL_GPUGraphicsPipelineCreateInfo {
+    pub fn toSDL(
+        self: *const @This(),
+        gpa: std.mem.Allocator,
+    ) !c.SDL_GPUGraphicsPipelineCreateInfo {
         return .{
             .vertex_shader = self.vertex_shader.ptr,
             .fragment_shader = self.fragment_shader.ptr,
@@ -93,7 +96,10 @@ pub const TargetInfo = struct {
     depth_stencil_format: GPUTexture.Format = .default,
     has_depth_stencil_target: bool = false,
 
-    pub fn toSDL(self: *const @This(), gpa: std.mem.Allocator) !c.SDL_GPUGraphicsPipelineTargetInfo {
+    pub fn toSDL(
+        self: *const @This(),
+        gpa: std.mem.Allocator,
+    ) !c.SDL_GPUGraphicsPipelineTargetInfo {
         const color_target_descriptions = try sdl.sliceFrom(gpa, self.color_target_descriptions);
         return .{
             .color_target_descriptions = color_target_descriptions.ptr,

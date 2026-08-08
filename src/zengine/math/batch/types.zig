@@ -74,16 +74,31 @@ pub fn DenseVector4BT(comptime NB: comptime_int, comptime T: type) type {
 }
 
 /// underlying type of a matrix of M rows and N columns of mutable pointers to batches of NB elements of type T
-pub fn MatrixMxNBT(comptime M: comptime_int, comptime N: comptime_int, comptime NB: comptime_int, comptime T: type) type {
+pub fn MatrixMxNBT(
+    comptime M: comptime_int,
+    comptime N: comptime_int,
+    comptime NB: comptime_int,
+    comptime T: type,
+) type {
     return types.MatrixMxNT(M, N, PrimitiveNT(NB, T));
 }
 /// underlying type of a matrix of M rows and N columns of const pointers to batches of NB elements of type T
-pub fn CMatrixMxNBT(comptime M: comptime_int, comptime N: comptime_int, comptime NB: comptime_int, comptime T: type) type {
+pub fn CMatrixMxNBT(
+    comptime M: comptime_int,
+    comptime N: comptime_int,
+    comptime NB: comptime_int,
+    comptime T: type,
+) type {
     return types.MatrixMxNT(M, N, CPrimitiveNT(NB, T));
 }
 /// underlying type of a matrix of M rows and N columns of batches of NB elements of type T
 /// - operations of dense matrix are implemented in math.matrix
-pub fn DenseMatrixMxNBT(comptime M: comptime_int, comptime N: comptime_int, comptime NB: comptime_int, comptime T: type) type {
+pub fn DenseMatrixMxNBT(
+    comptime M: comptime_int,
+    comptime N: comptime_int,
+    comptime NB: comptime_int,
+    comptime T: type,
+) type {
     return types.MatrixMxNT(M, N, BatchNT(NB, T));
 }
 

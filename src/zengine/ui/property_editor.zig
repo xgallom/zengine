@@ -284,7 +284,12 @@ pub fn InputField(comptime C: type, comptime field: StdType.StructField) type {
                     .pointer => |field_info| switch (field_info.size) {
                         .one => switch (@typeInfo(field_info.child)) {
                             .bool => inputBool(field_ptr.*, ui, is_open),
-                            .int, .float => inputIntOrFloat(field_info.child, field_ptr.*, ui, is_open),
+                            .int, .float => inputIntOrFloat(
+                                field_info.child,
+                                field_ptr.*,
+                                ui,
+                                is_open,
+                            ),
                             .array => inputAnyArray(field_info.child, field_ptr.*, ui, is_open),
                             .@"struct" => inputStruct(field_info.child, field_ptr.*, ui, is_open),
                             .@"enum" => inputEnum(field_info.child, field_ptr.*, ui, is_open),
@@ -338,7 +343,10 @@ pub fn InputField(comptime C: type, comptime field: StdType.StructField) type {
 
             const input_type = comptime field_resolver.default(
                 field_type,
-                if (field_info.child == u8 and field_info.sentinel() == 0) InputType.text else InputType.scalar,
+                if (field_info.child == u8 and field_info.sentinel() == 0)
+                    InputType.text
+                else
+                    InputType.scalar,
             );
             if (input_type == .text and field_info.sentinel() != 0) {
                 @compileError("Only zero-terminated strings supported");
@@ -407,7 +415,11 @@ pub fn InputField(comptime C: type, comptime field: StdType.StructField) type {
                             .is_tuple = false,
                         },
                     });
-                    InputField(Struct, struct_field).drawFieldImpl(@ptrCast(&ptr.*[n]), ui, is_open);
+                    InputField(Struct, struct_field).drawFieldImpl(
+                        @ptrCast(&ptr.*[n]),
+                        ui,
+                        is_open,
+                    );
                 }
             }
         }
@@ -426,7 +438,11 @@ pub fn InputField(comptime C: type, comptime field: StdType.StructField) type {
             const len = field_info.len;
 
             switch (comptime input_type) {
-                .text => _ = InputText(.{ .name = name }).drawImpl(ptr[0..len :0], ui, is_open),
+                .text => _ = InputText(.{ .name = name }).drawImpl(
+                    ptr[0..len :0],
+                    ui,
+                    is_open,
+                ),
                 .scalar => |scalar_type| _ = InputScalar(field_info.child, len, .{
                     .name = name,
                     .min = field_resolver.optional(field_min),
@@ -730,7 +746,14 @@ pub fn InputText(comptime options: Options.InputText) type {
 
             _ = c.igTableNextColumn();
             c.igSetNextItemWidth(-std.math.floatMin(f32));
-            const value_changed = c.igInputText("##Editor", component.ptr, component.len + 1, flags, null, null);
+            const value_changed = c.igInputText(
+                "##Editor",
+                component.ptr,
+                component.len + 1,
+                flags,
+                null,
+                null,
+            );
 
             c.igPopID();
             return value_changed;
@@ -792,7 +815,13 @@ pub fn InputCombo(comptime C: type, comptime options: Options.InputCombo) type {
 
             _ = c.igTableNextColumn();
             c.igSetNextItemWidth(-std.math.floatMin(f32));
-            const value_changed = c.igCombo_Str_arr("##" ++ name, @ptrCast(component), &items.values, items.values.len, -1);
+            const value_changed = c.igCombo_Str_arr(
+                "##" ++ name,
+                @ptrCast(component),
+                &items.values,
+                items.values.len,
+                -1,
+            );
 
             c.igPopID();
 
@@ -814,7 +843,9 @@ pub fn InputCombo(comptime C: type, comptime options: Options.InputCombo) type {
 
         pub fn init(component: *C) UI.Element {
             const result = cache.getOrPut(Self, @intFromPtr(component), .{ .component = component });
-            if (!result.found_existing or component.* != Indexer.keyForIndex(@intCast(result.value.item.value))) {
+            if (!result.found_existing or component.* != Indexer.keyForIndex(
+                @intCast(result.value.item.value),
+            )) {
                 result.value.item.value = @intCast(Indexer.indexOf(component.*));
             }
             return result.value.element;
@@ -830,7 +861,13 @@ pub fn InputCombo(comptime C: type, comptime options: Options.InputCombo) type {
 
             _ = c.igTableNextColumn();
             c.igSetNextItemWidth(-std.math.floatMin(f32));
-            const value_changed = c.igCombo_Str_arr("##" ++ name, &self.value, &items.values, items.values.len, -1);
+            const value_changed = c.igCombo_Str_arr(
+                "##" ++ name,
+                &self.value,
+                &items.values,
+                items.values.len,
+                -1,
+            );
             if (value_changed) self.component.* = Indexer.keyForIndex(@intCast(self.value));
 
             c.igPopID();
@@ -845,7 +882,11 @@ pub fn InputCombo(comptime C: type, comptime options: Options.InputCombo) type {
     };
 }
 
-pub fn InputScalar(comptime C: type, comptime count: usize, comptime options: Options.InputScalar(C)) type {
+pub fn InputScalar(
+    comptime C: type,
+    comptime count: usize,
+    comptime options: Options.InputScalar(C),
+) type {
     const data_type: c.ImGuiDataType, const defaults: struct {
         min: C,
         max: C,
@@ -933,9 +974,28 @@ pub fn InputScalar(comptime C: type, comptime count: usize, comptime options: Op
                         .relative => relSpeed(component),
                     };
 
-                    break :blk c.igDragScalarN(name, data_type, component, count, speed_val, &min, &max, null, 0);
+                    break :blk c.igDragScalarN(
+                        name,
+                        data_type,
+                        component,
+                        count,
+                        speed_val,
+                        &min,
+                        &max,
+                        null,
+                        0,
+                    );
                 },
-                .slider => c.igSliderScalarN(name, data_type, component, count, &min, &max, null, 0),
+                .slider => c.igSliderScalarN(
+                    name,
+                    data_type,
+                    component,
+                    count,
+                    &min,
+                    &max,
+                    null,
+                    0,
+                ),
             };
 
             c.igPopID();

@@ -30,7 +30,8 @@ export fn main() callconv(.spirv_fragment) void {
     distance = step(0.1, distance);
     const inv_distance = 1 - distance;
 
-    const result = (mapped * splat3(distance) + inv_mapped * splat3(inv_distance)) / splat3(getMax(mapped) * distance + getMax(inv_mapped) * inv_distance);
+    const result = (mapped * splat3(distance) + inv_mapped * splat3(inv_distance)) /
+        splat3(getMax(mapped) * distance + getMax(inv_mapped) * inv_distance);
     frag_color[0] = result[0];
     frag_color[1] = result[1];
     frag_color[2] = result[2];

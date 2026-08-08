@@ -55,7 +55,13 @@ pub fn LogAllocator(
             return result;
         }
 
-        fn resize(ptr: *anyopaque, memory: []u8, alignment: Alignment, new_len: usize, ret_addr: usize) bool {
+        fn resize(
+            ptr: *anyopaque,
+            memory: []u8,
+            alignment: Alignment,
+            new_len: usize,
+            ret_addr: usize,
+        ) bool {
             const self: *Self = @ptrCast(@alignCast(ptr));
             const result = self.backing_allocator.rawResize(memory, alignment, new_len, ret_addr);
             if (comptime std.log.logEnabled(message_level, scope)) logFn(
@@ -65,7 +71,13 @@ pub fn LogAllocator(
             return result;
         }
 
-        fn remap(ptr: *anyopaque, memory: []u8, alignment: Alignment, new_len: usize, ret_addr: usize) ?[*]u8 {
+        fn remap(
+            ptr: *anyopaque,
+            memory: []u8,
+            alignment: Alignment,
+            new_len: usize,
+            ret_addr: usize,
+        ) ?[*]u8 {
             const self: *Self = @ptrCast(@alignCast(ptr));
             const result = self.backing_allocator.rawRemap(memory, alignment, new_len, ret_addr);
             if (comptime std.log.logEnabled(message_level, scope)) logFn(

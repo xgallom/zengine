@@ -6,6 +6,7 @@ const std = @import("std");
 const assert = std.debug.assert;
 
 const allocators = @import("../allocators.zig");
+const c = @import("../ext.zig").c;
 const global = @import("../global.zig");
 const math = @import("../math.zig");
 const gfx_options = @import("../options.zig").gfx_options;
@@ -130,6 +131,13 @@ pub fn renderScene(
     fence: ?*GPUFence,
 ) !bool {
     assert(self == flat.scene.renderer);
+
+    if (self.window.flags()
+        .intersectWith(.initMany(&.{ .hidden, .minimized }))
+        .count() != 0) return false;
+    const px_size = self.window.pixelSize();
+    if (px_size[0] == 0 or px_size[1] == 0) return false;
+
     const section = sections.sub(.render);
     section.begin();
 
@@ -166,11 +174,12 @@ pub fn renderScene(
     errdefer command_buffer.cancel() catch {};
 
     log.debug("swapchain texture", .{});
-    const swapchain = try command_buffer.swapchainTexture(self.window);
+    const swapchain = try command_buffer.swapchainTextureWait(self.window);
     section.sub(.acquire).end();
 
     if (!swapchain.isValid()) {
-        log.info("skip draw", .{});
+        log.debug("skip draw: {s}", .{c.SDL_GetError()});
+        try command_buffer.cancel();
         section.pop();
         return false;
     }
@@ -249,9 +258,18 @@ pub fn renderScene(
 
                 command_buffer.pushUniformData(.fragment, 0, &material.uniformBuffer());
 
-                const texture = if (material.texture) |tex| self.textures.get(tex) else default_texture;
-                const diffuse_map = if (material.diffuse_map) |tex| self.textures.get(tex) else default_texture;
-                const bump_map = if (material.bump_map) |tex| self.textures.get(tex) else default_texture;
+                const texture = if (material.texture) |tex|
+                    self.textures.get(tex)
+                else
+                    default_texture;
+                const diffuse_map = if (material.diffuse_map) |tex|
+                    self.textures.get(tex)
+                else
+                    default_texture;
+                const bump_map = if (material.bump_map) |tex|
+                    self.textures.get(tex)
+                else
+                    default_texture;
 
                 try render_pass.bindSamplers(.fragment, 0, &.{
                     .{ .texture = texture, .sampler = texture_sampler },
@@ -328,9 +346,18 @@ pub fn renderScene(
 
                 command_buffer.pushUniformData(.fragment, 0, &material.uniformBuffer());
 
-                const texture = if (material.texture) |tex| self.textures.get(tex) else default_texture;
-                const diffuse_map = if (material.diffuse_map) |tex| self.textures.get(tex) else default_texture;
-                const bump_map = if (material.bump_map) |tex| self.textures.get(tex) else default_texture;
+                const texture = if (material.texture) |tex|
+                    self.textures.get(tex)
+                else
+                    default_texture;
+                const diffuse_map = if (material.diffuse_map) |tex|
+                    self.textures.get(tex)
+                else
+                    default_texture;
+                const bump_map = if (material.bump_map) |tex|
+                    self.textures.get(tex)
+                else
+                    default_texture;
 
                 try render_pass.bindSamplers(.fragment, 0, &.{
                     .{ .texture = texture, .sampler = texture_sampler },
@@ -376,7 +403,12 @@ pub fn renderScene(
     assert(passes.len > 0);
     for (passes, 0..) |tex_pass, n| {
         std.mem.swap(GPUTexture, &src_buf, &dst_buf);
-        try tex_pass.render(self, command_buffer, src_buf, if (n == passes.len - 1) swapchain else dst_buf);
+        try tex_pass.render(
+            self,
+            command_buffer,
+            src_buf,
+            if (n == passes.len - 1) swapchain else dst_buf,
+        );
     }
 
     {
@@ -396,7 +428,11 @@ pub fn renderScene(
         render_pass.bindPipeline(line_pipeline);
 
         for (render_scene_config.line_mesh_types) |mesh_type| {
-            command_buffer.pushUniformData(.fragment, 0, render_scene_config.line_mesh_colors.getPtrConst(mesh_type));
+            command_buffer.pushUniformData(
+                .fragment,
+                0,
+                render_scene_config.line_mesh_colors.getPtrConst(mesh_type),
+            );
 
             items_iter.reset();
             while (items_iter.next()) |item| {

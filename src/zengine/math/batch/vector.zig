@@ -142,7 +142,12 @@ pub fn vectorNBT(comptime N: comptime_int, comptime NB: comptime_int, comptime T
         }
 
         /// Y_n = L_n * R_n + C_n
-        pub fn mulAdd(result: *const Self, lhs: *const CSelf, rhs: *const CSelf, constant: *const CSelf) void {
+        pub fn mulAdd(
+            result: *const Self,
+            lhs: *const CSelf,
+            rhs: *const CSelf,
+            constant: *const CSelf,
+        ) void {
             for (0..len) |n| {
                 result[n].* = @mulAdd(Scalar, lhs[n].*, rhs[n].*, constant[n].*);
             }

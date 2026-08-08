@@ -63,7 +63,11 @@ pub fn render(
 
     {
         var render_pass = try command_buffer.renderPass(&.{
-            .{ .texture = dst, .load_op = if (self.config.clear) .clear else .load, .store_op = .store },
+            .{
+                .texture = dst,
+                .load_op = if (self.config.clear) .clear else .load,
+                .store_op = .store,
+            },
         }, null);
 
         render_pass.bindPipeline(render_pipeline);

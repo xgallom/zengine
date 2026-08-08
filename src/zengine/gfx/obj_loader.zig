@@ -101,7 +101,9 @@ pub const Node = struct {
 
             pub fn checkInfo(obj: *Object, info: FaceInfo) void {
                 if (obj.info.face_type == .invalid) obj.info.face_type = info.face_type;
-                if (obj.info.attrs_present.eql(.initEmpty())) obj.info.attrs_present = info.attrs_present;
+                if (obj.info.attrs_present.eql(.initEmpty())) {
+                    obj.info.attrs_present = info.attrs_present;
+                }
                 assert(obj.info.face_type == info.face_type);
             }
         };
@@ -351,7 +353,9 @@ fn parseVector(iter: *str.ScalarIterator) !math.Vector3 {
     while (iter.next()) |token| {
         if (token.len == 0) continue;
         switch (n) {
-            0, 1, 2 => result[n] = std.fmt.parseFloat(math.Scalar, token) catch return error.ParseFloatError,
+            0, 1, 2 => result[n] = std.fmt.parseFloat(math.Scalar, token) catch {
+                return error.ParseFloatError;
+            },
             3 => log.warn("loaded 4th component of a 3-element vector", .{}),
             else => return error.TooManyArguments,
         }
@@ -483,7 +487,12 @@ fn createResult(self: *const Self) !ObjResult {
     return result;
 }
 
-fn processFaces(self: *const Self, result: *ObjResult, state: *CreateResultState, obj_node: Node) !void {
+fn processFaces(
+    self: *const Self,
+    result: *ObjResult,
+    state: *CreateResultState,
+    obj_node: Node,
+) !void {
     const obj = obj_node.meta.object;
     assert(obj.info.face_type != .invalid);
     assert(obj.info.attrs_present.contains(.position));
@@ -565,11 +574,21 @@ fn ProcessFaces(comptime config: struct {
                                 log.err("object node is inside of an object", .{});
                                 unreachable;
                             },
-                            .group => |name| try mesh_obj.beginGroup(self.allocator, state.vert_idx, name),
-                            .smoothing => |smoothing| state.smoothing_groups_active.mask = smoothing,
+                            .group => |name| try mesh_obj.beginGroup(
+                                self.allocator,
+                                state.vert_idx,
+                                name,
+                            ),
+                            .smoothing => |smoothing| {
+                                state.smoothing_groups_active.mask = smoothing;
+                            },
                             .material => |material| {
                                 state.material_active = material;
-                                try mesh_obj.beginSection(self.allocator, state.vert_idx, state.material_active);
+                                try mesh_obj.beginSection(
+                                    self.allocator,
+                                    state.vert_idx,
+                                    state.material_active,
+                                );
                             },
                         }
                         state.node_n += 1;
@@ -577,8 +596,16 @@ fn ProcessFaces(comptime config: struct {
                 }
 
                 for (vert_orders) |vert_order| {
-                    const vert_normals = computeFaceNormals(state.vert_data.get(.position), &face.data, vert_order);
-                    const vert_tangents = computeFaceTangents(state.vert_data, &face.data, vert_order);
+                    const vert_normals = computeFaceNormals(
+                        state.vert_data.get(.position),
+                        &face.data,
+                        vert_order,
+                    );
+                    const vert_tangents = computeFaceTangents(
+                        state.vert_data,
+                        &face.data,
+                        vert_order,
+                    );
 
                     for (vert_order, 0..) |vert_n, n| {
                         if (comptime canComputeNormals()) {
@@ -592,9 +619,16 @@ fn ProcessFaces(comptime config: struct {
                             }
                         }
 
-                        const face_vert_data = getFaceVertData(state.vert_data, &face.data, &vert_normals[3], vert_n);
+                        const face_vert_data = getFaceVertData(
+                            state.vert_data,
+                            &face.data,
+                            &vert_normals[3],
+                            vert_n,
+                        );
                         state.face_normals.appendAssumeCapacity(vert_normals[n]);
-                        state.face_tangents.appendAssumeCapacity(.{ vert_tangents[0], vert_tangents[1] });
+                        state.face_tangents.appendAssumeCapacity(
+                            .{ vert_tangents[0], vert_tangents[1] },
+                        );
                         state.face_angles.appendAssumeCapacity(vert_normals[4][n]);
 
                         result.mesh_buf.appendAssumeCapacity(math.Vertex, 1, &.{
@@ -725,9 +759,15 @@ fn ProcessFaces(comptime config: struct {
     };
 }
 
-fn applySmoothing(self: *const Self, result: *const ObjResult, state: *const CreateResultState) void {
+fn applySmoothing(
+    self: *const Self,
+    result: *const ObjResult,
+    state: *const CreateResultState,
+) void {
     _ = self;
-    const smoothing_angle_limit = comptime std.math.degreesToRadians(gfx_options.normal_smoothing_angle_limit);
+    const smoothing_angle_limit = comptime std.math.degreesToRadians(
+        gfx_options.normal_smoothing_angle_limit,
+    );
     const verts = result.mesh_buf.slice(math.Vector3);
     for (&state.smoothing_groups) |group| {
         var sg_iter = group.valueIterator();
@@ -763,13 +803,17 @@ fn applySmoothing(self: *const Self, result: *const ObjResult, state: *const Cre
                 math.vector3.add(dst_tangent, &avg_tangent);
                 math.vector3.normalize(dst_tangent);
 
-                // Calculate the handedness/direction of the binormal (needed for MikkTSpace compatibility)
+                // Calculate the handedness/direction of the binormal (needed for MikkTSpace
+                // compatibility).
                 // Helps fix mirroring issues on some UV seams
                 math.vector3.normalize(&avg_binormal);
                 dst_binormal.* = avg_binormal;
                 var cross: math.Vector3 = undefined;
                 math.vector3.cross(&cross, &avg_normal, &avg_tangent);
-                const handedness: math.Scalar = if (math.vector3.dot(&cross, &avg_binormal) < 0) -1 else 1;
+                const handedness: math.Scalar = if (math.vector3.dot(&cross, &avg_binormal) < 0)
+                    -1
+                else
+                    1;
                 math.vector3.scale(dst_tangent, handedness);
             }
         }

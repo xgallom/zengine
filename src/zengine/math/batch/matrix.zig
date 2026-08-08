@@ -34,7 +34,12 @@ const batchNT = @import("scalar.zig").batchNT;
 const types = @import("types.zig");
 const vectorNBT = @import("vector.zig").vectorNBT;
 
-pub fn matrixMxNBT(comptime M: comptime_int, comptime N: comptime_int, comptime NB: comptime_int, comptime T: type) type {
+pub fn matrixMxNBT(
+    comptime M: comptime_int,
+    comptime N: comptime_int,
+    comptime NB: comptime_int,
+    comptime T: type,
+) type {
     return struct {
         pub const Self = types.MatrixMxNBT(M, N, NB, T);
         pub const CSelf = types.CMatrixMxNBT(M, N, NB, T);
@@ -152,14 +157,22 @@ pub fn matrixMxNBT(comptime M: comptime_int, comptime N: comptime_int, comptime 
         }
 
         /// Y_m = O_mn X_n
-        pub fn apply(result: *const vector.Self, operation: *const CSelf, operand: *const vector.CSelf) void {
+        pub fn apply(
+            result: *const vector.Self,
+            operation: *const CSelf,
+            operand: *const vector.CSelf,
+        ) void {
             for (0..rows) |y| {
                 vector.dot(&result[y], &operation[y], operand);
             }
         }
 
         /// Y_n = X_m O_mn
-        pub fn applyRight(result: *const vector.Self, right_side_operation: *const CSelf, operand: *const vector.CSelf) void {
+        pub fn applyRight(
+            result: *const vector.Self,
+            right_side_operation: *const CSelf,
+            operand: *const vector.CSelf,
+        ) void {
             var operation: CSelf = right_side_operation.*;
             transpose(&operation);
             apply(result, &operation, operand);

@@ -226,7 +226,11 @@ pub fn main() !void {
     const threads = try allocators.global().alloc(std.Thread, thread_cnt);
 
     for (threads) |*thread| {
-        thread.* = try .spawn(.{}, spawnThread, .{ &arguments, output_dir, &queue, &m, &is_running });
+        thread.* = try .spawn(
+            .{},
+            spawnThread,
+            .{ &arguments, output_dir, &queue, &m, &is_running },
+        );
     }
 
     var iter = try input_dir.walk(allocators.gpa());
@@ -486,7 +490,11 @@ fn parseArguments(allocator: std.mem.Allocator) !?Arguments {
     };
 }
 
-fn readInputFileZ(allocator: std.mem.Allocator, filename: []const u8, dir: std.fs.Dir) ![:0]const u8 {
+fn readInputFileZ(
+    allocator: std.mem.Allocator,
+    filename: []const u8,
+    dir: std.fs.Dir,
+) ![:0]const u8 {
     const file = try dir.openFile(filename, .{ .lock = .shared });
     defer file.close();
 
@@ -515,7 +523,11 @@ fn writeOutputFile(data: []const u8, filename: []const u8, dir: std.fs.Dir) !voi
     log.info("processed output file {s}", .{filename});
 }
 
-fn writeComputeJsonFile(info: *const ComputeMetadata, filename: []const u8, dir: std.fs.Dir) !void {
+fn writeComputeJsonFile(
+    info: *const ComputeMetadata,
+    filename: []const u8,
+    dir: std.fs.Dir,
+) !void {
     const file = try dir.createFile(filename, .{ .lock = .exclusive });
     defer file.close();
 
@@ -528,7 +540,11 @@ fn writeComputeJsonFile(info: *const ComputeMetadata, filename: []const u8, dir:
     log.info("processed output file {s}", .{filename});
 }
 
-fn writeGraphicsJsonFile(info: *const GraphicsMetadata, filename: []const u8, dir: std.fs.Dir) !void {
+fn writeGraphicsJsonFile(
+    info: *const GraphicsMetadata,
+    filename: []const u8,
+    dir: std.fs.Dir,
+) !void {
     const file = try dir.createFile(filename, .{ .lock = .exclusive });
     defer file.close();
 

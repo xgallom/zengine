@@ -117,7 +117,8 @@ pub fn scalarT(comptime T: type) type {
                     .vector => |u_info| switch (@typeInfo(u_info.child)) {
                         .float, .comptime_float => @splat(@floatCast(value)),
                         .int, .comptime_int => @splat(@intFromFloat(value)),
-                        else => @compileError("Unsupported vector type " ++ @typeName(u_info.child)),
+                        else => @compileError("Unsupported vector type " ++
+                            @typeName(u_info.child)),
                     },
                     else => @compileError("Unsupported scalar type " ++ @typeName(U)),
                 };
@@ -168,7 +169,8 @@ pub fn scalarT(comptime T: type) type {
                     .vector => |u_info| switch (@typeInfo(u_info.child)) {
                         .float, .comptime_float => @splat(@floatFromInt(value)),
                         .int, .comptime_int => @splat(@intCast(value)),
-                        else => @compileError("Unsupported vector type " ++ @typeName(u_info.child)),
+                        else => @compileError("Unsupported vector type " ++
+                            @typeName(u_info.child)),
                     },
                     else => @compileError("Unsupported scalar type " ++ @typeName(U)),
                 };

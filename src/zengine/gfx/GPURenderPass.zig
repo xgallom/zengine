@@ -54,7 +54,11 @@ pub fn bindVertexBuffers(self: Self, first_slot: u32, buffers: []const GPUBuffer
     c.SDL_BindGPUVertexBuffers(self.ptr, first_slot, bufs.ptr, @intCast(bufs.len));
 }
 
-pub fn bindIndexBuffer(self: Self, buffer: *const GPUBuffer.Binding, size: types.IndexElementSize) void {
+pub fn bindIndexBuffer(
+    self: Self,
+    buffer: *const GPUBuffer.Binding,
+    size: types.IndexElementSize,
+) void {
     assert(self.isValid());
     const buf = buffer.toSDL();
     c.SDL_BindGPUIndexBuffer(self.ptr, &buf, @intFromEnum(size));

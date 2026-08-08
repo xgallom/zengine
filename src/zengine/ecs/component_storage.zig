@@ -52,7 +52,11 @@ pub fn ComponentStorage(comptime C: type) type {
                     try self.gens.ensureTotalCapacityPrecise(gpa, self.capacity());
                     self.gens.appendNTimesAssumeCapacity(0, self.capacity() - self.gens.items.len);
                 }
-                if (self.present.capacity() < self.capacity()) try self.present.resize(gpa, self.capacity(), false);
+                if (self.present.capacity() < self.capacity()) try self.present.resize(
+                    gpa,
+                    self.capacity(),
+                    false,
+                );
                 self.present.set(idx);
                 return .compose(.{ .gen = self.gens.items[idx], .idx = idx });
             }
@@ -133,7 +137,11 @@ pub fn MultiComponentStorage(comptime C: type) type {
                     try self.gens.ensureTotalCapacityPrecise(gpa, self.capacity());
                     self.gens.appendNTimesAssumeCapacity(0, self.capacity() - self.gens.items.len);
                 }
-                if (self.present.capacity() < self.capacity()) try self.present.resize(gpa, self.capacity(), false);
+                if (self.present.capacity() < self.capacity()) try self.present.resize(
+                    gpa,
+                    self.capacity(),
+                    false,
+                );
                 self.present.set(idx);
                 return .compose(.{ .gen = self.gens.items[idx], .idx = idx });
             }

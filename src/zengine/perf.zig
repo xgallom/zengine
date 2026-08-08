@@ -310,7 +310,9 @@ const Section = struct {
     pub fn end(self: *Section) void {
         const now = time.getNano();
         if (self.pause_clock.isRunning()) self.clock.unpause(&self.pause_clock, now);
-        self.buf[frametime_mask.offset(self.idx)] = @intCast(@min(self.clock.elapsed(now), std.math.maxInt(u32)));
+        self.buf[frametime_mask.offset(self.idx)] = @intCast(
+            @min(self.clock.elapsed(now), std.math.maxInt(u32)),
+        );
         self.clock.reset();
         self.idx += 1;
         self.flags.state = .ended;
@@ -586,7 +588,8 @@ fn TaggedSections(
     comptime section_type: SectionType,
 ) type {
     const sub_type = subSectionType(section_type);
-    comptime var struct_fields: []const std.builtin.Type.StructField = &[_]std.builtin.Type.StructField{};
+    comptime var struct_fields: []const std.builtin.Type.StructField =
+        &[_]std.builtin.Type.StructField{};
     comptime var enum_fields: []const std.builtin.Type.EnumField = &[_]std.builtin.Type.EnumField{};
     var idx = 0;
     inline for (labels) |label| {
@@ -679,7 +682,8 @@ fn TaggedSection(
 
         pub fn sections(comptime sub_labels: []const @TypeOf(.enum_literal)) type {
             comptime var label_names: []const [:0]const u8 = &[_][:0]const u8{};
-            inline for (sub_labels) |sub_label| label_names = label_names ++ [_][:0]const u8{@tagName(sub_label)};
+            inline for (sub_labels) |sub_label| label_names = label_names ++
+                [_][:0]const u8{@tagName(sub_label)};
             return TaggedSections(tag, label_names, label, sub_type);
         }
 
@@ -757,7 +761,11 @@ fn subSectionType(comptime section_type: SectionType) SectionType {
     };
 }
 
-fn sectionLabel(comptime parent_label: ?[:0]const u8, comptime tag: [:0]const u8, comptime section_type: SectionType) [:0]const u8 {
+fn sectionLabel(
+    comptime parent_label: ?[:0]const u8,
+    comptime tag: [:0]const u8,
+    comptime section_type: SectionType,
+) [:0]const u8 {
     if (comptime parent_label) |pl| {
         return switch (comptime section_type) {
             .root => pl ++ "." ++ tag,

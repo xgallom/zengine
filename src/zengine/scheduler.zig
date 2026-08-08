@@ -141,7 +141,11 @@ pub const TaskScheduler = struct {
         self.workers.deinit(self.allocator);
     }
 
-    pub fn parallelFor(self: *Self, comptime invoke: anytype, args: []std.meta.ArgsTuple(@TypeOf(invoke))) !*Task(invokeJoin(invoke)) {
+    pub fn parallelFor(
+        self: *Self,
+        comptime invoke: anytype,
+        args: []std.meta.ArgsTuple(@TypeOf(invoke)),
+    ) !*Task(invokeJoin(invoke)) {
         const tasks = try allocators.scratch().alloc(*Task(invoke), args.len);
         for (args, 0..) |args_n, n| tasks[n] = try self.prepend(invoke, args_n);
         return self.prepend(invokeJoin(invoke));
@@ -157,7 +161,11 @@ pub const TaskScheduler = struct {
     }
 
     /// Creates a new task immediately scheduling it for execution
-    pub fn prepend(self: *Self, comptime invoke: anytype, args: std.meta.ArgsTuple(@TypeOf(invoke))) !*Task(invoke) {
+    pub fn prepend(
+        self: *Self,
+        comptime invoke: anytype,
+        args: std.meta.ArgsTuple(@TypeOf(invoke)),
+    ) !*Task(invoke) {
         self.mutex.lock();
         defer self.mutex.unlock();
         const task = try self.allocator.create(Task(invoke));

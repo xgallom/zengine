@@ -125,7 +125,9 @@ pub fn draw(self: *Self, ui: *const UI, is_open: *bool) void {
         }
 
         c.igPopStyleVar(1);
-        if (self.is_auto_scroll_enabled and c.igGetScrollY() >= c.igGetScrollMaxY()) c.igSetScrollHereY(1.0);
+        if (self.is_auto_scroll_enabled and c.igGetScrollY() >= c.igGetScrollMaxY()) {
+            c.igSetScrollHereY(1.0);
+        }
     }
     c.igEndChild();
     c.igEnd();

@@ -8,6 +8,7 @@ const assert = std.debug.assert;
 const Tree = @import("../containers.zig").Tree;
 const c = @import("../ext.zig").c;
 const math = @import("../math.zig");
+const sdl = @import("../sdl.zig");
 const Error = @import("error.zig").Error;
 const GPUDevice = @import("GPUDevice.zig");
 
@@ -51,7 +52,7 @@ pub fn toSDL(self: *const Self) *c.SDL_GPUBuffer {
 pub fn create(gpu_device: GPUDevice, info: *const CreateInfo) !*c.SDL_GPUBuffer {
     assert(gpu_device.isValid());
     const ptr = c.SDL_CreateGPUBuffer(gpu_device.ptr, &c.SDL_GPUBufferCreateInfo{
-        .usage = info.usage.bits.mask,
+        .usage = info.usage.bits,
         .size = @max(info.size, @sizeOf(math.Scalar)),
     });
     if (ptr == null) {
@@ -135,4 +136,4 @@ pub const Usage = enum(c.SDL_GPUBufferUsageFlags) {
     compute_storage_read = c.SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_READ,
     compute_storage_write = c.SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_WRITE,
 };
-pub const UsageFlags = std.EnumSet(Usage);
+pub const UsageFlags = sdl.Flags(Usage);

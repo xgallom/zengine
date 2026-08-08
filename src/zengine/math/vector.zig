@@ -38,14 +38,16 @@ pub fn vectorNT(comptime N: comptime_int, comptime T: type) type {
         }
 
         fn makeNonTranslatableFwd(fwd: Scalar) Self {
-            comptime if (len == 4) {} else @compileError("forward not supported for vector of " ++ len);
+            comptime if (len == 4) {} else @compileError("forward not supported for vector of " ++
+                len);
             var result = zero;
             result[2] = -fwd;
             return result;
         }
 
         fn makeTranslatableFwd(fwd: Scalar) Self {
-            comptime if (len == 4) {} else @compileError("forward not supported for vector of " ++ len);
+            comptime if (len == 4) {} else @compileError("forward not supported for vector of " ++
+                len);
             var result = zero;
             result[2] = -fwd;
             result[3] = scalar.one;
@@ -173,13 +175,15 @@ pub fn vectorNT(comptime N: comptime_int, comptime T: type) type {
         }
 
         pub fn eqlAbs(self: *const Self, other: *const Self, comptime tolerance: Scalar) bool {
-            comptime if (!scalar.is_float) @compileError("eqlAbs not supported for vector of " ++ @typeName(Scalar));
+            comptime if (!scalar.is_float) @compileError("eqlAbs not supported for vector of " ++
+                @typeName(Scalar));
             for (0..len) |n| if (!scalar.approxEqAbs(self[n], other[n], tolerance)) return false;
             return true;
         }
 
         pub fn eqlRel(self: *const Self, other: *const Self, comptime tolerance: Scalar) bool {
-            comptime if (!scalar.is_float) @compileError("eqlRel not supported for vector of " ++ @typeName(Scalar));
+            comptime if (!scalar.is_float) @compileError("eqlRel not supported for vector of " ++
+                @typeName(Scalar));
             for (0..len) |n| if (!scalar.approxEqRel(self[n], other[n], tolerance)) return false;
             return true;
         }
@@ -250,12 +254,14 @@ pub fn vectorNT(comptime N: comptime_int, comptime T: type) type {
         }
 
         pub fn mag(self: *const Self) Scalar {
-            comptime if (!scalar.is_float) @compileError("mag not supported for vector of " ++ @typeName(Scalar));
+            comptime if (!scalar.is_float) @compileError("mag not supported for vector of " ++
+                @typeName(Scalar));
             return @sqrt(magSqr(self));
         }
 
         pub fn normalize(self: *Self) void {
-            comptime if (!scalar.is_float) @compileError("normalize not supported for vector of " ++ @typeName(Scalar));
+            comptime if (!scalar.is_float) @compileError("normalize not supported for vector of " ++
+                @typeName(Scalar));
             scaleRecip(self, mag(self));
         }
 
@@ -284,11 +290,19 @@ pub fn vectorNT(comptime N: comptime_int, comptime T: type) type {
             mulAdd(direction, translation, multiplier);
         }
 
-        pub fn rotateDirectionScale(direction: *Self, rotation: *const Self, multiplier: Scalar) void {
+        pub fn rotateDirectionScale(
+            direction: *Self,
+            rotation: *const Self,
+            multiplier: Scalar,
+        ) void {
             mulAdd(direction, rotation, multiplier);
         }
 
-        pub fn translateDirectionScale(direction: *Self, translation: *const Self, multiplier: Scalar) void {
+        pub fn translateDirectionScale(
+            direction: *Self,
+            translation: *const Self,
+            multiplier: Scalar,
+        ) void {
             mulSub(direction, translation, multiplier);
         }
 
@@ -299,7 +313,8 @@ pub fn vectorNT(comptime N: comptime_int, comptime T: type) type {
         }
 
         pub fn cross(result: *Self, lhs: *const Self, rhs: *const Self) void {
-            comptime if (len == 3) {} else @compileError("cross not supported for vector of " ++ len);
+            comptime if (len == 3) {} else @compileError("cross not supported for vector of " ++
+                len);
             result[0] = lhs[1] * rhs[2] - lhs[2] * rhs[1];
             result[1] = lhs[2] * rhs[0] - lhs[0] * rhs[2];
             result[2] = lhs[0] * rhs[1] - lhs[1] * rhs[0];
@@ -395,30 +410,17 @@ pub fn vectorNT(comptime N: comptime_int, comptime T: type) type {
         } {
             assert(S >= 0);
             assert(S <= 2);
-            const a = switch (comptime S) {
-                0 => blk: {
-                    var edge = tri[1].*;
-                    var v = p.*;
-                    sub(&edge, tri[0]);
-                    sub(&v, tri[0]);
-                    break :blk angle(&edge, &v, n);
-                },
-                1 => blk: {
-                    var edge = tri[2].*;
-                    var v = p.*;
-                    sub(&edge, tri[1]);
-                    sub(&edge, tri[1]);
-                    break :blk angle(&edge, &v, n);
-                },
-                2 => blk: {
-                    var edge = tri[0].*;
-                    var v = p.*;
-                    sub(&edge, tri[2]);
-                    sub(&edge, tri[2]);
-                    break :blk angle(&edge, &v, n);
-                },
+            const n1, const n2 = switch (comptime S) {
+                0 => .{ 1, 0 },
+                1 => .{ 2, 1 },
+                2 => .{ 0, 2 },
                 else => unreachable,
             };
+            var edge = tri[n1].*;
+            var v = p.*;
+            sub(&edge, tri[n2]);
+            sub(&v, tri[n2]);
+            const a = angle(&edge, &v, n);
 
             return switch (scalar.is_vec) {
                 false => {
@@ -428,9 +430,15 @@ pub fn vectorNT(comptime N: comptime_int, comptime T: type) type {
                 },
                 true => blk: {
                     var result: [scalar.len]std.math.Order = undefined;
-                    const v_eq: @Vector(scalar.len, u8) = @splat(@as(u8, @intFromEnum(std.math.Order.eq)));
-                    const v_gt: @Vector(scalar.len, u8) = @splat(@as(u8, @intFromEnum(std.math.Order.gt)));
-                    const v_lt: @Vector(scalar.len, u8) = @splat(@as(u8, @intFromEnum(std.math.Order.lt)));
+                    const v_eq: @Vector(scalar.len, u8) = @splat(@as(u8, @intFromEnum(
+                        std.math.Order.eq,
+                    )));
+                    const v_gt: @Vector(scalar.len, u8) = @splat(@as(u8, @intFromEnum(
+                        std.math.Order.gt,
+                    )));
+                    const v_lt: @Vector(scalar.len, u8) = @splat(@as(u8, @intFromEnum(
+                        std.math.Order.lt,
+                    )));
                     var acc: @Vector(scalar.len, u8) = undefined;
                     acc = @select(u8, a > scalar.@"0", v_gt, v_lt);
                     acc = @select(u8, scalar.approxEqAbs(a, scalar.@"0", scalar.eps), v_eq, acc);

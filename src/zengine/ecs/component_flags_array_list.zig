@@ -21,7 +21,12 @@ pub const ComponentFlagsArrayListUnmanaged = struct {
         defer self.flags.deinit(allocator);
     }
 
-    pub fn push(self: *Self, allocator: std.mem.Allocator, entity: Entity, component_flag: ComponentFlag) !void {
+    pub fn push(
+        self: *Self,
+        allocator: std.mem.Allocator,
+        entity: Entity,
+        component_flag: ComponentFlag,
+    ) !void {
         if (self.flags.items.len > entity) {} else {
             self.flags.ensureTotalCapacity(allocator, entity);
             const empty_flags = ComponentFlagsBitSet.initEmpty();

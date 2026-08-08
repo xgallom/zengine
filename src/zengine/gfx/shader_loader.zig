@@ -122,8 +122,16 @@ fn openShadersDir() !std.fs.Dir {
     return std.fs.openDirAbsolute(shaders_path, .{});
 }
 
-fn readShaderCode(config: *const OpenConfig, format: *const FormatConfig, shaders_dir: *std.fs.Dir) ![]const u8 {
-    const path = try std.fmt.allocPrint(allocators.scratch(), "{s}{s}", .{ config.shader_path, format.shader_ext });
+fn readShaderCode(
+    config: *const OpenConfig,
+    format: *const FormatConfig,
+    shaders_dir: *std.fs.Dir,
+) ![]const u8 {
+    const path = try std.fmt.allocPrint(
+        allocators.scratch(),
+        "{s}{s}",
+        .{ config.shader_path, format.shader_ext },
+    );
     defer allocators.scratch().free(path);
     return fs.readFile(config.allocator, path, shaders_dir) catch |err| {
         log.err("error reading shader code file \"{s}\": {t}", .{ path, err });
@@ -132,14 +140,23 @@ fn readShaderCode(config: *const OpenConfig, format: *const FormatConfig, shader
 }
 
 fn readShaderMeta(config: *const OpenConfig, shaders_dir: *std.fs.Dir) !GraphicsMetadataJSON {
-    const path = try std.fmt.allocPrint(allocators.scratch(), "{s}{s}", .{ config.shader_path, ".json" });
+    const path = try std.fmt.allocPrint(
+        allocators.scratch(),
+        "{s}{s}",
+        .{ config.shader_path, ".json" },
+    );
     defer allocators.scratch().free(path);
     const data = fs.readFile(config.allocator, path, shaders_dir) catch |err| {
         log.err("error reading shader meta file \"{s}\": {t}", .{ path, err });
         return err;
     };
     defer config.allocator.free(data);
-    return std.json.parseFromSliceLeaky(GraphicsMetadataJSON, allocators.scratch(), data, .{}) catch |err| {
+    return std.json.parseFromSliceLeaky(
+        GraphicsMetadataJSON,
+        allocators.scratch(),
+        data,
+        .{},
+    ) catch |err| {
         log.err("error parsing shader meta file \"{s}\": {t}", .{ path, err });
         return err;
     };

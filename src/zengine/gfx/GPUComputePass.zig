@@ -46,7 +46,11 @@ pub fn bindPipeline(self: Self, pipeline: GPUComputePipeline) void {
     c.SDL_BindGPUComputePipeline(self.ptr, pipeline.ptr);
 }
 
-pub fn bindSamplers(self: Self, first_slot: u32, bindings: []const types.TextureSamplerBinding) !void {
+pub fn bindSamplers(
+    self: Self,
+    first_slot: u32,
+    bindings: []const types.TextureSamplerBinding,
+) !void {
     assert(self.isValid());
     var arena = allocators.initArena();
     defer arena.deinit();

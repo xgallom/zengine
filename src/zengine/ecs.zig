@@ -8,7 +8,8 @@ pub const component_array_list = @import("ecs/component_array_list.zig");
 const ComponentArrayList = component_array_list.ComponentArrayList;
 const MultiComponentArrayList = component_array_list.MultiComponentArrayList;
 pub const component_flags_array_list = @import("ecs/component_flags_array_list.zig");
-pub const ComponentFlagsArrayListUnmanaged = component_flags_array_list.ComponentFlagsArrayListUnmanaged;
+pub const ComponentFlagsArrayListUnmanaged =
+    component_flags_array_list.ComponentFlagsArrayListUnmanaged;
 pub const component_manager = @import("ecs/component_manager.zig");
 pub const ComponentManager = component_manager.ComponentManager;
 pub const MultiComponentManager = component_manager.MultiComponentManager;
@@ -25,7 +26,9 @@ pub const OpaqueComponentArrayList = ComponentArrayList(struct {});
 pub const OpaquePrimitiveComponentArrayList = MultiComponentArrayList(u64);
 
 pub const ComponentsHashMapUnmanaged = std.StringArrayHashMapUnmanaged(OpaqueComponentArrayList);
-pub const PrimitiveComponentsHashMapUnmanaged = std.StringArrayHashMapUnmanaged(OpaquePrimitiveComponentArrayList);
+pub const PrimitiveComponentsHashMapUnmanaged = std.StringArrayHashMapUnmanaged(
+    OpaquePrimitiveComponentArrayList,
+);
 
 pub fn ECS(comptime config: struct {
     enable_components: bool = true,
@@ -33,10 +36,22 @@ pub fn ECS(comptime config: struct {
 }) type {
     return struct {
         allocator: std.mem.Allocator,
-        components: if (config.enable_components) ComponentsHashMapUnmanaged else void = undefined,
-        primitive_components: if (config.enable_primitive_components) PrimitiveComponentsHashMapUnmanaged else void = undefined,
-        flags: if (config.enable_components) ComponentFlagsArrayListUnmanaged else void = undefined,
-        primitive_flags: if (config.enable_primitive_components) ComponentFlagsArrayListUnmanaged else void = undefined,
+        components: if (config.enable_components)
+            ComponentsHashMapUnmanaged
+        else
+            void = undefined,
+        primitive_components: if (config.enable_primitive_components)
+            PrimitiveComponentsHashMapUnmanaged
+        else
+            void = undefined,
+        flags: if (config.enable_components)
+            ComponentFlagsArrayListUnmanaged
+        else
+            void = undefined,
+        primitive_flags: if (config.enable_primitive_components)
+            ComponentFlagsArrayListUnmanaged
+        else
+            void = undefined,
         last_component_flag: ComponentFlag = 0,
         last_primitive_component_flag: ComponentFlag = 0,
 
@@ -85,7 +100,9 @@ pub fn ECS(comptime config: struct {
         }
 
         pub fn push_primitive(self: *Self, value: anytype) !Entity {
-            comptime if (!config.enable_primitive_components) @compileError("Primitive components are disabled");
+            comptime if (!config.enable_primitive_components) {
+                @compileError("Primitive components are disabled");
+            };
             const C = @TypeOf(value);
             const components = self.primitiveComponentArrayListCast(C);
             const entity = try components.push(value, components);
@@ -93,13 +110,22 @@ pub fn ECS(comptime config: struct {
             return entity;
         }
 
-        pub fn register(self: *Self, C: type, component_allocator: std.mem.Allocator, component_capacity: usize) !void {
+        pub fn register(
+            self: *Self,
+            C: type,
+            component_allocator: std.mem.Allocator,
+            component_capacity: usize,
+        ) !void {
             comptime if (!config.enable_components) @compileError("Components are disabled");
             const key = @typeName(C);
             assert(!self.components.contains(key));
 
             self.last_component_flag += 1;
-            var item = try ComponentArrayList(C).init(component_allocator, component_capacity, self.last_component_flag);
+            var item = try ComponentArrayList(C).init(
+                component_allocator,
+                component_capacity,
+                self.last_component_flag,
+            );
             const ptr: *OpaqueComponentArrayList = @ptrCast(&item);
             try self.components.put(
                 self.allocator,
@@ -108,13 +134,24 @@ pub fn ECS(comptime config: struct {
             );
         }
 
-        pub fn register_primitive(self: *Self, C: type, component_allocator: std.mem.Allocator, component_capacity: usize) !void {
-            comptime if (!config.enable_primitive_components) @compileError("Primitive components are disabled");
+        pub fn register_primitive(
+            self: *Self,
+            C: type,
+            component_allocator: std.mem.Allocator,
+            component_capacity: usize,
+        ) !void {
+            comptime if (!config.enable_primitive_components) {
+                @compileError("Primitive components are disabled");
+            };
             const key = @typeName(C);
             assert(!self.primitive_components.contains(key));
 
             self.last_component_flag += 1;
-            var item = try MultiComponentArrayList(C).init(component_allocator, component_capacity, self.last_component_flag);
+            var item = try MultiComponentArrayList(C).init(
+                component_allocator,
+                component_capacity,
+                self.last_component_flag,
+            );
             const ptr: *OpaquePrimitiveComponentArrayList = @ptrCast(&item);
             try self.primitive_components.put(
                 self.allocator,
@@ -136,9 +173,13 @@ pub fn ECS(comptime config: struct {
             }
         }
 
-        pub fn primitiveComponentArrayListCast(self: *const Self, comptime C: type) *MultiComponentArrayList(C) {
-            comptime if (!config.enable_primitive_components) @compileError("Primitive components are disabled");
-
+        pub fn primitiveComponentArrayListCast(
+            self: *const Self,
+            comptime C: type,
+        ) *MultiComponentArrayList(C) {
+            comptime if (!config.enable_primitive_components) {
+                @compileError("Primitive components are disabled");
+            };
             const ptr = self.primitive_components.getPtr(@typeName(C));
             assert(ptr != null);
             return @ptrCast(ptr.?);
@@ -152,8 +193,9 @@ pub fn ECS(comptime config: struct {
         }
 
         pub fn unregister_primitive(self: *Self, C: type) void {
-            comptime if (!config.enable_primitive_components) @compileError("Primitive components are disabled");
-
+            comptime if (!config.enable_primitive_components) {
+                @compileError("Primitive components are disabled");
+            };
             const item = self.primitiveComponentArrayListCast(C);
             item.deinit();
         }

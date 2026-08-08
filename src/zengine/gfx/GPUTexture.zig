@@ -8,6 +8,7 @@ const assert = std.debug.assert;
 const c = @import("../ext.zig").c;
 const global = @import("../global.zig");
 const math = @import("../math.zig");
+const sdl = @import("../sdl.zig");
 const ui = @import("../ui.zig");
 const Error = @import("error.zig").Error;
 const GPUDevice = @import("GPUDevice.zig");
@@ -48,7 +49,7 @@ pub fn create(gpu_device: GPUDevice, info: *const CreateInfo) !*c.SDL_GPUTexture
     const ptr = c.SDL_CreateGPUTexture(gpu_device.ptr, &c.SDL_GPUTextureCreateInfo{
         .type = @intFromEnum(info.type),
         .format = @intFromEnum(info.format),
-        .usage = info.usage.bits.mask,
+        .usage = info.usage.bits,
         .width = info.size[0],
         .height = info.size[1],
         .layer_count_or_depth = info.layer_count_or_depth,
@@ -175,7 +176,7 @@ pub const Usage = enum(c.SDL_GPUTextureUsageFlags) {
     compute_storage_write = c.SDL_GPU_TEXTUREUSAGE_COMPUTE_STORAGE_WRITE,
     compute_storage_read_write = c.SDL_GPU_TEXTUREUSAGE_COMPUTE_STORAGE_SIMULTANEOUS_READ_WRITE,
 };
-pub const UsageFlags = std.EnumSet(Usage);
+pub const UsageFlags = sdl.Flags(Usage);
 
 pub const Format = enum(c.SDL_GPUTextureFormat) {
     invalid = c.SDL_GPU_TEXTUREFORMAT_INVALID,

@@ -11,6 +11,7 @@ const Engine = @import("Engine.zig");
 const Error = @import("error.zig").Error;
 const Event = @import("Event.zig");
 const math = @import("math.zig");
+const sdl = @import("sdl.zig");
 
 const log = std.log.scoped(.window);
 
@@ -56,7 +57,7 @@ pub fn create(info: *const CreateInfo) !*c.SDL_Window {
         info.title.ptr,
         @intCast(info.size[0]),
         @intCast(info.size[1]),
-        info.flags.bits.mask,
+        info.flags.bits,
     );
     if (ptr == null) {
         log.err("failed creating window: {s}", .{c.SDL_GetError()});
@@ -74,6 +75,11 @@ pub fn create(info: *const CreateInfo) !*c.SDL_Window {
 pub fn destroy(ptr: *c.SDL_Window) void {
     Engine.destroyProperties(Registry, ptr);
     c.SDL_DestroyWindow(ptr);
+}
+
+pub fn flags(self: Self) Flags {
+    assert(self.isValid());
+    return .{ .bits = c.SDL_GetWindowFlags(self.ptr) };
 }
 
 pub fn pixelSize(self: Self) math.Point_u32 {
@@ -125,6 +131,30 @@ pub fn setMousePos(self: Self, pos: math.Point_f32, pos_rel: math.Point_f32) !vo
     try props.put(.f32, "mouse_y_rel", pos_rel[1]);
 }
 
+pub fn raise(self: Self) !void {
+    assert(self.isValid());
+    if (!c.SDL_RaiseWindow(self.ptr)) {
+        log.err("failed raising window: {s}", .{c.SDL_GetError()});
+        return error.WindowFailed;
+    }
+}
+
+pub fn show(self: Self) !void {
+    assert(self.isValid());
+    if (!c.SDL_ShowWindow(self.ptr)) {
+        log.err("failed showing window: {s}", .{c.SDL_GetError()});
+        return error.WindowFailed;
+    }
+}
+
+pub fn hide(self: Self) !void {
+    assert(self.isValid());
+    if (!c.SDL_HideWindow(self.ptr)) {
+        log.err("failed hiding window: {s}", .{c.SDL_GetError()});
+        return error.WindowFailed;
+    }
+}
+
 pub inline fn isValid(self: Self) bool {
     return self.ptr != null;
 }
@@ -161,4 +191,4 @@ pub const Flag = enum(c.SDL_WindowFlags) {
     transparent = c.SDL_WINDOW_TRANSPARENT,
     not_focusable = c.SDL_WINDOW_NOT_FOCUSABLE,
 };
-pub const Flags = std.EnumSet(Flag);
+pub const Flags = sdl.Flags(Flag);

@@ -75,14 +75,30 @@ pub fn rgba(self: Self, color: math.RGBAu8) u32 {
 }
 
 pub fn readFloat(self: Self, pos: math.Point_i32, color: *math.RGBAf32) !void {
-    if (!c.SDL_ReadSurfacePixelFloat(self.ptr, pos[0], pos[1], &color[0], &color[1], &color[2], &color[3])) {
+    if (!c.SDL_ReadSurfacePixelFloat(
+        self.ptr,
+        pos[0],
+        pos[1],
+        &color[0],
+        &color[1],
+        &color[2],
+        &color[3],
+    )) {
         log.err("failed reading surface float {s}", .{c.SDL_GetError()});
         return Error.SurfaceFailed;
     }
 }
 
 pub fn writeFloat(self: Self, pos: math.Point_i32, color: *const math.RGBAf32) !void {
-    if (!c.SDL_WriteSurfacePixelFloat(self.ptr, pos[0], pos[1], color[0], color[1], color[2], color[3])) {
+    if (!c.SDL_WriteSurfacePixelFloat(
+        self.ptr,
+        pos[0],
+        pos[1],
+        color[0],
+        color[1],
+        color[2],
+        color[3],
+    )) {
         log.err("failed writing surface float {s}", .{c.SDL_GetError()});
         return Error.SurfaceFailed;
     }

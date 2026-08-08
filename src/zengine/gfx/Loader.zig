@@ -75,7 +75,10 @@ pub fn deinit(self: *Self) void {
     self.fonts.deinit(self.renderer.allocator);
     for (self.surface_textures.map.values()) |tex| tex.deinit(gpu_device);
     self.surface_textures.deinit();
-    for (self.look_up_tables.map.values()) |tex| tex.deinit(self.renderer.allocator, self.renderer.gpu_device);
+    for (self.look_up_tables.map.values()) |tex| tex.deinit(
+        self.renderer.allocator,
+        self.renderer.gpu_device,
+    );
     self.look_up_tables.deinit();
 
     assert(self.modifs.getPtrConst(.mesh_buffer).items.len == 0);
@@ -166,7 +169,10 @@ pub fn loadMesh(self: *Self, asset_path: []const u8) !*mesh.Buffer {
     }
 
     if (result.mtl_path) |mtl_path| try self.loadMaterials(mtl_path);
-    const mesh_buf = try self.renderer.insertMeshBuffer(asset_path, &.fromCPUBuffer(&result.mesh_buf));
+    const mesh_buf = try self.renderer.insertMeshBuffer(
+        asset_path,
+        &.fromCPUBuffer(&result.mesh_buf),
+    );
     const mesh_bufs: mesh.Object.Buffers = .init(.{
         .mesh = mesh_buf,
         .tex_coords_u = try self.createTexCoordUIndicators(asset_path),
@@ -313,7 +319,12 @@ pub fn createGraphicsPipelines(self: *Self) !void {
     pipeline.fragment_shader = color_frag;
     pipeline.vertex_input_state = .{
         .vertex_buffer_descriptions = &.{
-            .{ .slot = 0, .pitch = @sizeOf(math.Vector3), .input_rate = .vertex, .instance_step_rate = 0 },
+            .{
+                .slot = 0,
+                .pitch = @sizeOf(math.Vector3),
+                .input_rate = .vertex,
+                .instance_step_rate = 0,
+            },
         },
         .vertex_attributes = &.{
             .{ .location = 0, .buffer_slot = 0, .format = .f32_3, .offset = 0 },
@@ -327,14 +338,34 @@ pub fn createGraphicsPipelines(self: *Self) !void {
     pipeline.fragment_shader = material_frag;
     pipeline.vertex_input_state = .{
         .vertex_buffer_descriptions = &.{
-            .{ .slot = 0, .pitch = @sizeOf(math.Vertex), .input_rate = .vertex, .instance_step_rate = 0 },
+            .{
+                .slot = 0,
+                .pitch = @sizeOf(math.Vertex),
+                .input_rate = .vertex,
+                .instance_step_rate = 0,
+            },
         },
         .vertex_attributes = &.{
             .{ .location = 0, .buffer_slot = 0, .format = .f32_3, .offset = 0 },
             .{ .location = 1, .buffer_slot = 0, .format = .f32_3, .offset = @sizeOf(math.Vector3) },
-            .{ .location = 2, .buffer_slot = 0, .format = .f32_3, .offset = 2 * @sizeOf(math.Vector3) },
-            .{ .location = 3, .buffer_slot = 0, .format = .f32_3, .offset = 3 * @sizeOf(math.Vector3) },
-            .{ .location = 4, .buffer_slot = 0, .format = .f32_3, .offset = 4 * @sizeOf(math.Vector3) },
+            .{
+                .location = 2,
+                .buffer_slot = 0,
+                .format = .f32_3,
+                .offset = 2 * @sizeOf(math.Vector3),
+            },
+            .{
+                .location = 3,
+                .buffer_slot = 0,
+                .format = .f32_3,
+                .offset = 3 * @sizeOf(math.Vector3),
+            },
+            .{
+                .location = 4,
+                .buffer_slot = 0,
+                .format = .f32_3,
+                .offset = 4 * @sizeOf(math.Vector3),
+            },
         },
     };
     pipeline.primitive_type = .triangle_list;
@@ -598,7 +629,10 @@ fn uploadTransferBuffers(self: *Self) !GPUFence {
 
     try tb.mesh_bufs.ensureUnusedCapacity(gpa, self.modifs.getPtrConst(.mesh_buffer).items.len);
     try tb.mesh_bufs.ensureUnusedCapacity(gpa, self.modifs.getPtrConst(.storage_buffer).items.len);
-    try tb.surf_texes.ensureUnusedCapacity(gpa, self.modifs.getPtrConst(.surface_texture).items.len);
+    try tb.surf_texes.ensureUnusedCapacity(
+        gpa,
+        self.modifs.getPtrConst(.surface_texture).items.len,
+    );
     try tb.luts.ensureUnusedCapacity(gpa, self.modifs.getPtrConst(.look_up_table).items.len);
 
     for (self.modifs.getPtrConst(.mesh_buffer).items) |key| {
@@ -681,11 +715,19 @@ pub fn propertyEditorNode(
     const root_id = @typeName(Self);
     const root_node = try editor.appendChildNode(parent, root_id, "Loader");
     {
-        const node = try editor.appendChildNode(root_node, root_id ++ ".surface_textures", "Surface Textures");
+        const node = try editor.appendChildNode(
+            root_node,
+            root_id ++ ".surface_textures",
+            "Surface Textures",
+        );
         var iter = self.surface_textures.map.iterator();
         var buf: [64]u8 = undefined;
         while (iter.next()) |entry| {
-            const id = try std.fmt.bufPrint(&buf, "{s}#{s}", .{ @typeName(SurfaceTexture), entry.key_ptr.* });
+            const id = try std.fmt.bufPrint(
+                &buf,
+                "{s}#{s}",
+                .{ @typeName(SurfaceTexture), entry.key_ptr.* },
+            );
             _ = try editor.appendChild(
                 node,
                 try entry.value_ptr.*.propertyEditor(),

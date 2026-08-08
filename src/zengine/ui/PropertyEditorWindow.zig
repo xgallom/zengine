@@ -110,7 +110,13 @@ pub fn appendNode(self: *Self, id: []const u8, name: []const u8) !*Item {
     return result;
 }
 
-pub fn appendChild(self: *Self, item: *Item, node_element: UI.Element, id: []const u8, name: []const u8) !*Item {
+pub fn appendChild(
+    self: *Self,
+    item: *Item,
+    node_element: UI.Element,
+    id: []const u8,
+    name: []const u8,
+) !*Item {
     const result = try self.appendImpl(&item.children, .{
         .self = self,
         .element = node_element,
@@ -148,7 +154,12 @@ pub fn draw(self: *Self, ui: *const UI, is_open: *bool) void {
         return;
     }
 
-    if (c.igBeginChild_Str("##tree", .{ .x = 240 }, c.ImGuiChildFlags_ResizeX | c.ImGuiChildFlags_Borders | c.ImGuiChildFlags_NavFlattened, 0)) {
+    if (c.igBeginChild_Str(
+        "##tree",
+        .{ .x = 240 },
+        c.ImGuiChildFlags_ResizeX | c.ImGuiChildFlags_Borders | c.ImGuiChildFlags_NavFlattened,
+        0,
+    )) {
         self.filter.draw(ui, is_open);
 
         if (c.igBeginTable("##bg", 1, c.ImGuiTableFlags_RowBg, .{}, 0)) {
@@ -170,7 +181,13 @@ pub fn draw(self: *Self, ui: *const UI, is_open: *bool) void {
         c.igText("%s", &item.name);
         c.igTextDisabled("0x%08X (%s)", address, &item.id);
         c.igSeparatorEx(c.ImGuiSeparatorFlags_Horizontal, 1);
-        if (c.igBeginTable("##properties", 2, c.ImGuiTableFlags_Resizable | c.ImGuiTableFlags_ScrollY, .{}, 0)) {
+        if (c.igBeginTable(
+            "##properties",
+            2,
+            c.ImGuiTableFlags_Resizable | c.ImGuiTableFlags_ScrollY,
+            .{},
+            0,
+        )) {
             c.igPushID_Str(&item.id);
             c.igTableSetupColumn("", c.ImGuiTableColumnFlags_WidthFixed, 120, 0);
             c.igTableSetupColumn("", c.ImGuiTableColumnFlags_WidthStretch, 2, 0);

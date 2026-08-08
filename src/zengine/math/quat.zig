@@ -22,7 +22,9 @@ pub fn quatT(comptime T: type) type {
         const vector3 = vectorNT(3, T);
 
         comptime {
-            if (!scalar.is_float) @compileError("Quaternions not supported for type " ++ @typeName(Scalar));
+            if (!scalar.is_float) {
+                @compileError("Quaternions not supported for type " ++ @typeName(Scalar));
+            }
         }
 
         pub const identity: Self = .{ scalar.zero, scalar.zero, scalar.zero, scalar.one };

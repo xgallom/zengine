@@ -194,7 +194,13 @@ fn alloc(self: *Self, len: usize, alignment: Alignment, ret_addr: usize) ?[*]u8 
     return chunk.ptr[0..len];
 }
 
-pub fn resize(self: *Self, memory: []u8, alignment: Alignment, new_len: usize, ret_addr: usize) bool {
+pub fn resize(
+    self: *Self,
+    memory: []u8,
+    alignment: Alignment,
+    new_len: usize,
+    ret_addr: usize,
+) bool {
     _ = self;
     _ = memory;
     _ = ret_addr;

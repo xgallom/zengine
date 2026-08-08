@@ -35,6 +35,7 @@ var global_registry: GlobalRegistry = undefined;
 pub fn create() !*Self {
     if (global_self != null) return global_self.?;
 
+    _ = c.SDL_SetHint("SDL_MAC_BACKGROUND_APP", "0");
     if (!c.SDL_Init(c.SDL_INIT_VIDEO | c.SDL_INIT_AUDIO | c.SDL_INIT_GAMEPAD)) {
         log.err("init failed: {s}", .{c.SDL_GetError()});
         return Error.EngineFailed;
@@ -83,11 +84,6 @@ pub fn deinit(self: *Self) void {
     c.SDL_Quit();
 }
 
-pub fn delay(self: *const Self, delay_ms: u32) void {
-    _ = self;
-    c.SDL_Delay(delay_ms);
-}
-
 pub fn setCursorVisible(self: *const Self, visible: bool) !void {
     _ = self;
     const result = if (visible) c.SDL_ShowCursor() else c.SDL_HideCursor();
@@ -119,7 +115,12 @@ pub inline fn propertiesOrNull(comptime Registry: type, key: Registry.Key) ?*Pro
     return global_registry.properties(Registry, key);
 }
 
-fn sdlLog(_: ?*anyopaque, category: LogCategory, priority: LogPriority, msg: [*:0]const u8) callconv(.c) void {
+fn sdlLog(
+    _: ?*anyopaque,
+    category: LogCategory,
+    priority: LogPriority,
+    msg: [*:0]const u8,
+) callconv(.c) void {
     const level: std.log.Level = switch (priority) {
         .invalid => unreachable,
         .trace, .verbose, .debug, .count => .debug,

@@ -102,7 +102,12 @@ pub fn deinit(self: *Self, gpa: std.mem.Allocator) void {
     self.groups.deinit(gpa);
 }
 
-pub fn beginSection(self: *Self, gpa: std.mem.Allocator, offset: usize, material: ?[:0]const u8) !void {
+pub fn beginSection(
+    self: *Self,
+    gpa: std.mem.Allocator,
+    offset: usize,
+    material: ?[:0]const u8,
+) !void {
     if (self.has_active.section) {
         assert(self.sections.items.len > 0);
         const section = &self.sections.items[self.sections.items.len - 1];

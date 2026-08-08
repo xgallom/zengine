@@ -118,7 +118,12 @@ pub fn KeyTreeMap(comptime V: type, comptime options: struct {
             return self.insertWithOrder(key, value, options.insertion_order);
         }
 
-        pub fn insertWithOrder(self: *Self, key: []const u8, value: ValIn, comptime order: InsertionOrder) !*Value {
+        pub fn insertWithOrder(
+            self: *Self,
+            key: []const u8,
+            value: ValIn,
+            comptime order: InsertionOrder,
+        ) !*Value {
             var walk = self.root;
             var iter = std.mem.splitScalar(u8, key, options.separator);
 
@@ -148,7 +153,12 @@ pub fn KeyTreeMap(comptime V: type, comptime options: struct {
             return &walk.value.?;
         }
 
-        fn addNode(self: *Self, parent: *Node, label: [:0]const u8, comptime order: InsertionOrder) !*Node {
+        fn addNode(
+            self: *Self,
+            parent: *Node,
+            label: [:0]const u8,
+            comptime order: InsertionOrder,
+        ) !*Node {
             const edge = try self.createEdge(label, null);
             switch (comptime order) {
                 .ordered => orderedInsert(&parent.edges.first, edge),
@@ -161,7 +171,10 @@ pub fn KeyTreeMap(comptime V: type, comptime options: struct {
         fn orderedInsert(head: *?*Edges.Node, edge: *Edge) void {
             const edge_node = &edge.edge_node;
 
-            if (head.* == null or orderEdges(@fieldParentPtr("edge_node", head.*.?), edge).compare(.gte)) {
+            if (head.* == null or orderEdges(
+                @fieldParentPtr("edge_node", head.*.?),
+                edge,
+            ).compare(.gte)) {
                 edge_node.next = head.*;
                 head.* = edge_node;
                 return;

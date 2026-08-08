@@ -43,7 +43,11 @@ pub fn vertexNT(comptime N: comptime_int, comptime T: type) type {
                 return &self.self[@intFromEnum(idx)];
             }
 
-            pub inline fn set(self: Map, comptime idx: types.VertexAttr, value: *const Vector) void {
+            pub inline fn set(
+                self: Map,
+                comptime idx: types.VertexAttr,
+                value: *const Vector,
+            ) void {
                 self.getPtr(idx).* = value.*;
             }
 

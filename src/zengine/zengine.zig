@@ -3,6 +3,7 @@
 //!
 
 const std = @import("std");
+const log = std.log.scoped(.zengine);
 const assert = std.debug.assert;
 
 pub const allocators = @import("allocators.zig");
@@ -125,6 +126,8 @@ pub const Zengine = struct {
         main_section.begin();
         sections.sub(.init).begin();
         const main_win = try engine.createMainWindow(win_info);
+        try main_win.show();
+        try main_win.raise();
 
         const audio_sys = try audio.System.create();
         errdefer audio_sys.deinit();
@@ -134,10 +137,13 @@ pub const Zengine = struct {
             if (win_size[0] != 0 and win_size[1] != 0) break;
             Event.pump();
             while (Event.poll()) |_| {}
-            engine.delay(1);
+            sleep(1);
         }
 
-        const renderer = if (comptime options.has_renderer) try gfx.Renderer.create(engine) else null;
+        const renderer = if (comptime options.has_renderer)
+            try gfx.Renderer.create(engine)
+        else
+            null;
         errdefer renderer.deinit();
 
         // const scene = if (comptime options.has_scene) try gfx.Scene.create(renderer) else {};
@@ -249,6 +255,21 @@ pub const Zengine = struct {
         run: ?*const fn (self: *Self) anyerror!void = null,
     };
 };
+
+pub fn sleep(ms: u32) void {
+    c.SDL_Delay(ms);
+}
+
+pub fn sleepNano(ns: u64) void {
+    c.SDL_DelayNS(ns);
+}
+
+var is_done_waiting: u32 = 0;
+pub fn waitForDebugger() void {
+    log.info("Waiting for debugger to attach...", .{});
+    while (@atomicLoad(u32, &is_done_waiting, .seq_cst) == 0) std.atomic.spinLoopHint();
+    log.info("Done", .{});
+}
 
 test {
     std.testing.log_level = .debug;

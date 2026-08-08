@@ -134,7 +134,11 @@ pub fn matrixMxNT(comptime M: comptime_int, comptime N: comptime_int, comptime T
 
         /// Vector multiplication of matrix and vector.
         /// Y_m = O_mn X_n
-        pub fn apply(result: *vector.Self, operation: *const Self, operand: *const vector.Self) void {
+        pub fn apply(
+            result: *vector.Self,
+            operation: *const Self,
+            operand: *const vector.Self,
+        ) void {
             for (0..rows) |y| vector.dotInto(&result[y], &operation[y], operand);
         }
 
@@ -205,7 +209,12 @@ pub fn matrixMxNT(comptime M: comptime_int, comptime N: comptime_int, comptime T
             result.* = .{
                 .{ scalar.@"2" / x, scalar.@"0", scalar.@"0", -(right + left) / x },
                 .{ scalar.@"0", scalar.@"2" / y, scalar.@"0", -(top + bottom) / y },
-                .{ scalar.@"0", scalar.@"0", scalar.@"1" / (near_plane - far_plane), near_plane / (near_plane - far_plane) },
+                .{
+                    scalar.@"0",
+                    scalar.@"0",
+                    scalar.@"1" / (near_plane - far_plane),
+                    near_plane / (near_plane - far_plane),
+                },
                 .{ scalar.@"0", scalar.@"0", scalar.@"0", scalar.@"1" },
             };
         }
@@ -225,7 +234,12 @@ pub fn matrixMxNT(comptime M: comptime_int, comptime N: comptime_int, comptime T
             result.* = .{
                 .{ scalar.@"2" / x, scalar.@"0", scalar.@"0", scalar.@"0" },
                 .{ scalar.@"0", scalar.@"2" / y, scalar.@"0", scalar.@"0" },
-                .{ scalar.@"0", scalar.@"0", scalar.@"1" / (near_plane - far_plane), near_plane / (near_plane - far_plane) },
+                .{
+                    scalar.@"0",
+                    scalar.@"0",
+                    scalar.@"1" / (near_plane - far_plane),
+                    near_plane / (near_plane - far_plane),
+                },
                 .{ scalar.@"0", scalar.@"0", scalar.@"0", scalar.@"1" },
             };
         }
@@ -245,7 +259,12 @@ pub fn matrixMxNT(comptime M: comptime_int, comptime N: comptime_int, comptime T
             result.* = .{
                 .{ x, scalar.@"0", scalar.@"0", scalar.@"0" },
                 .{ scalar.@"0", y, scalar.@"0", scalar.@"0" },
-                .{ scalar.@"0", scalar.@"0", far_plane / (near_plane - far_plane), (near_plane * far_plane) / (near_plane - far_plane) },
+                .{
+                    scalar.@"0",
+                    scalar.@"0",
+                    far_plane / (near_plane - far_plane),
+                    (near_plane * far_plane) / (near_plane - far_plane),
+                },
                 .{ scalar.@"0", scalar.@"0", scalar.@"-1", scalar.@"0" },
             };
         }
@@ -278,9 +297,24 @@ pub fn matrixMxNT(comptime M: comptime_int, comptime N: comptime_int, comptime T
             const o = result.*;
 
             result.* = .{
-                .{ o[0][0], o[1][0], o[2][0], -o[0][0] * o[0][3] - o[1][0] * o[1][3] - o[2][0] * o[2][3] },
-                .{ o[0][1], o[1][1], o[2][1], -o[0][1] * o[0][3] - o[1][1] * o[1][3] - o[2][1] * o[2][3] },
-                .{ o[0][2], o[1][2], o[2][2], -o[0][2] * o[0][3] - o[1][2] * o[1][3] - o[2][2] * o[2][3] },
+                .{
+                    o[0][0],
+                    o[1][0],
+                    o[2][0],
+                    -o[0][0] * o[0][3] - o[1][0] * o[1][3] - o[2][0] * o[2][3],
+                },
+                .{
+                    o[0][1],
+                    o[1][1],
+                    o[2][1],
+                    -o[0][1] * o[0][3] - o[1][1] * o[1][3] - o[2][1] * o[2][3],
+                },
+                .{
+                    o[0][2],
+                    o[1][2],
+                    o[2][2],
+                    -o[0][2] * o[0][3] - o[1][2] * o[1][3] - o[2][2] * o[2][3],
+                },
                 .{ scalar.@"0", scalar.@"0", scalar.@"0", scalar.@"1" },
             };
         }
@@ -331,7 +365,11 @@ pub fn matrixMxNT(comptime M: comptime_int, comptime N: comptime_int, comptime T
             };
         }
 
-        pub fn rotateEuler(operand: *Self, rotation: *const types.Euler, order: types.EulerOrder) void {
+        pub fn rotateEuler(
+            operand: *Self,
+            rotation: *const types.Euler,
+            order: types.EulerOrder,
+        ) void {
             if (rows == 4 and cols == 4) {} else @compileError("Wrong matrix dimensions");
             const cs = [_]Scalar{ @cos(rotation[0]), @cos(rotation[1]), @cos(rotation[2]) };
             const ss = [_]Scalar{ @sin(rotation[0]), @sin(rotation[1]), @sin(rotation[2]) };
@@ -365,7 +403,11 @@ pub fn matrixMxNT(comptime M: comptime_int, comptime N: comptime_int, comptime T
             }
         }
 
-        pub fn rotateInvEuler(operand: *Self, rotation: *const types.Euler, order: types.EulerOrder) void {
+        pub fn rotateInvEuler(
+            operand: *Self,
+            rotation: *const types.Euler,
+            order: types.EulerOrder,
+        ) void {
             if (rows == 4 and cols == 4) {} else @compileError("Wrong matrix dimensions");
             const cs = [_]Scalar{ @cos(rotation[0]), @cos(rotation[1]), @cos(rotation[2]) };
             const ss = [_]Scalar{ @sin(rotation[0]), @sin(rotation[1]), @sin(rotation[2]) };

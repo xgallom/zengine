@@ -39,8 +39,12 @@ pub fn deinit(self: *Self) void {
     if (self.isValid()) destroySelf(self.toOwned());
 }
 
-pub fn create(format_flags: GPUShader.FormatFlags, debug_mode: bool, name: ?[:0]const u8) !*c.SDL_GPUDevice {
-    const ptr = c.SDL_CreateGPUDevice(format_flags.bits.mask, debug_mode, @ptrCast(name));
+pub fn create(
+    format_flags: GPUShader.FormatFlags,
+    debug_mode: bool,
+    name: ?[:0]const u8,
+) !*c.SDL_GPUDevice {
+    const ptr = c.SDL_CreateGPUDevice(format_flags.bits, debug_mode, @ptrCast(name));
     if (ptr == null) {
         log.err("failed creating gpu device: {s}", .{c.SDL_GetError()});
         return Error.GPUFailed;
@@ -92,7 +96,10 @@ pub fn computePipeline(self: Self, info: *const GPUComputePipeline.CreateInfo) !
     return .init(self, info);
 }
 
-pub fn graphicsPipeline(self: Self, info: *const GPUGraphcisPipeline.CreateInfo) !GPUGraphcisPipeline {
+pub fn graphicsPipeline(
+    self: Self,
+    info: *const GPUGraphcisPipeline.CreateInfo,
+) !GPUGraphcisPipeline {
     return .init(self, info);
 }
 
@@ -144,7 +151,7 @@ pub fn unmap(self: Self, tr_buf: GPUTransferBuffer) void {
 
 pub fn formatFlags(self: Self) GPUShader.FormatFlags {
     assert(self.isValid());
-    return .{ .bits = .{ .mask = @intCast(c.SDL_GetGPUShaderFormats(self.ptr)) } };
+    return .{ .bits = @intCast(c.SDL_GetGPUShaderFormats(self.ptr)) };
 }
 
 pub fn claimWindow(self: Self, window: Window) !void {
@@ -200,7 +207,7 @@ pub fn textureSupportsFormat(
         self.ptr,
         @intFromEnum(format),
         @intFromEnum(tex_type),
-        usage.bits.mask,
+        usage.bits,
     );
 }
 

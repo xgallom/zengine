@@ -32,7 +32,12 @@ pub inline fn slice(self: *const Self, comptime T: type) []T {
     return std.mem.bytesAsSlice(T, self.buf.items);
 }
 
-pub fn ensureUnusedCapacity(self: *Self, gpa: std.mem.Allocator, comptime T: type, count: usize) !void {
+pub fn ensureUnusedCapacity(
+    self: *Self,
+    gpa: std.mem.Allocator,
+    comptime T: type,
+    count: usize,
+) !void {
     assert(@alignOf(T) <= alignment.toByteUnits());
     try self.buf.ensureUnusedCapacity(gpa, count * @sizeOf(T));
 }

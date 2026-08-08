@@ -30,11 +30,13 @@ const sections = perf.sections(@This(), &.{.execute_raycast});
 pub const std_options: std.Options = .{
     .log_level = .info,
     .log_scope_levels = &.{
+        // .{ .scope = .main, .level = .debug },
         // .{ .scope = .alloc, .level = .debug },
         // .{ .scope = .engine, .level = .debug },
-        .{ .scope = .ecs_component_storage, .level = .debug },
+        // .{ .scope = .ecs_component_storage, .level = .debug },
         // .{ .scope = .gfx_mesh, .level = .debug },
         // .{ .scope = .gfx_obj_loader, .level = .debug },
+        // .{ .scope = .gfx_render, .level = .debug },
         // .{ .scope = .gfx_renderer, .level = .debug },
         // .{ .scope = .gfx_shader, .level = .debug },
         // .{ .scope = .gfx_shader_loader, .level = .debug },
@@ -181,6 +183,9 @@ pub fn main() !void {
         .input = &input,
         .update = &update,
         .render = &render,
+    }, &.{
+        .size = .{ 1920, 1080 },
+        .flags = .initMany(&.{ .high_pixel_density, .resizable }),
     });
     defer engine.deinit();
     return engine.run();
@@ -468,10 +473,18 @@ fn input(self: *const Zengine) !bool {
             .key_down => {
                 if (event.sdl.key.repeat) break;
                 switch (event.sdl.key.key) {
-                    c.SDLK_Q => controls.set(if (config.flags.mouse_captured) .x_neg else .yaw_neg),
-                    c.SDLK_E => controls.set(if (config.flags.mouse_captured) .x_pos else .yaw_pos),
-                    c.SDLK_F => controls.set(if (config.flags.mouse_captured) .y_neg else .pitch_neg),
-                    c.SDLK_R => controls.set(if (config.flags.mouse_captured) .y_pos else .pitch_pos),
+                    c.SDLK_Q => controls.set(
+                        if (config.flags.mouse_captured) .x_neg else .yaw_neg,
+                    ),
+                    c.SDLK_E => controls.set(
+                        if (config.flags.mouse_captured) .x_pos else .yaw_pos,
+                    ),
+                    c.SDLK_F => controls.set(
+                        if (config.flags.mouse_captured) .y_neg else .pitch_neg,
+                    ),
+                    c.SDLK_R => controls.set(
+                        if (config.flags.mouse_captured) .y_pos else .pitch_pos,
+                    ),
                     c.SDLK_C => controls.set(.roll_neg),
                     c.SDLK_V => controls.set(.roll_pos),
 
@@ -505,10 +518,18 @@ fn input(self: *const Zengine) !bool {
             },
             .key_up => {
                 switch (event.sdl.key.key) {
-                    c.SDLK_Q => controls.clear(if (config.flags.mouse_captured) .x_neg else .yaw_neg),
-                    c.SDLK_E => controls.clear(if (config.flags.mouse_captured) .x_pos else .yaw_pos),
-                    c.SDLK_F => controls.clear(if (config.flags.mouse_captured) .y_neg else .pitch_neg),
-                    c.SDLK_R => controls.clear(if (config.flags.mouse_captured) .y_pos else .pitch_pos),
+                    c.SDLK_Q => controls.clear(
+                        if (config.flags.mouse_captured) .x_neg else .yaw_neg,
+                    ),
+                    c.SDLK_E => controls.clear(
+                        if (config.flags.mouse_captured) .x_pos else .yaw_pos,
+                    ),
+                    c.SDLK_F => controls.clear(
+                        if (config.flags.mouse_captured) .y_neg else .pitch_neg,
+                    ),
+                    c.SDLK_R => controls.clear(
+                        if (config.flags.mouse_captured) .y_pos else .pitch_pos,
+                    ),
                     c.SDLK_C => controls.clear(.roll_neg),
                     c.SDLK_V => controls.clear(.roll_pos),
 
@@ -538,7 +559,10 @@ fn input(self: *const Zengine) !bool {
                 if (main_win.relativeMouseMode()) {
                     mouse_motion = .{
                         event.sdl.motion.xrel,
-                        if (config.flags.mouse_y_inverted) -event.sdl.motion.yrel else event.sdl.motion.yrel,
+                        if (config.flags.mouse_y_inverted)
+                            -event.sdl.motion.yrel
+                        else
+                            event.sdl.motion.yrel,
                     };
                 }
             },
@@ -555,7 +579,7 @@ fn input(self: *const Zengine) !bool {
 }
 
 fn update(self: *const Zengine) !bool {
-    const delta = global.timeSinceLastFrame().toFloat().toValue32(.s);
+    const delta = global.timeSinceLastFrameNano().toFloat().toValue32(.s);
     switch (config.flags.camera_controls) {
         inline else => |controls_type| updateCameraControls(self, delta, controls_type),
     }
@@ -599,7 +623,7 @@ fn render(self: *const Zengine) !void {
     var items: gfx.render.Items.Object = .init(&flat_scene, .mesh_objs);
     var ui_items: gfx.render.Items.Object = .init(&flat_scene, .ui_objs);
     var texts: gfx.render.Items.Text = .init(&flat_scene);
-    _ = try flat_scene.render(
+    const did_draw = try flat_scene.render(
         self.ui,
         &items,
         &ui_items,
@@ -611,6 +635,12 @@ fn render(self: *const Zengine) !void {
         },
         &gfx_fence,
     );
+    log.debug("did draw: {}", .{did_draw});
+    const to_sleep = if (did_draw)
+        1_000_000_000 / 120 -| global.sinceLastFrameNano()
+    else
+        ((1_000_000_000 / 120 - 1_000_000) -| global.sinceLastFrameNano()) + 1_000_000;
+    if (to_sleep != 0) zengine.sleepNano(to_sleep);
 }
 
 fn executeRaycast(self: *const Zengine) void {
@@ -667,7 +697,10 @@ fn executeRaycast(self: *const Zengine) void {
                     .{ tri[2][0][n], tri[2][1][n], tri[2][2][n] },
                 };
 
-                log.debug("{s}[{}]: {} {}", .{ item.keys[n], item.sections[n], item.offsets[n] / 3, n });
+                log.debug(
+                    "{s}[{}]: {} {}",
+                    .{ item.keys[n], item.sections[n], item.offsets[n] / 3, n },
+                );
                 log.debug("position: {any}", .{pos_n});
                 log.debug("intersection point: {any}", .{int_n});
             }
@@ -676,8 +709,7 @@ fn executeRaycast(self: *const Zengine) void {
 }
 
 fn updateScene(self: *const Zengine, delta: f32) void {
-    // _ = self;
-    // _ = delta;
+    log.debug("update delta: {}", .{delta * 1e6});
     const s = self.scene.nodes.slice();
     const cubes = scene_map.get("cubes");
 

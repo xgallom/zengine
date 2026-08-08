@@ -153,7 +153,8 @@ pub fn elemLen(comptime T: type) comptime_int {
     return switch (@typeInfo(T)) {
         .int, .float => 1,
         inline .array, .vector => |type_info| type_info.len * elemLen(type_info.child),
-        else => @compileError("Expected int, float, array or vector type, found '" ++ @typeName(T) ++ "'"),
+        else => @compileError("Expected int, float, array or vector type, found '" ++
+            @typeName(T) ++ "'"),
     };
 }
 
@@ -161,7 +162,8 @@ pub fn Elem(comptime T: type) type {
     return switch (@typeInfo(T)) {
         .int, .float, .comptime_int, .comptime_float => T,
         inline .array, .vector => |type_info| Elem(type_info.child),
-        else => @compileError("Expected int, float, array or vector type, found '" ++ @typeName(T) ++ "'"),
+        else => @compileError("Expected int, float, array or vector type, found '" ++
+            @typeName(T) ++ "'"),
     };
 }
 
