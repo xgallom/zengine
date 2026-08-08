@@ -3,9 +3,11 @@
 zig-out
 /.idea/zigbrains.xml
 /imgui.ini
+/err.log
 *.sublime-project
 *.sublime-workspace
 
 /external/build
 /external/cimgui-build/build
 /external/cimplot-build/build
+
