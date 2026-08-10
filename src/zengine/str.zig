@@ -23,6 +23,10 @@ pub inline fn eql(a: []const u8, b: []const u8) bool {
     return std.mem.eql(u8, a, b);
 }
 
+pub inline fn contains(haystack: []const u8, needle: []const u8) bool {
+    return std.mem.indexOf(u8, haystack, needle) != null;
+}
+
 pub inline fn splitScalar(str: []const u8, sep: u8) ScalarIterator {
     return std.mem.splitScalar(u8, str, sep);
 }

@@ -93,6 +93,7 @@ pub fn build(b: *std.Build) !void {
         .name = "zengine",
         .root_module = exe_mod,
     });
+    exe.each_lib_rpath = false;
 
     const install_libs = try addInstallLibs(b, .{
         .module = zengine,
@@ -255,6 +256,7 @@ pub fn addInstallLibs(b: *std.Build, options: struct {
     var path: []const u8 = undefined;
     switch (options.target.result.os.tag) {
         .windows => {
+            // TODO: Ensure share gets installed on Windows
             const install_libs = b.addInstallDirectory(.{
                 .source_dir = zb.path("external/build/bin"),
                 .install_dir = .bin,
@@ -266,6 +268,7 @@ pub fn addInstallLibs(b: *std.Build, options: struct {
         },
         .macos => {
             options.module.addRPathSpecial("@executable_path/../lib");
+            options.module.addRPathSpecial("@executable_path/../Frameworks");
             path = zb.pathFromRoot("external/build/lib/*.dylib");
         },
         .linux => {
@@ -284,8 +287,8 @@ pub fn addInstallLibs(b: *std.Build, options: struct {
             install_lib_dir,
         }),
     });
+    if (options.build_ext) |build_ext| cp.step.dependOn(&build_ext.step);
     cp.step.dependOn(&mkdir.step);
-
     const xattr = b.addSystemCommand(&.{ "xattr", "-rc", install_lib_dir });
     xattr.step.dependOn(&cp.step);
 
@@ -294,10 +297,12 @@ pub fn addInstallLibs(b: *std.Build, options: struct {
         .install_dir = .prefix,
         .install_subdir = "share",
     });
+    if (options.build_ext) |build_ext| install_share.step.dependOn(&build_ext.step);
+
     const install_libs = b.step("install-libs", "Install libraries");
     install_libs.dependOn(&xattr.step);
     install_libs.dependOn(&install_share.step);
-    if (options.build_ext) |build_ext| install_libs.dependOn(&build_ext.step);
+
     return install_libs;
 }
 
@@ -353,9 +358,103 @@ pub fn addCompileShaders(b: *std.Build, options: struct {
     });
 }
 
+pub fn addBundleMacOSApp(b: *std.Build, config: struct {
+    app_dirname: []const u8,
+    exe_app_filename: []const u8,
+    install_exe: *std.Build.Step.InstallArtifact,
+    install_libs: *std.Build.Step,
+    install_resources: []const *std.Build.Step.InstallDir = &.{},
+}) !*std.Build.Step {
+    const copy_base_dir = b.addInstallDirectory(.{
+        .source_dir = b.path("macos"),
+        .install_dir = .prefix,
+        .install_subdir = config.app_dirname,
+        .exclude_extensions = &.{".gitkeep"},
+    });
+
+    const exe_path = b.getInstallPath(.prefix, b.pathJoin(&.{
+        config.app_dirname,
+        "Contents",
+        "MacOS",
+        config.exe_app_filename,
+    }));
+    const install_exe = b.addSystemCommand(&.{
+        "cp",
+        "-f",
+        b.getInstallPath(.bin, config.install_exe.artifact.out_filename),
+        exe_path,
+    });
+    install_exe.step.dependOn(&copy_base_dir.step);
+    install_exe.step.dependOn(&config.install_exe.step);
+
+    const strip_rpath = b.addSystemCommand(&.{
+        "install_name_tool",
+        "-delete_rpath",
+        "/usr/local/lib",
+        exe_path,
+    });
+    strip_rpath.step.dependOn(&install_exe.step);
+
+    const install_libs = b.addSystemCommand(&.{
+        "cp",
+        "-PRf",
+        b.getInstallPath(.lib, ""),
+        b.getInstallPath(.prefix, b.pathJoin(&.{ config.app_dirname, "Contents", "Frameworks" })),
+    });
+    const install_share = b.addSystemCommand(&.{
+        "cp",
+        "-rf",
+        b.getInstallPath(.prefix, "share"),
+        b.getInstallPath(.prefix, b.pathJoin(&.{
+            config.app_dirname,
+            "Contents",
+            "Resources",
+            "share",
+        })),
+    });
+    install_libs.step.dependOn(&copy_base_dir.step);
+    install_libs.step.dependOn(config.install_libs);
+    install_share.step.dependOn(&copy_base_dir.step);
+    install_share.step.dependOn(config.install_libs);
+
+    const install_resources = try b.allocator.alloc(
+        *std.Build.Step.Run,
+        config.install_resources.len,
+    );
+    for (install_resources, config.install_resources) |*ir, install_resource| {
+        ir.* = b.addSystemCommand(&.{
+            "cp",
+            "-rf",
+            b.getInstallPath(
+                install_resource.options.install_dir,
+                install_resource.options.install_subdir,
+            ),
+            b.getInstallPath(.prefix, b.pathJoin(&.{
+                config.app_dirname,
+                "Contents",
+                "Resources",
+                install_resource.options.install_subdir,
+            })),
+        });
+        ir.*.step.dependOn(&copy_base_dir.step);
+        ir.*.step.dependOn(&install_resource.step);
+    }
+
+    const add_bundle_macos_app = b.step("bundle-macos", "Bundle MacOS app");
+    add_bundle_macos_app.dependOn(&strip_rpath.step);
+    add_bundle_macos_app.dependOn(&install_libs.step);
+    add_bundle_macos_app.dependOn(&install_share.step);
+    for (install_resources) |ir| add_bundle_macos_app.dependOn(&ir.step);
+    return add_bundle_macos_app;
+}
+
 pub fn getOptions(b: *std.Build) Options {
     return .{
-        .compile_shaders = b.option(bool, "compile-shaders", "Force shader compilation") orelse false,
+        .compile_shaders = b.option(
+            bool,
+            "compile-shaders",
+            "Force shader compilation",
+        ) orelse false,
         .ext_cmd = b.option(ExtCommand, "ext-command", "Project to use for external compilation"),
         .ext_cmd_cmake_args = b.option(
             []const u8,

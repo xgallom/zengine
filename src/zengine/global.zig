@@ -2,6 +2,7 @@ const std = @import("std");
 const assert = std.debug.assert;
 
 pub const allocators = @import("allocators.zig");
+const str = @import("str.zig");
 const math = @import("math.zig");
 const time = @import("time.zig");
 
@@ -10,6 +11,7 @@ const spaces_buf_count = 1 << 10;
 const Self = struct {
     exe_path: []const u8,
     args: []const [:0]const u8,
+    resources_path: []const u8,
     assets_path: []const u8,
     frame_idx: u64 = 0,
     engine_now_ns: u64,
@@ -21,16 +23,30 @@ const Self = struct {
         const engine_now_ns = time.getNano();
         const app_args = try std.process.argsAlloc(allocators.global());
         const exe_path = try std.fs.selfExeDirPathAlloc(allocators.global());
+
+        const is_macos_app = str.contains(exe_path, ".app/Contents/MacOS");
+        const resources_path = try std.fs.path.joinZ(
+            allocators.global(),
+            if (is_macos_app)
+                &.{ exe_path, "..", "Resources" }
+            else
+                &.{ exe_path, ".." },
+        );
         const assets_path = try std.fs.path.joinZ(
             allocators.global(),
-            &.{ exe_path, "..", "assets" },
+            if (is_macos_app)
+                &.{ exe_path, "..", "Resources", "assets" }
+            else
+                &.{ exe_path, "..", "assets" },
         );
+
         const spaces_buf = try allocators.gpa().alloc(u8, spaces_buf_count);
         for (spaces_buf) |*space| space.* = ' ';
 
         self.* = .{
             .args = app_args[1..],
             .exe_path = exe_path,
+            .resources_path = resources_path,
             .assets_path = assets_path,
             .engine_now_ns = engine_now_ns,
             .engine_clock_ns = .init(engine_now_ns),
@@ -97,6 +113,11 @@ pub inline fn arg(n: usize) [:0]const u8 {
 pub inline fn exePath() []const u8 {
     assert(is_init);
     return global_state.exe_path;
+}
+
+pub inline fn resourcesPath() []const u8 {
+    assert(is_init);
+    return global_state.resources_path;
 }
 
 pub inline fn assetsPath() []const u8 {
