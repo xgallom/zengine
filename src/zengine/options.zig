@@ -2,6 +2,7 @@
 //! The zengine global options
 //!
 
+const builtin = @import("builtin");
 const std = @import("std");
 const root = @import("root");
 
@@ -13,6 +14,7 @@ pub const Options = struct {
     has_ui: bool = true,
     has_debug_ui: bool = std.debug.runtime_safety,
     log_allocations: bool = std.debug.runtime_safety,
+    max_threads: usize = 8,
     gfx: Gfx = .{},
 
     pub const Gfx = struct {

@@ -6,12 +6,14 @@ const std = @import("std");
 const assert = std.debug.assert;
 
 const math = @import("../math.zig");
+const sched = @import("../sched.zig");
 
 const log = std.log.scoped(.swapper);
 
 pub fn SwapWrapper(comptime T: type, comptime options: struct {
     len: usize = 2,
     copy_on_advance: bool = false,
+    deinit_method: []const u8 = "deinit",
 }) type {
     comptime assert(options.len > 1);
     return struct {
@@ -25,29 +27,31 @@ pub fn SwapWrapper(comptime T: type, comptime options: struct {
             var result = Self{};
             if (comptime options.copy_on_advance) {
                 result.items[0] = value;
-            } else {
-                for (0..options.len) |n| result.items[n] = value;
-            }
+            } else result.items = @splat(value);
             return result;
         }
 
-        pub fn initCall(comptime initFn: anytype) if (returnsError(initFn))
-            ErrorSet(initFn)!Self
-        else
-            Self {
-            comptime assert(!options.copy_on_advance);
+        pub fn initCall(comptime initFn: anytype) InitCallResult(Self, initFn) {
             var result = Self{};
-            if (comptime returnsError(initFn)) {
-                for (0..options.len) |n| result.items[n] = try initFn();
+            if (comptime options.copy_on_advance) {
+                if (comptime returnsError(initFn)) {
+                    result.items[0] = try initFn();
+                } else result.items[0] = initFn();
             } else {
-                for (0..options.len) |n| result.items[n] = initFn();
+                if (comptime returnsError(initFn)) {
+                    for (0..options.len) |n| result.items[n] = try initFn();
+                } else for (0..options.len) |n| result.items[n] = initFn();
             }
             return result;
         }
 
         pub fn deinit(self: *Self, args: anytype) void {
-            if (comptime @hasDecl(T, "deinit")) {
-                for (0..self.items.len) |n| @call(.auto, T.deinit, .{&self.items[n]} ++ args);
+            if (comptime @hasDecl(T, options.deinit_method)) {
+                for (0..self.items.len) |n| @call(
+                    .auto,
+                    @field(T, options.deinit_method),
+                    .{&self.items[n]} ++ args,
+                );
             }
         }
 
@@ -60,12 +64,60 @@ pub fn SwapWrapper(comptime T: type, comptime options: struct {
         }
 
         pub fn advance(self: *Self) *T {
-            const next_idx = mask.offset(self.idx + 1);
+            const next_idx = mask.offset(self.idx +% 1);
             if (comptime options.copy_on_advance) self.items[next_idx] = self.items[self.idx];
             self.idx = next_idx;
             return self.getPtr();
         }
+
+        /// Swap wrapper synchronized with a spinlock.
+        pub const ThreadSafe = struct {
+            lock: sched.Spinlock = .init,
+            inner: Self = .{},
+
+            /// Function is not thread-safe.
+            pub fn initFill(value: T) @This() {
+                return .{ .inner = .initFill(value) };
+            }
+
+            /// Function is not thread-safe.
+            pub fn initCall(comptime initFn: anytype) InitCallResult(@This(), initFn) {
+                return .{
+                    .inner = if (comptime returnsError(initFn))
+                        try .initCall(initFn)
+                    else
+                        .initCall(initFn),
+                };
+            }
+
+            /// Function is not thread-safe.
+            pub fn deinit(self: *@This(), args: anytype) void {
+                self.inner.deinit(args);
+            }
+
+            pub fn get(self: *@This()) T {
+                self.lock.lock(.spinloop);
+                defer self.lock.unlock();
+                return self.inner.getPtr().*;
+            }
+
+            pub fn getPrev(self: *@This()) T {
+                self.lock.lock(.spinloop);
+                defer self.lock.unlock();
+                return self.inner.getPrevPtr().*;
+            }
+
+            pub fn advance(self: *Self) T {
+                self.lock.lock(.spinloop);
+                defer self.lock.unlock();
+                return self.inner.advance().*;
+            }
+        };
     };
+}
+
+fn InitCallResult(comptime Self: type, comptime initFn: anytype) type {
+    return if (returnsError(initFn)) ErrorSet(initFn)!Self else Self;
 }
 
 fn returnsError(comptime initFn: anytype) bool {

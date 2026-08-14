@@ -15,8 +15,10 @@ pub const PtrMap = @import("containers/key_map.zig").PtrMap;
 pub const Map = @import("containers/key_map.zig").Map;
 pub const KeyTreeMap = @import("containers/key_tree_map.zig").KeyTreeMap;
 pub const RadixTree = @import("containers/radix_tree.zig").RadixTree;
+pub const RingBuffer = @import("containers/ring_buffer.zig").RingBuffer;
 pub const SwapWrapper = @import("containers/swap_wrapper.zig").SwapWrapper;
 pub const Tree = @import("containers/tree.zig").Tree;
+pub const thread_safe = @import("containers/thread_safe.zig");
 
 test {
     std.testing.refAllDecls(@This());

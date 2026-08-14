@@ -116,6 +116,10 @@ pub const Time = union(Unit) {
     day: u64,
     week: u64,
 
+    pub fn order(self: Time, other: Time) std.math.Order {
+        return std.math.order(self.toValue(.ns), other.toValue(.ns));
+    }
+
     pub fn toTime(from: Time, comptime to: Unit) Time {
         return @unionInit(Time, @tagName(to), from.toValue(to));
     }

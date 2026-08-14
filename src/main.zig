@@ -17,7 +17,7 @@ const global = zengine.global;
 const math = zengine.math;
 const perf = zengine.perf;
 const c = zengine.ext.c;
-const scheduler = zengine.scheduler;
+const sched = zengine.sched;
 const time = zengine.time;
 const Engine = zengine.Engine;
 const ui = zengine.ui;
@@ -44,7 +44,9 @@ pub const std_options: std.Options = .{
         // .{ .scope = .gfx_cube_loader, .level = .debug },
         // .{ .scope = .key_tree, .level = .debug },
         // .{ .scope = .radix_tree, .level = .debug },
-        // .{ .scope = .scheduler, .level = .debug },
+        // .{ .scope = .sched, .level = .debug },
+        // .{ .scope = .sched_barrier, .level = .debug },
+        .{ .scope = .sched_thread_pool, .level = .debug },
         // .{ .scope = .gfx_shader_loader, .level = .debug },
         // .{ .scope = .tree, .level = .debug },
         // .{ .scope = .scene, .level = .debug },
@@ -162,10 +164,10 @@ fn logFn(
 ) void {
     const level_txt = comptime message_level.asText();
     const prefix2 = if (scope == .default) ": " else "(" ++ @tagName(scope) ++ "): ";
+    std.log.defaultLog(message_level, scope, format, args);
     log_window.print(level_txt ++ prefix2 ++ format ++ "\n", args) catch |err| {
         std.log.defaultLog(.err, .default, "failed printing to log window: {t}", .{err});
     };
-    std.log.defaultLog(message_level, scope, format, args);
 }
 
 pub fn main() !void {
@@ -198,8 +200,6 @@ fn register() !void {
 fn load(self: *const Zengine) !bool {
     rnd.r = .init(@intCast(std.time.milliTimestamp()));
     scene_map = try .init(self.scene.allocator, 128);
-    var task_list = try scheduler.TaskScheduler.init(allocators.gpa());
-    defer task_list.deinit();
 
     Zengine.sections.sub(.load).sub(.gfx).begin();
 

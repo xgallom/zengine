@@ -101,12 +101,17 @@ pub fn build(b: *std.Build) !void {
         .target = target,
         .optimize = optimize,
     });
+    lib.step.dependOn(install_libs);
+    lib.each_lib_rpath = false;
     exe.step.dependOn(install_libs);
     exe.each_lib_rpath = false;
 
-    const install_assembly = b.addInstallBinFile(exe.getEmittedAsm(), "zengine.S");
+    const install_lib_asm = b.addInstallLibFile(lib.getEmittedAsm(), "libzengine.S");
+    const install_lib = b.addInstallArtifact(lib, .{});
+    install_lib.step.dependOn(&install_lib_asm.step);
+    const install_exe_asm = b.addInstallBinFile(exe.getEmittedAsm(), "zengine.S");
     const install_exe = b.addInstallArtifact(exe, .{});
-    install_exe.step.dependOn(&install_assembly.step);
+    install_exe.step.dependOn(&install_exe_asm.step);
 
     // TODO: use instead of hlsl?
     //
@@ -158,6 +163,7 @@ pub fn build(b: *std.Build) !void {
     zengine_step.dependOn(&install_assets.step);
     zengine_step.dependOn(&install_shaders_dir.step);
     zengine_step.dependOn(&install_exe.step);
+    zengine_step.dependOn(&install_lib.step);
     zengine_step.dependOn(&install_docs.step);
 
     const check_step = b.step("check", "Check Zengine");

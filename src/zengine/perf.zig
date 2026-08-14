@@ -162,7 +162,6 @@ const Self = struct {
         if (!force_update) {
             if (!self.update_stats_timer.updated(now, .set)) return;
         } else {
-            @branchHint(.cold);
             self.update_stats_timer.set(now);
         }
 

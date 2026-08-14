@@ -10,9 +10,9 @@ const types = @import("types.zig");
 const log = std.log.scoped(.math_scalar);
 
 pub fn IntMask(comptime len: comptime_int) type {
-    comptime assert(len >= 0);
+    assert(len >= 0);
     return struct {
-        pub const uses_mask = @popCount(@as(usize, len)) == 1;
+        pub const uses_mask = len > 0 and std.math.isPowerOfTwo(len);
 
         pub inline fn index(elem_index: anytype) @TypeOf(elem_index) {
             if (comptime len == 0) return elem_index;

@@ -153,6 +153,16 @@ pub inline fn engineStartNano() u64 {
     return global_state.engine_clock_ns.start_time;
 }
 
+pub inline fn engineLastFrame() u64 {
+    assert(is_init);
+    return global_state.frame_clock_ns.start_time / std.time.ns_per_ms;
+}
+
+pub inline fn engineLastFrameNano() u64 {
+    assert(is_init);
+    return global_state.frame_clock_ns.start_time;
+}
+
 pub inline fn engineNow() u64 {
     assert(is_init);
     return global_state.engine_now_ns / std.time.ns_per_ms;

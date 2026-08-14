@@ -7,36 +7,45 @@ const assert = std.debug.assert;
 
 const allocators = @import("../allocators.zig");
 const c = @import("../ext.zig").c;
+const containers = @import("../containers.zig");
 const global = @import("../global.zig");
+const math = @import("../math.zig");
+const sched = @import("../sched.zig");
 const perf = @import("../perf.zig");
 const UI = @import("UI.zig");
 
-const log = std.log.scoped(.ui_log_window);
-
 allocator: std.mem.Allocator = undefined,
-buf: std.ArrayList(u8) = .empty,
-line_offsets: std.ArrayList(usize) = .empty,
+buffer: Buffer = .invalid,
+line_offsets: LineOffsets = .invalid,
 is_init: bool = false,
 is_open: bool = true,
 is_auto_scroll_enabled: bool = true,
 filter: c.ImGuiTextFilter = .{},
+lock: sched.Spinlock = .init,
 
 const Self = @This();
+const Buffer = containers.RingBuffer(u8, max_lines * max_line_len);
+const LineOffsets = containers.RingBuffer(usize, max_lines);
 pub const window_name = "Debug Log";
 pub const invalid: Self = .{};
+const max_line_len = 1 << 8;
+const max_lines = 16 << 10;
 
-pub fn init(allocator: std.mem.Allocator) !Self {
-    var self: Self = .{
-        .allocator = allocator,
+pub fn init(gpa: std.mem.Allocator) !Self {
+    var line_offsets = try containers.RingBuffer(usize, max_lines).init(gpa);
+    errdefer line_offsets.deinit(gpa);
+    line_offsets.appendAssumeCapacity(0);
+    return .{
+        .allocator = gpa,
+        .buffer = try .init(gpa),
+        .line_offsets = line_offsets,
         .is_init = true,
     };
-    try self.line_offsets.append(self.allocator, 0);
-    return self;
 }
 
 pub fn deinit(self: *Self) void {
     if (self.is_init) {
-        self.buf.deinit(self.allocator);
+        self.buffer.deinit(self.allocator);
         self.line_offsets.deinit(self.allocator);
         self.is_init = false;
     }
@@ -44,29 +53,64 @@ pub fn deinit(self: *Self) void {
 
 pub fn clear(self: *Self) void {
     assert(self.is_init);
-    self.buf.clearAndFree(self.allocator);
-    self.line_offsets.clearRetainingCapacity();
+    self.buffer.reset();
+    self.line_offsets.reset();
     self.line_offsets.appendAssumeCapacity(0);
 }
 
-var print_buf: [1 << 10]u8 = undefined;
 pub fn print(self: *Self, comptime fmt: []const u8, args: anytype) !void {
     if (!self.is_init) return;
-    const start = self.buf.items.len;
-    {
-        var w: std.Io.Writer.Allocating = .fromArrayList(self.allocator, &self.buf);
-        errdefer w.deinit();
-        try w.writer.print(fmt, args);
-        self.buf = w.toArrayList();
+    self.lock.lock(.spinloop);
+    defer self.lock.unlock();
+
+    // WARN: This function must not use std.log!
+
+    nosuspend {
+        var msg_buf: [max_line_len]u8 = undefined;
+        const msg = try std.fmt.bufPrint(&msg_buf, fmt, args);
+        var w = self.buffer.writer(&msg_buf);
+        w.interface.end = msg.len;
+        while (true) {
+            const start = self.buffer.head;
+            _ = w.drain(&.{""}, 0) catch {};
+            const removed_lines = self.indexLines(start, self.buffer.head);
+            if (w.interface.end == 0) {
+                break;
+            } else if (removed_lines == 0) self.removeFirstLine();
+        }
     }
-    for (self.buf.items[start..], start..) |ch, n| {
-        if (ch == '\n') try self.line_offsets.append(self.allocator, n + 1);
+}
+
+fn indexLines(self: *Self, start: usize, end: usize) usize {
+    var idx: usize = start;
+    var removed_lines: usize = 0;
+    while (idx != end) : (idx +%= 1) {
+        if (self.buffer.get(idx) == '\n') {
+            self.line_offsets.append(idx +% 1) catch {
+                self.removeFirstLine();
+                self.line_offsets.appendAssumeCapacity(idx +% 1);
+                removed_lines += 1;
+            };
+        }
     }
+    return removed_lines;
+}
+
+fn removeFirstLine(self: *Self) void {
+    assert(self.line_offsets.length() > 1);
+    const old_tail = self.line_offsets.popFirst().?;
+    assert(old_tail == self.buffer.tail);
+    self.buffer.tail = self.line_offsets.getFirst();
 }
 
 pub fn draw(self: *Self, ui: *const UI, is_open: *bool) void {
     _ = ui;
     assert(self.is_init);
+    self.lock.lock(.spinloop);
+    defer self.lock.unlock();
+
+    // WARN: This function must not use std.log!
+
     c.igSetNextWindowSize(.{ .x = 630, .y = 240 }, c.ImGuiCond_FirstUseEver);
     if (!c.igBegin(window_name, is_open, 0)) {
         c.igEnd();
@@ -99,26 +143,56 @@ pub fn draw(self: *Self, ui: *const UI, is_open: *bool) void {
 
         c.igPushStyleVar_Vec2(c.ImGuiStyleVar_ItemSpacing, .{});
 
-        const buf = self.buf.items;
-        const los = self.line_offsets.items;
+        var msg_buf: [max_line_len]u8 = undefined;
+        const buf = self.buffer.allocatedSlice();
         if (c.ImGuiTextFilter_IsActive(&self.filter)) {
-            for (los, 0..) |lo, n| {
-                const start = buf.ptr + lo;
-                const end = buf.ptr + if (n < los.len - 1) los[n + 1] - 1 else buf.len;
-                if (c.ImGuiTextFilter_PassFilter(&self.filter, start, end)) {
-                    c.igTextUnformatted(start, end);
+            var los = self.line_offsets.iterator();
+            while (los.next()) |lo| {
+                const start = Buffer.mask.offset(lo);
+                const end = Buffer.mask.offset(if (los.peek()) |l| l -% 1 else self.buffer.head);
+                var len: usize = 0;
+                if (start == end) {
+                    continue;
+                } else if (start < end) {
+                    len = end - start;
+                    @memcpy(msg_buf[0..len], buf[start..end]);
+                } else {
+                    const len_0 = Buffer.capacity - start;
+                    len = len_0 + end;
+                    @memcpy(msg_buf[0..len_0], buf[start..]);
+                    @memcpy(msg_buf[len_0..len], buf[0..end]);
+                }
+                const msg = msg_buf[0..len];
+                if (c.ImGuiTextFilter_PassFilter(&self.filter, msg.ptr, msg.ptr + len)) {
+                    c.igTextUnformatted(msg.ptr, msg.ptr + len);
                 }
             }
         } else {
             var clipper: c.ImGuiListClipper = .{};
-            c.ImGuiListClipper_Begin(&clipper, @intCast(los.len), -1);
+            c.ImGuiListClipper_Begin(&clipper, @intCast(self.line_offsets.length()), -1);
             while (c.ImGuiListClipper_Step(&clipper)) {
                 const start_n: usize = @intCast(clipper.DisplayStart);
                 const end_n: usize = @intCast(clipper.DisplayEnd);
+                var los = self.line_offsets.iterator();
+                los.self.tail +%= start_n;
                 for (start_n..end_n) |n| {
-                    const start = buf.ptr + los[n];
-                    const end = buf.ptr + if (n < los.len - 1) los[n + 1] else buf.len;
-                    c.igTextUnformatted(start, end);
+                    _ = n;
+                    const start = Buffer.mask.offset(los.next() orelse unreachable);
+                    const end = Buffer.mask.offset(los.peek() orelse self.buffer.head);
+                    var len: usize = 0;
+                    if (start == end) {
+                        continue;
+                    } else if (start < end) {
+                        len = end - start;
+                        @memcpy(msg_buf[0..len], buf[start..end]);
+                    } else {
+                        const len_0 = Buffer.capacity - start;
+                        len = len_0 + end;
+                        @memcpy(msg_buf[0..len_0], buf[start..]);
+                        @memcpy(msg_buf[len_0..len], buf[0..end]);
+                    }
+                    const msg = msg_buf[0..len];
+                    c.igTextUnformatted(msg.ptr, msg.ptr + msg.len);
                 }
             }
             c.ImGuiListClipper_End(&clipper);

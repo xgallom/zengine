@@ -24,7 +24,7 @@ pub const math = @import("math.zig");
 pub const Options = @import("options.zig").Options;
 pub const options = @import("options.zig").options;
 pub const perf = @import("perf.zig");
-pub const scheduler = @import("scheduler.zig");
+pub const sched = @import("sched.zig");
 pub const sdl_allocator = @import("sdl_allocator.zig");
 pub const str = @import("str.zig");
 pub const time = @import("time.zig");
@@ -217,6 +217,7 @@ pub const Zengine = struct {
                 section.sub(.input).begin();
                 defer section.sub(.input).end();
                 if (self.handlers.input) |input| {
+                    @branchHint(.likely);
                     if (!try input(self)) return;
                 }
             }
@@ -226,18 +227,23 @@ pub const Zengine = struct {
                 defer section.sub(.update).end();
                 if (self.handlers.resize) |resize| {
                     if (self.engine.state.resized) {
+                        @branchHint(.unlikely);
                         if (!try resize(self)) return;
                         self.engine.state.resized = false;
                     }
                 }
 
                 if (self.handlers.update) |update| {
+                    @branchHint(.likely);
                     if (!try update(self)) return;
                 }
             }
 
             section.sub(.render).begin();
-            if (self.handlers.render) |render| try render(self);
+            if (self.handlers.render) |render| {
+                @branchHint(.likely);
+                try render(self);
+            }
             section.sub(.render).end();
 
             if (global.isFirstFrame()) {
