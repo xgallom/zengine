@@ -233,6 +233,7 @@ pub fn main() !void {
         );
     }
 
+    // TODO: Migrate to SPSC queues and a thread pool.
     var iter = try input_dir.walk(allocators.gpa());
     defer iter.deinit();
     while (try iter.next()) |entry| {

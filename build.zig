@@ -93,7 +93,6 @@ pub fn build(b: *std.Build) !void {
         .name = "zengine",
         .root_module = exe_mod,
     });
-    exe.each_lib_rpath = false;
 
     const install_libs = try addInstallLibs(b, .{
         .module = zengine,
@@ -101,17 +100,19 @@ pub fn build(b: *std.Build) !void {
         .target = target,
         .optimize = optimize,
     });
+
     lib.step.dependOn(install_libs);
     lib.each_lib_rpath = false;
     exe.step.dependOn(install_libs);
     exe.each_lib_rpath = false;
 
-    const install_lib_asm = b.addInstallLibFile(lib.getEmittedAsm(), "libzengine.S");
     const install_lib = b.addInstallArtifact(lib, .{});
-    install_lib.step.dependOn(&install_lib_asm.step);
-    const install_exe_asm = b.addInstallBinFile(exe.getEmittedAsm(), "zengine.S");
+    // const install_lib_asm = b.addInstallLibFile(lib.getEmittedAsm(), "libzengine.S");
+    // install_lib.step.dependOn(&install_lib_asm.step);
+
     const install_exe = b.addInstallArtifact(exe, .{});
-    install_exe.step.dependOn(&install_exe_asm.step);
+    // const install_exe_asm = b.addInstallBinFile(exe.getEmittedAsm(), "zengine.S");
+    // install_exe.step.dependOn(&install_exe_asm.step);
 
     // TODO: use instead of hlsl?
     //
