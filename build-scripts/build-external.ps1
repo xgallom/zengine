@@ -9,7 +9,7 @@ $ErrorActionPreference = "Stop"
 $RootDir = (Get-Item "$PSScriptRoot\..").FullName
 
 Set-Location $RootDir
-git submodule update --init --recursive
+git submodule update --init --recursive --depth 1
 
 Write-Host "`nBuilding target $Target"
 Write-Host "cmake args:        `"$CMakeArgs`""

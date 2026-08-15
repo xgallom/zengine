@@ -19,7 +19,7 @@ New-Item -ItemType Directory -Force -Path $BDir | Out-Null
 New-Item -ItemType Directory -Force -Path $IDir | Out-Null
 
 Set-Location $PDir
-git submodule update --init --recursive
+git submodule update --init --recursive --depth 1
 
 Set-Location $BDir
 

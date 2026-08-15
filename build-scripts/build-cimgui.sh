@@ -15,7 +15,7 @@ mkdir -p "$BDIR"
 mkdir -p "$IDIR"
 
 cd "$PDIR"
-git submodule update --init --recursive
+git submodule update --init --recursive --depth 1
 
 cd "$BDIR"
 
