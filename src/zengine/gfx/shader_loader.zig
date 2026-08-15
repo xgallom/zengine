@@ -64,12 +64,12 @@ pub fn loadFile(config: *const OpenConfig) !GPUShader {
     const format = try pickFormat(config);
 
     var shaders_dir = try openShadersDir();
-    defer shaders_dir.close();
+    defer shaders_dir.close(global.io());
 
-    const code = try readShaderCode(config, &format, &shaders_dir);
+    const code = try readShaderCode(config, &format, shaders_dir);
     defer config.allocator.free(code);
 
-    const meta = try readShaderMeta(config, &shaders_dir);
+    const meta = try readShaderMeta(config, shaders_dir);
 
     return .init(config.gpu_device, &.{
         .code = code,
@@ -112,20 +112,20 @@ fn pickFormat(config: *const OpenConfig) !FormatConfig {
     }
 }
 
-fn openShadersDir() !std.fs.Dir {
+fn openShadersDir() !std.Io.Dir {
     const shaders_path = try std.fs.path.joinZ(
         allocators.scratch(),
         &.{ global.resourcesPath(), "shaders" },
     );
     defer allocators.scratch().free(shaders_path);
     log.debug("opening shaders dir {s}", .{shaders_path});
-    return std.fs.openDirAbsolute(shaders_path, .{});
+    return std.Io.Dir.openDirAbsolute(global.io(), shaders_path, .{});
 }
 
 fn readShaderCode(
     config: *const OpenConfig,
     format: *const FormatConfig,
-    shaders_dir: *std.fs.Dir,
+    shaders_dir: std.Io.Dir,
 ) ![]const u8 {
     const path = try std.fmt.allocPrint(
         allocators.scratch(),
@@ -139,7 +139,7 @@ fn readShaderCode(
     };
 }
 
-fn readShaderMeta(config: *const OpenConfig, shaders_dir: *std.fs.Dir) !GraphicsMetadataJSON {
+fn readShaderMeta(config: *const OpenConfig, shaders_dir: std.Io.Dir) !GraphicsMetadataJSON {
     const path = try std.fmt.allocPrint(
         allocators.scratch(),
         "{s}{s}",

@@ -7,6 +7,7 @@ const assert = std.debug.assert;
 
 const allocators = @import("../allocators.zig");
 const c = @import("../ext.zig").c;
+const global = @import("../global.zig");
 const math = @import("../math.zig");
 const RGBf32 = math.RGBf32;
 const str = @import("../str.zig");
@@ -27,11 +28,11 @@ pub const Result = struct {
 };
 
 pub fn loadFile(gpa: std.mem.Allocator, path: []const u8) !Result {
-    var file = try std.fs.openFileAbsolute(path, .{});
-    defer file.close();
+    var file = try std.Io.Dir.openFileAbsolute(global.io(), path, .{});
+    defer file.close(global.io());
 
     const buf = try allocators.scratch().alloc(u8, 1 << 8);
-    var reader = file.reader(buf);
+    var reader = file.reader(global.io(), buf);
 
     var lights = try Lights.initCapacity(gpa, 1);
     defer lights.deinit(gpa);

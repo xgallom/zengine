@@ -100,7 +100,11 @@ pub const Zengine = struct {
         return self;
     }
 
-    pub fn create(handlers: Handlers, win_info: *const Window.CreateInfo.Nullable) !*Self {
+    pub fn create(
+        handlers: Handlers,
+        win_info: *const Window.CreateInfo.Nullable,
+        p_init: std.process.Init.Minimal,
+    ) !*Self {
         assert(global_self == null);
         const engine = try Engine.create();
         errdefer engine.deinit();
@@ -120,7 +124,7 @@ pub const Zengine = struct {
         if (handlers.register) |register| try register();
         try gfx.register();
 
-        try global.init();
+        try global.init(p_init);
         errdefer global.deinit();
 
         main_section.begin();

@@ -170,7 +170,7 @@ fn logFn(
     };
 }
 
-pub fn main() !void {
+pub fn main(init: std.process.Init.Minimal) !void {
     // memory limit 1GB, SDL allocations are not tracked
     allocators.init(1_000_000_000);
     defer allocators.deinit();
@@ -189,7 +189,7 @@ pub fn main() !void {
     }, &.{
         .size = .{ 1920, 1080 },
         .flags = .initMany(&.{ .high_pixel_density, .resizable }),
-    });
+    }, init);
     defer engine.deinit();
     return engine.run();
 }
@@ -199,7 +199,7 @@ fn register() !void {
 }
 
 fn load(self: *const Zengine) !bool {
-    rnd.r = .init(@intCast(std.time.milliTimestamp()));
+    rnd.r = .init(@intCast(time.getNano()));
     scene_map = try .init(self.scene.allocator, 128);
 
     Zengine.sections.sub(.load).sub(.gfx).begin();
@@ -606,7 +606,7 @@ fn update(self: *const Zengine) !bool {
         gfx_fence = try gfx_loader.commit();
     }
 
-    if (execute_raycast) executeRaycast(self);
+    // if (execute_raycast) executeRaycast(self);
 
     return true;
 }
@@ -694,12 +694,18 @@ fn executeRaycast(self: *const Zengine) void {
             pos[2][0..3],
         };
         const result = math.batch.dense_vector3.rayIntersectTri(tri, &cam_pos, &cam_dir);
+        const vec: [3][math.scalarT(@TypeOf(result.result[0])).len]math.Scalar = .{
+            result.result[0],
+            result.result[1],
+            result.result[2],
+        };
+        const mask: [math.scalarT(@TypeOf(result.mask)).len]bool = result.mask;
         for (0..item.len) |n| {
-            if (result.mask[n]) {
+            if (mask[n]) {
                 const int_n: math.Vector3 = .{
-                    result.result[0][n],
-                    result.result[1][n],
-                    result.result[2][n],
+                    vec[0][n],
+                    vec[1][n],
+                    vec[2][n],
                 };
                 const pos_n: [3]math.Vector3 = .{
                     .{ tri[0][0][n], tri[0][1][n], tri[0][2][n] },

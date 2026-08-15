@@ -29,9 +29,9 @@ pub fn GlobalRegistry(comptime registries: []const type) type {
     comptime var field_types: []const type = &.{};
     comptime var field_attrs: []const std.builtin.Type.StructField.Attributes = &.{};
     for (registries) |Registry| {
-        field_names = field_names ++ &.{@typeName(Registry)};
-        field_types = field_types ++ &.{Registry};
-        field_attrs = field_attrs ++ &.{.{}};
+        field_names = field_names ++ &[_][]const u8{@typeName(Registry)};
+        field_types = field_types ++ &[_]type{Registry};
+        field_attrs = field_attrs ++ &[_]std.builtin.Type.StructField.Attributes{.{}};
     }
 
     return struct {

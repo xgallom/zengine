@@ -16,5 +16,6 @@ pub const c = @cImport({
 
     @cInclude("cimgui.h");
     @cInclude("cimgui_impl.h");
+    @cInclude("imgui/backends/imgui_impl_sdlgpu3.h");
     @cInclude("cimplot.h");
 });

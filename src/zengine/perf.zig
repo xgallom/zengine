@@ -233,9 +233,9 @@ const Self = struct {
         if (ptr.first_address[0] != ret_addr) {
             @branchHint(.cold);
             ptr.first_address[0] = ret_addr;
-            ptr.stack_trace[0].instruction_addresses = &ptr.stack_trace_buf[0];
-            ptr.stack_trace[0].index = 0;
-            std.debug.captureStackTrace(ret_addr, &ptr.stack_trace[0]);
+            ptr.stack_trace[0] = std.debug.captureCurrentStackTrace(.{
+                .first_address = ret_addr,
+            }, &ptr.stack_trace_buf[0]);
         }
         _ = try self.list_pusher.push(.{ .key = tag, .value = ptr });
     }
@@ -244,9 +244,9 @@ const Self = struct {
         if (ptr.first_address[1] != ret_addr) {
             @branchHint(.cold);
             ptr.first_address[1] = ret_addr;
-            ptr.stack_trace[1].instruction_addresses = &ptr.stack_trace_buf[1];
-            ptr.stack_trace[1].index = 0;
-            std.debug.captureStackTrace(ret_addr, &ptr.stack_trace[1]);
+            ptr.stack_trace[1] = std.debug.captureCurrentStackTrace(.{
+                .first_address = ret_addr,
+            }, &ptr.stack_trace_buf[1]);
         }
         _ = self.list_pusher.pop();
     }
@@ -271,7 +271,7 @@ const Section = struct {
         section_type: SectionType,
     },
     first_address: [2]usize = @splat(std.math.maxInt(usize)),
-    stack_trace: [2]std.builtin.StackTrace = undefined,
+    stack_trace: [2]std.debug.StackTrace = undefined,
     buf: [frametime_buf_count]u32 = @splat(0),
     sample_avgs: [frame_stats_count]u32 = @splat(0),
     sample_maxes: [frame_stats_count]u32 = @splat(0),
@@ -450,12 +450,12 @@ pub fn logPerf() void {
     const Log = struct {
         fn iterTree(node: *const SectionsTree.Node, label: []const u8) void {
             if (node.value) |index| {
-                log.debug("{s}{c}{s}{c} ~{D}", .{
+                log.debug("{s}{c}{s}{c} ~{f}", .{
                     global.spaces(node.depth),
                     opener(index.value.flags.section_type),
                     label,
                     closer(index.value.flags.section_type),
-                    index.value.window_avg,
+                    std.Io.Duration.fromNanoseconds(index.value.window_avg),
                 });
             } else {
                 log.debug("{s}[{s}]", .{ global.spaces(node.depth), label });
@@ -477,12 +477,12 @@ pub fn logPerf() void {
                     break :blk iter.first();
                 },
             };
-            log.debug("{s}{c}{s}{c} {D}", .{
+            log.debug("{s}{c}{s}{c} {f}", .{
                 global.spaces(node.depth),
                 opener(section_type),
                 key,
                 closer(section_type),
-                node.value.value.window_avg,
+                std.Io.Duration.fromNanoseconds(node.value.value.window_avg),
             });
 
             if (node.edges.first) |child| iterList(@fieldParentPtr("edge_node", child));
@@ -576,8 +576,13 @@ pub inline fn sectionsListTree() *const SectionsListTree {
 
 pub fn sections(comptime this: type, comptime labels: []const @TypeOf(.enum_literal)) type {
     comptime var label_names: []const [:0]const u8 = &[_][:0]const u8{};
-    inline for (labels) |label| label_names = label_names ++ [_][:0]const u8{@tagName(label)};
-    return TaggedSections(@typeName(this), label_names, sectionLabel(null, @typeName(this), .root), .root);
+    inline for (labels) |label| label_names = label_names ++ &[_][:0]const u8{@tagName(label)};
+    return TaggedSections(
+        @typeName(this),
+        label_names,
+        sectionLabel(null, @typeName(this), .root),
+        .root,
+    );
 }
 
 fn TaggedSections(
@@ -587,25 +592,24 @@ fn TaggedSections(
     comptime section_type: SectionType,
 ) type {
     const sub_type = subSectionType(section_type);
-    const EnumTagType = if (labels.len > 0) std.math.IntFittingRange(0, labels.len - 1) else u0;
+
+    const EnumTagType = if (labels.len > 1) std.math.IntFittingRange(0, labels.len - 1) else u1;
     comptime var field_names: []const []const u8 = &.{};
     comptime var field_types: []const type = &.{};
     comptime var field_attrs: []const std.builtin.Type.StructField.Attributes = &.{};
     comptime var enum_names: []const []const u8 = &.{};
     comptime var enum_values: []const EnumTagType = &.{};
-    var idx: EnumTagType = 0;
-    inline for (labels) |label| {
+    inline for (labels, 0..) |label, idx| {
         const SubSectionType = TaggedSection(this, label, this_label, sub_type);
-        field_names = field_names ++ &.{label[0.. :0]};
-        field_types = field_types ++ type;
+        field_names = field_names ++ &[_][]const u8{label[0.. :0]};
+        field_types = field_types ++ &[_]type{type};
         field_attrs = field_attrs ++ &[_]std.builtin.Type.StructField.Attributes{.{
             .@"comptime" = true,
             .@"align" = @alignOf(SubSectionType),
             .default_value_ptr = &SubSectionType,
         }};
-        enum_names = enum_names ++ &.{label[0.. :0]};
-        enum_values = enum_values ++ &.{idx};
-        idx += 1;
+        enum_names = enum_names ++ &[_][]const u8{label[0.. :0]};
+        enum_values = enum_values ++ &[_]EnumTagType{@intCast(idx)};
     }
 
     const Sections = @Struct(

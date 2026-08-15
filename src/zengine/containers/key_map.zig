@@ -19,7 +19,7 @@ pub fn AutoArrayPoolMap(comptime K: type, comptime V: type, comptime options: st
         pub const Self = @This();
         pub const Value = V;
         pub const empty: Self = .{};
-        const Pool = std.heap.MemoryPoolExtra(V, options.pool_options);
+        const Pool = std.heap.memory_pool.ExtraManaged(V, options.pool_options);
         const ValIn = if (options.is_big) *const V else V;
 
         inline fn valDeref(value: ValIn) V {
@@ -29,7 +29,7 @@ pub fn AutoArrayPoolMap(comptime K: type, comptime V: type, comptime options: st
         // Initializes the map
         pub fn init(allocator: std.mem.Allocator, preheat: usize) !Self {
             var result: Self = .{
-                .pool = try Pool.initPreheated(allocator, preheat),
+                .pool = try Pool.initCapacity(allocator, preheat),
                 .map = .empty,
             };
             try result.map.ensureTotalCapacity(allocator, preheat);
@@ -100,7 +100,7 @@ pub fn AutoArrayPoolMap(comptime K: type, comptime V: type, comptime options: st
         }
 
         inline fn gpa(self: *const Self) std.mem.Allocator {
-            return self.pool.arena.child_allocator;
+            return self.pool.allocator;
         }
     };
 }
@@ -239,7 +239,7 @@ pub fn ArrayPoolMap(comptime V: type, comptime options: struct {
         pub const Self = @This();
         pub const Value = V;
         pub const empty: Self = .{};
-        const Pool = std.heap.MemoryPoolExtra(V, options.pool_options);
+        const Pool = std.heap.memory_pool.ExtraManaged(V, options.pool_options);
         const ValIn = if (options.is_big) *const V else V;
 
         inline fn valDeref(value: ValIn) V {
@@ -249,7 +249,7 @@ pub fn ArrayPoolMap(comptime V: type, comptime options: struct {
         // Initializes the map
         pub fn init(allocator: std.mem.Allocator, preheat: usize) !Self {
             var result: Self = .{
-                .pool = try Pool.initPreheated(allocator, preheat),
+                .pool = try Pool.initCapacity(allocator, preheat),
             };
             try result.map.ensureTotalCapacity(allocator, preheat);
             return result;
@@ -319,7 +319,7 @@ pub fn ArrayPoolMap(comptime V: type, comptime options: struct {
         }
 
         inline fn gpa(self: *const Self) std.mem.Allocator {
-            return self.pool.arena.child_allocator;
+            return self.pool.allocator;
         }
     };
 }
@@ -464,7 +464,7 @@ pub fn PoolMap(comptime V: type, comptime options: struct {
 
         pub const Self = @This();
         pub const empty: Self = .{};
-        const Pool = std.heap.MemoryPoolExtra(V, options.pool_options);
+        const Pool = std.heap.memory_pool.ExtraManaged(V, options.pool_options);
         const ValIn = if (options.is_big) *const V else V;
 
         inline fn valDeref(value: ValIn) V {
@@ -474,7 +474,7 @@ pub fn PoolMap(comptime V: type, comptime options: struct {
         // Initializes the map
         pub fn init(allocator: std.mem.Allocator, preheat: u32) !Self {
             var result: Self = .{
-                .pool = try Pool.initPreheated(allocator, preheat),
+                .pool = try Pool.initCapacity(allocator, preheat),
             };
             try result.map.ensureTotalCapacity(allocator, preheat);
             return result;
@@ -540,7 +540,7 @@ pub fn PoolMap(comptime V: type, comptime options: struct {
         }
 
         inline fn gpa(self: *const Self) std.mem.Allocator {
-            return self.pool.arena.child_allocator;
+            return self.pool.allocator;
         }
 
         pub fn valueIterator(self: *const Self) ValueIterator {

@@ -151,7 +151,7 @@ pub fn Time(comptime unit: time.Unit) type {
             _ = data;
             const f_value = time.Unit.convert(unit, .ns, value);
             const i_value: u64 = @intFromFloat(f_value);
-            return bufPrintZ(buf, size, "{D}", .{i_value});
+            return bufPrintZ(buf, size, "{f}", .{std.Io.Duration.fromNanoseconds(i_value)});
         }
 
         pub fn apply(comptime axis: c.ImAxis) void {

@@ -166,7 +166,8 @@ const GraphicsMetadataJSON = struct {
     }
 };
 
-pub fn main() !void {
+var io: std.Io = undefined;
+pub fn main(init: std.process.Init.Minimal) !void {
     allocators.init(1_000_000);
     defer allocators.deinit();
 
@@ -174,7 +175,11 @@ pub fn main() !void {
     defer zengine.perf.deinit();
     try sections.register();
 
-    const arguments = try parseArguments(allocators.global()) orelse return;
+    var threaded: std.Io.Threaded = .init_single_threaded;
+    defer threaded.deinit();
+    io = threaded.io();
+
+    const arguments = try parseArguments(allocators.global(), init) orelse return;
 
     if (!c.SDL_ShaderCross_Init()) fatal(
         "failed initializing shadercross: {s}",
@@ -195,30 +200,36 @@ pub fn main() !void {
         arguments.include_directory,
     });
 
-    std.fs.makeDirAbsolute(arguments.output_directory) catch |err| {
+    const dir = std.Io.Dir.cwd();
+    dir.createDir(io, arguments.output_directory, .default_dir) catch |err| {
         switch (err) {
             error.PathAlreadyExists => {},
             else => fatal("failed creating output directory: {s}", .{@errorName(err)}),
         }
     };
 
-    var input_dir = try std.fs.cwd().openDir(
+    var input_dir = try dir.openDir(
+        io,
         arguments.input_directory,
         .{ .access_sub_paths = true, .iterate = true },
     );
-    defer input_dir.close();
+    defer input_dir.close(io);
 
-    var output_dir = try std.fs.cwd().openDir(
+    var output_dir = try dir.openDir(
+        io,
         arguments.output_directory,
         .{ .access_sub_paths = true },
     );
-    defer output_dir.close();
+    defer output_dir.close(io);
 
     log.info("starting shader compilation", .{});
-    var timer = try std.time.Timer.start();
-    defer log.info("shader compilation took {D}", .{timer.lap()});
+    const start = zengine.time.getNano();
+    defer log.info(
+        "shader compilation took {f}",
+        .{std.Io.Duration.fromNanoseconds(zengine.time.getNano() - start)},
+    );
 
-    var m: std.Thread.Mutex = .{};
+    var m: std.Io.Mutex = .init;
     var queue: std.ArrayList(FileEntry) = .empty;
     var is_running: std.atomic.Value(bool) = .init(true);
 
@@ -236,11 +247,11 @@ pub fn main() !void {
     // TODO: Migrate to SPSC queues and a thread pool.
     var iter = try input_dir.walk(allocators.gpa());
     defer iter.deinit();
-    while (try iter.next()) |entry| {
+    while (try iter.next(io)) |entry| {
         switch (entry.kind) {
             .file => {
-                m.lock();
-                defer m.unlock();
+                try m.lock(io);
+                defer m.unlock(io);
                 const hlsl_code = readInputFileZ(
                     allocators.gpa(),
                     entry.basename,
@@ -257,9 +268,9 @@ pub fn main() !void {
             },
             .directory => {
                 log.info("creating output directory {s}", .{entry.path});
-                m.lock();
-                defer m.unlock();
-                try output_dir.makePath(entry.path);
+                try m.lock(io);
+                defer m.unlock(io);
+                try output_dir.createDirPath(io, entry.path);
             },
             else => log.info("skipping {t} {s}", .{ entry.kind, entry.path }),
         }
@@ -271,22 +282,22 @@ pub fn main() !void {
 
 fn spawnThread(
     arguments: *const Arguments,
-    output_dir: std.fs.Dir,
+    output_dir: std.Io.Dir,
     queue: *std.ArrayList(FileEntry),
-    m: *std.Thread.Mutex,
+    m: *std.Io.Mutex,
     is_running: *std.atomic.Value(bool),
 ) !void {
     while (true) {
         const item = blk: {
-            m.lock();
-            defer m.unlock();
+            try m.lock(io);
+            defer m.unlock(io);
             break :blk queue.pop();
         };
         if (item) |i| {
             try processFile(arguments, output_dir, i, m);
         } else if (!is_running.load(.monotonic)) {
-            m.lock();
-            defer m.unlock();
+            try m.lock(io);
+            defer m.unlock(io);
             if (queue.items.len == 0) break;
         }
     }
@@ -294,19 +305,19 @@ fn spawnThread(
 
 const ProcessState = struct {
     arguments: *const Arguments,
-    output_dir: std.fs.Dir,
+    output_dir: std.Io.Dir,
 };
 
 fn processFile(
     arguments: *const Arguments,
-    output_dir: std.fs.Dir,
+    output_dir: std.Io.Dir,
     item: FileEntry,
-    m: *std.Thread.Mutex,
+    m: *std.Io.Mutex,
 ) !void {
     const hlsl_code = item.hlsl_code;
     defer {
-        m.lock();
-        defer m.unlock();
+        m.lock(io) catch @panic("lock failed");
+        defer m.unlock(io);
         allocators.gpa().free(hlsl_code);
     }
 
@@ -320,8 +331,8 @@ fn processFile(
 
     var output_filenames: std.EnumArray(FileFormat, [:0]const u8) = undefined;
     {
-        m.lock();
-        defer m.unlock();
+        try m.lock(io);
+        defer m.unlock(io);
         output_filenames = .init(.{
             .spirv = try str.allocPrintZ(
                 "{s}" ++ FileFormat.extension(.spirv),
@@ -365,8 +376,8 @@ fn processFile(
 
         const output_filename = output_filenames.get(.dxil);
         {
-            m.lock();
-            defer m.unlock();
+            try m.lock(io);
+            defer m.unlock(io);
             try writeOutputFile(dxil_code, output_filename, output_dir);
             try installFile(arguments, output_filename);
         }
@@ -383,8 +394,8 @@ fn processFile(
     {
         const output_filename = output_filenames.get(.spirv);
         {
-            m.lock();
-            defer m.unlock();
+            try m.lock(io);
+            defer m.unlock(io);
             try writeOutputFile(spirv_code, output_filename, output_dir);
             try installFile(arguments, output_filename);
         }
@@ -407,8 +418,8 @@ fn processFile(
 
         const output_filename = output_filenames.get(.metal);
         {
-            m.lock();
-            defer m.unlock();
+            try m.lock(io);
+            defer m.unlock(io);
             try writeOutputFile(metal_code, output_filename, output_dir);
             try installFile(arguments, output_filename);
         }
@@ -419,8 +430,8 @@ fn processFile(
         if (info == null) fatal("failed to reflect spirv: {s}", .{c.SDL_GetError()});
         const output_filename = output_filenames.get(.json);
         {
-            m.lock();
-            defer m.unlock();
+            try m.lock(io);
+            defer m.unlock(io);
             try writeComputeJsonFile(info, output_filename, output_dir);
             try installFile(arguments, output_filename);
         }
@@ -429,16 +440,17 @@ fn processFile(
         if (info == null) fatal("failed to reflect spirv: {s}", .{c.SDL_GetError()});
         const output_filename = output_filenames.get(.json);
         {
-            m.lock();
-            defer m.unlock();
+            try m.lock(io);
+            defer m.unlock(io);
             try writeGraphicsJsonFile(info, output_filename, output_dir);
             try installFile(arguments, output_filename);
         }
     }
 }
 
-fn parseArguments(allocator: std.mem.Allocator) !?Arguments {
-    const args = try std.process.argsAlloc(allocator);
+fn parseArguments(allocator: std.mem.Allocator, init: std.process.Init.Minimal) !?Arguments {
+    const args = try init.args.toSlice(allocator);
+    defer allocator.free(args);
 
     var input_directory: ?[:0]const u8 = null;
     var output_directory: ?[:0]const u8 = null;
@@ -452,7 +464,7 @@ fn parseArguments(allocator: std.mem.Allocator) !?Arguments {
             if (str.eql("-h", arg) or str.eql("--help", arg)) {
                 const stdout_buf = try allocators.scratch().alloc(u8, 256);
                 defer allocators.scratchRelease();
-                var stdout_writer = std.fs.File.stdout().writer(stdout_buf);
+                var stdout_writer = std.Io.File.stdout().writer(io, stdout_buf);
                 const stdout = &stdout_writer.interface;
                 try stdout.writeAll(usage);
                 try stdout.flush();
@@ -494,15 +506,15 @@ fn parseArguments(allocator: std.mem.Allocator) !?Arguments {
 fn readInputFileZ(
     allocator: std.mem.Allocator,
     filename: []const u8,
-    dir: std.fs.Dir,
+    dir: std.Io.Dir,
 ) ![:0]const u8 {
-    const file = try dir.openFile(filename, .{ .lock = .shared });
-    defer file.close();
+    const file = try dir.openFile(io, filename, .{ .lock = .shared });
+    defer file.close(io);
 
     const reader_buf = try allocators.scratch().alloc(u8, 256);
     defer allocators.scratch().free(reader_buf);
 
-    var reader = file.reader(reader_buf);
+    var reader = file.reader(io, reader_buf);
     const size = try reader.getSize();
     const buf = try allocator.allocSentinel(u8, size, 0);
     errdefer allocator.free(buf);
@@ -511,14 +523,14 @@ fn readInputFileZ(
     return buf;
 }
 
-fn writeOutputFile(data: []const u8, filename: []const u8, dir: std.fs.Dir) !void {
-    const file = try dir.createFile(filename, .{ .lock = .exclusive });
-    defer file.close();
+fn writeOutputFile(data: []const u8, filename: []const u8, dir: std.Io.Dir) !void {
+    const file = try dir.createFile(io, filename, .{ .lock = .exclusive });
+    defer file.close(io);
 
     const writer_buf = try allocators.scratch().alloc(u8, 256);
     defer allocators.scratch().free(writer_buf);
 
-    var writer = file.writer(writer_buf);
+    var writer = file.writer(io, writer_buf);
     try writer.interface.writeAll(data);
     try writer.end();
     log.info("processed output file {s}", .{filename});
@@ -527,15 +539,15 @@ fn writeOutputFile(data: []const u8, filename: []const u8, dir: std.fs.Dir) !voi
 fn writeComputeJsonFile(
     info: *const ComputeMetadata,
     filename: []const u8,
-    dir: std.fs.Dir,
+    dir: std.Io.Dir,
 ) !void {
-    const file = try dir.createFile(filename, .{ .lock = .exclusive });
-    defer file.close();
+    const file = try dir.createFile(io, filename, .{ .lock = .exclusive });
+    defer file.close(io);
 
     const writer_buf = try allocators.scratch().alloc(u8, 256);
     defer allocators.scratch().free(writer_buf);
 
-    var writer = file.writer(writer_buf);
+    var writer = file.writer(io, writer_buf);
     try std.json.fmt(ComputeMetadataJSON.fromMetadata(info), .{}).format(&writer.interface);
     try writer.end();
     log.info("processed output file {s}", .{filename});
@@ -544,15 +556,15 @@ fn writeComputeJsonFile(
 fn writeGraphicsJsonFile(
     info: *const GraphicsMetadata,
     filename: []const u8,
-    dir: std.fs.Dir,
+    dir: std.Io.Dir,
 ) !void {
-    const file = try dir.createFile(filename, .{ .lock = .exclusive });
-    defer file.close();
+    const file = try dir.createFile(io, filename, .{ .lock = .exclusive });
+    defer file.close(io);
 
     const writer_buf = try allocators.scratch().alloc(u8, 256);
     defer allocators.scratch().free(writer_buf);
 
-    var writer = file.writer(writer_buf);
+    var writer = file.writer(io, writer_buf);
     try std.json.fmt(try GraphicsMetadataJSON.fromMetadata(info), .{}).format(&writer.interface);
     try writer.end();
     log.info("processed output file {s}", .{filename});
@@ -569,7 +581,8 @@ fn installFile(arguments: *const Arguments, output_filename: []const u8) !void {
             &.{ install_directory, output_filename },
         );
 
-        const update_stat = std.fs.updateFileAbsolute(output_path, install_path, .{}) catch |err| {
+        const dir = std.Io.Dir.cwd();
+        const update_stat = dir.updateFile(io, output_path, dir, install_path, .{}) catch |err| {
             fatal("failed installing for {s}: {t}\n- copy\n  from: {s}\n  to: {s}", .{
                 output_filename,
                 err,

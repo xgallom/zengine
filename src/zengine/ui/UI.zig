@@ -51,7 +51,7 @@ pub fn create(renderer: *gfx.Renderer) !*Self {
 
     const ini_path = try global.prefPath("ui.ini");
     var ini_exists = true;
-    std.fs.accessAbsolute(ini_path, .{}) catch |err| switch (err) {
+    std.Io.Dir.accessAbsolute(global.io(), ini_path, .{}) catch |err| switch (err) {
         error.FileNotFound => ini_exists = false,
         else => return err,
     };
@@ -82,7 +82,7 @@ pub fn create(renderer: *gfx.Renderer) !*Self {
         .ColorTargetFormat = @intFromEnum(renderer.swapchainFormat()),
         .MSAASamples = @intFromEnum(gfx.types.SampleCount.@"1"),
     };
-    _ = c.ImGui_ImplSDLGPU3_Init(&init_info);
+    _ = c.ImGui_ImplSDL3_InitForSDLGPU(&init_info);
 
     const result = try allocators.global().create(Self);
     result.* = .{

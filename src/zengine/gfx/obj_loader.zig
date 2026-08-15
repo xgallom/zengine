@@ -6,6 +6,7 @@ const std = @import("std");
 const assert = std.debug.assert;
 
 const allocators = @import("../allocators.zig");
+const global = @import("../global.zig");
 const math = @import("../math.zig");
 const gfx_options = @import("../options.zig").gfx_options;
 const str = @import("../str.zig");
@@ -128,12 +129,12 @@ pub const ObjResult = struct {
 };
 
 pub fn loadFile(allocator: std.mem.Allocator, path: []const u8) !ObjResult {
-    var file = try std.fs.openFileAbsolute(path, .{});
-    defer file.close();
+    var file = try std.Io.Dir.openFileAbsolute(global.io(), path, .{});
+    defer file.close(global.io());
 
     const buf = try allocators.scratch().alloc(u8, 1 << 10);
     defer allocators.scratch().free(buf);
-    var reader = file.reader(buf);
+    var reader = file.reader(global.io(), buf);
 
     var self: Self = try .init(allocator);
     defer self.deinit();

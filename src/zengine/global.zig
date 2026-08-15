@@ -21,11 +21,13 @@ const Self = struct {
     engine_clock_ns: time.Clock,
     frame_clock_ns: time.Clock,
     spaces_buf: []const u8,
+    io: std.Io,
 
-    pub fn init(self: *Self) !void {
+    pub fn init(self: *Self, p_init: std.process.Init.Minimal) !void {
+        const p_io = std.Io.Threaded.global_single_threaded.io();
         const engine_now_ns = time.getNano();
-        const app_args = try std.process.argsAlloc(allocators.global());
-        const exe_path = try std.fs.selfExeDirPathAlloc(allocators.global());
+        const app_args = try p_init.args.toSlice(allocators.global());
+        const exe_path = try std.process.executableDirPathAlloc(p_io, allocators.global());
         const is_macos_app = str.contains(exe_path, ".app/Contents/MacOS");
         const resources_path = try std.fs.path.joinZ(
             allocators.global(),
@@ -45,7 +47,7 @@ const Self = struct {
         defer allocators.sdl().free(c_prefs_path);
         const prefs_path = try allocators.global().dupeZ(
             u8,
-            std.mem.trimRight(u8, std.mem.span(c_prefs_path), "\\/"),
+            std.mem.trimEnd(u8, std.mem.span(c_prefs_path), "\\/"),
         );
         const spaces_buf = try allocators.gpa().alloc(u8, spaces_buf_len);
         @memset(spaces_buf, ' ');
@@ -60,6 +62,7 @@ const Self = struct {
             .engine_clock_ns = .init(engine_now_ns),
             .frame_clock_ns = .init(engine_now_ns),
             .spaces_buf = spaces_buf,
+            .io = p_io,
         };
     }
 
@@ -81,9 +84,9 @@ const Self = struct {
 var is_init = false;
 var global_state: Self = undefined;
 
-pub fn init() !void {
+pub fn init(p_init: std.process.Init.Minimal) !void {
     assert(!is_init);
-    try global_state.init();
+    try global_state.init(p_init);
     is_init = true;
 }
 
@@ -117,6 +120,11 @@ pub inline fn arg(n: usize) [:0]const u8 {
     assert(is_init);
     assert(n < global_state.args.len);
     return global_state.args[n];
+}
+
+pub inline fn io() std.Io {
+    assert(is_init);
+    return global_state.io;
 }
 
 pub inline fn exePath() []const u8 {

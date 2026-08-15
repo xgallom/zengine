@@ -219,8 +219,11 @@ pub fn ThreadPool(comptime groups: []const GroupConfig, comptime handlers: Handl
                 ) anyerror!void {
                     var started_at: u64 = std.math.maxInt(u64);
                     defer log.debug(
-                        "thread {} stopped: {D}",
-                        .{ thread_idx, time.getNano() -| started_at },
+                        "thread {} stopped: {f}",
+                        .{
+                            thread_idx,
+                            std.Io.Duration.fromNanoseconds(time.getNano() -| started_at),
+                        },
                     );
                     try platform.setPriority(config.priority);
 

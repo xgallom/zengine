@@ -94,11 +94,11 @@ pub fn BatchTriangleIterator(comptime fields: std.EnumSet(math.VertexAttr)) type
             const field: std.builtin.Type.EnumField = blk: for (enum_fields) |enum_field| {
                 if (enum_field.value == @intFromEnum(e)) break :blk enum_field;
             } else unreachable;
-            enum_names = enum_names ++ &.{field.name};
-            enum_values = enum_values ++ &.{field.value};
+            enum_names = enum_names ++ &[_][]const u8{field.name};
+            enum_values = enum_values ++ &[_]u8{field.value};
         }
     }
-    const FieldsEnum = @Enum(u8, .exhaustive, enum_names, enum_values);
+    const FieldsEnum = @Enum(u8, .exhaustive, enum_names, @ptrCast(enum_values));
 
     return struct {
         items: FlatList(mesh.Object).Slice,

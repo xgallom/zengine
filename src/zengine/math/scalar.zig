@@ -392,6 +392,15 @@ pub fn scalarT(comptime T: type) type {
                     return mask.offset(elem_index);
                 }
             },
+            .bool => struct {
+                pub const Self = T;
+                pub const Scalar = @typeInfo(T).vector.child;
+                pub const Pred = @Vector(len, bool);
+                pub const len = @typeInfo(T).vector.len;
+                pub const is_float = false;
+                pub const is_int = false;
+                pub const is_vec = true;
+            },
             else => @compileError("Unsupported vector scalar type " ++ @typeName(info.child)),
         },
         else => @compileError("Unsupported scalar type " ++ @typeName(T)),

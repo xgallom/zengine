@@ -1,5 +1,5 @@
 //!
-//! The zengine key tree implementation
+//! The zengine key tree implementationkey_tstd.time.milliTimestamp()r
 //!
 
 const std = @import("std");
@@ -29,7 +29,7 @@ pub fn KeyTreeMap(comptime V: type, comptime options: struct {
         pub const Value = V;
         const ValIn = if (options.is_big) *const V else V;
 
-        const Pool = std.heap.MemoryPoolExtra(Edge, options.pool_options);
+        const Pool = std.heap.memory_pool.ExtraManaged(Edge, options.pool_options);
 
         pub const Edges = std.SinglyLinkedList;
 
@@ -67,7 +67,7 @@ pub fn KeyTreeMap(comptime V: type, comptime options: struct {
 
         // Initializes the tree
         pub fn init(allocator: std.mem.Allocator, preheat: usize) !Self {
-            var result = Self{ .pool = try Pool.initPreheated(allocator, preheat) };
+            var result = Self{ .pool = try Pool.initCapacity(allocator, preheat) };
             result.root = &(try result.createEdge(&.{}, null)).target;
             return result;
         }

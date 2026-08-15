@@ -54,6 +54,7 @@ pub fn build(b: *std.Build) !void {
 
     zengine.addLibraryPath(b.path("external/build/lib"));
     zengine.addIncludePath(b.path("external/build/include"));
+    zengine.addIncludePath(b.path("external/cimgui/imgui"));
     zengine.addIncludePath(b.path("external/cimgui"));
     zengine.addIncludePath(b.path("external/cimplot"));
     zengine.linkSystemLibrary("SDL3", .{});

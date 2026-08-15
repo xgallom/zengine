@@ -4,6 +4,7 @@
 
 const std = @import("std");
 const assert = std.debug.assert;
+const Allocator = std.mem.Allocator;
 
 const allocators = @import("../allocators.zig");
 const c = @import("../ext.zig").c;
@@ -17,7 +18,8 @@ const UI = @import("UI.zig");
 
 const log = std.log.scoped(.ui_perf_window);
 
-allocator: std.mem.Allocator,
+allocator: Allocator,
+symbols: std.ArrayList(std.debug.Symbol) = .empty,
 active_item: ?perf.Value = null,
 max_depth: u32 = 0,
 is_open: bool = false,
@@ -34,14 +36,14 @@ pub const window_name = "Performance";
 var buf: [128]u8 = undefined;
 var next_row_sep: bool = false;
 
-pub fn init(allocator: std.mem.Allocator) Self {
+pub fn init(allocator: Allocator) Self {
     return .{
         .allocator = allocator,
     };
 }
 
 pub fn deinit(self: *Self) void {
-    _ = self;
+    self.symbols.deinit(self.allocator);
 }
 
 pub fn draw(self: *Self, ui: *const UI, is_open: *bool) void {
@@ -76,9 +78,11 @@ fn drawPlots(self: *Self) void {
         const framerates_min = perf.frameratesMin();
         const framerates_max = perf.frameratesMax();
 
+        var set_framerate_avg = self.tab_bar.framerate_avg;
+        defer self.tab_bar.framerate_avg = set_framerate_avg;
         if (c.igBeginTabItem(
             "Framerate average",
-            &self.tab_bar.framerate_avg,
+            &set_framerate_avg,
             c.ImGuiTabItemFlags_NoCloseButton,
         )) {
             if (c.ImPlot_BeginPlot(
@@ -105,9 +109,11 @@ fn drawPlots(self: *Self) void {
             c.igEndTabItem();
         }
 
+        var set_framerate_imm = self.tab_bar.framerate_imm;
+        defer self.tab_bar.framerate_imm = set_framerate_imm;
         if (c.igBeginTabItem(
             "Framerate immediate",
-            &self.tab_bar.framerate_imm,
+            &set_framerate_imm,
             c.ImGuiTabItemFlags_NoCloseButton,
         )) {
             if (c.ImPlot_BeginPlot(
@@ -229,9 +235,11 @@ fn drawInspector(self: *Self, ui: *const UI, is_open: *bool) void {
             0,
         )) {
             if (c.igBeginTabBar("##tab_bar", c.ImGuiTabBarFlags_None)) {
+                var set_module_tree = self.tab_bar.module_tree;
+                defer self.tab_bar.module_tree = set_module_tree;
                 if (c.igBeginTabItem(
                     "Module tree",
-                    &self.tab_bar.module_tree,
+                    &set_module_tree,
                     c.ImGuiTabItemFlags_NoCloseButton,
                 )) {
                     self.filter.draw(ui, is_open);
@@ -257,9 +265,11 @@ fn drawInspector(self: *Self, ui: *const UI, is_open: *bool) void {
                     c.igEndTabItem();
                 }
 
+                var set_call_graph = self.tab_bar.call_graph;
+                defer self.tab_bar.call_graph = set_call_graph;
                 if (c.igBeginTabItem(
                     "Call graph",
-                    &self.tab_bar.call_graph,
+                    &set_call_graph,
                     c.ImGuiTabItemFlags_NoCloseButton,
                 )) {
                     self.filter.draw(ui, is_open);
@@ -335,8 +345,8 @@ fn drawStackTraceTableRows(self: *Self, item: perf.Value) !void {
     if (has[0] and has[1]) {
         const st = &item.stack_trace;
         const end = [_]usize{
-            @min(st[0].index, st[0].instruction_addresses.len),
-            @min(st[1].index, st[1].instruction_addresses.len),
+            st[0].return_addresses.len,
+            st[1].return_addresses.len,
         };
 
         var cu_idx: u1 = undefined;
@@ -351,36 +361,54 @@ fn drawStackTraceTableRows(self: *Self, item: perf.Value) !void {
 
         var cu_n = [_]usize{ 0, 0 };
         for (0..cu_end) |_| {
-            var sti: StackTraceItem = try .init(st[cu_idx].instruction_addresses[cu_n[cu_idx]]);
-            defer sti.deinit();
+            var sti: StackTraceItem = try .init(
+                self.allocator,
+                st[cu_idx].return_addresses[cu_n[cu_idx]],
+                &self.symbols,
+            );
+            defer sti.deinit(&self.symbols);
             self.drawStackTraceCatchUp(&sti, cu_idx);
             cu_n[cu_idx] += 1;
         }
         for (cu_end..end[cu_idx]) |_| {
-            var sti = [_]StackTraceItem{
-                try .init(st[0].instruction_addresses[cu_n[0]]),
-                try .init(st[1].instruction_addresses[cu_n[1]]),
-            };
-            defer sti[0].deinit();
-            defer sti[1].deinit();
-            self.drawStackTraceItems(.{ &sti[0], &sti[1] });
+            var sti_0 = try StackTraceItem.init(
+                self.allocator,
+                st[0].return_addresses[cu_n[0]],
+                &self.symbols,
+            );
+            defer sti_0.deinit(&self.symbols);
+            var sti_1 = try StackTraceItem.init(
+                self.allocator,
+                st[1].return_addresses[cu_n[1]],
+                &self.symbols,
+            );
+            defer sti_1.deinit(&self.symbols);
+            self.drawStackTraceItems(.{ &sti_0, &sti_1 });
             cu_n[0] += 1;
             cu_n[1] += 1;
         }
     } else if (has[0]) {
         const st = &item.stack_trace[0];
-        const end = @min(st.index, st.instruction_addresses.len);
+        const end = st.return_addresses.len;
         for (0..end) |n| {
-            var sti: StackTraceItem = try .init(st.instruction_addresses[n]);
-            defer sti.deinit();
+            var sti: StackTraceItem = try .init(
+                self.allocator,
+                st.return_addresses[n],
+                &self.symbols,
+            );
+            defer sti.deinit(&self.symbols);
             self.drawStackTraceItem(&sti);
         }
     } else {
         const st = &item.stack_trace[1];
-        const end = @min(st.index, st.instruction_addresses.len);
+        const end = st.return_addresses.len;
         for (0..end) |n| {
-            var sti: StackTraceItem = try .init(st.instruction_addresses[n]);
-            defer sti.deinit();
+            var sti: StackTraceItem = try .init(
+                self.allocator,
+                st.return_addresses[n],
+                &self.symbols,
+            );
+            defer sti.deinit(&self.symbols);
             self.drawStackTraceItem(&sti);
         }
     }
@@ -397,36 +425,42 @@ const StackTraceItem = struct {
 
     pub const invalid: StackTraceItem = .{};
 
-    fn init(address: usize) !StackTraceItem {
+    fn init(
+        gpa: Allocator,
+        address: usize,
+        symbols: *std.ArrayList(std.debug.Symbol),
+    ) !StackTraceItem {
         const di = try std.debug.getSelfDebugInfo();
-        const module = di.getModuleForAddress(address) catch |err| switch (err) {
+
+        di.getSymbols(
+            global.io(),
+            gpa,
+            allocators.global(),
+            address,
+            true,
+            symbols,
+        ) catch |err| switch (err) {
             error.MissingDebugInfo, error.InvalidDebugInfo => return .{
                 .addr = address,
                 .has_addr = true,
             },
             else => return err,
         };
-        const si = module.getSymbolAtAddress(di.allocator, address) catch |err| switch (err) {
-            error.MissingDebugInfo, error.InvalidDebugInfo => return .{
-                .addr = address,
-                .has_addr = true,
-            },
-            else => return err,
-        };
+        const si = symbols.getLast();
 
         return .{
             .di = di,
             .addr = address,
-            .mod = si.compile_unit_name,
-            .sym = si.name,
+            .mod = si.compile_unit_name orelse "",
+            .sym = si.name orelse "",
             .src = si.source_location,
             .is_valid = true,
             .has_addr = true,
         };
     }
 
-    fn deinit(item: *StackTraceItem) void {
-        if (item.src) |src| item.di.?.allocator.free(src.file_name);
+    fn deinit(item: *StackTraceItem, symbols: *std.ArrayList(std.debug.Symbol)) void {
+        if (item.is_valid) assert(symbols.pop() != null);
     }
 
     const SimilarityType = enum {
@@ -568,7 +602,7 @@ fn drawTableRowAddress(self: *Self, sti: *const StackTraceItem) void {
 }
 
 fn drawTableRowDuration(self: *Self, id: [*:0]const u8, name: [*:0]const u8, value: u32) void {
-    const text = self.bufPrintZ("{D}", .{value});
+    const text = self.bufPrintZ("{f}", .{std.Io.Duration.fromNanoseconds(value)});
     self.drawTableRow(id, name, text.ptr);
 }
 

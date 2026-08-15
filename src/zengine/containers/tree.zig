@@ -27,7 +27,7 @@ pub fn Tree(comptime V: type, comptime options: struct {
         pub const Self = @This();
         pub const Value = V;
 
-        const Pool = std.heap.MemoryPoolExtra(Node, options.pool_options);
+        const Pool = std.heap.memory_pool.ExtraManaged(Node, options.pool_options);
 
         pub const Edges = std.SinglyLinkedList;
 
@@ -157,7 +157,7 @@ pub fn Tree(comptime V: type, comptime options: struct {
 
         // Initializes the tree
         pub fn init(allocator: std.mem.Allocator, preheat: usize) !Self {
-            return .{ .pool = try Pool.initPreheated(allocator, preheat) };
+            return .{ .pool = try Pool.initCapacity(allocator, preheat) };
         }
 
         /// Deinitializes the tree

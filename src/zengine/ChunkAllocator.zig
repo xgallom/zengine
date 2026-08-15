@@ -118,7 +118,8 @@ pub const Chunk = struct {
 
     pub fn destroy(self: *Chunk, gpa: Allocator) void {
         assert(self.isValid());
-        gpa.free(self.ptr.?);
+        const ptr: []u8 = @ptrCast(self.ptr.?);
+        gpa.free(ptr);
         self.ptr = null;
     }
 
