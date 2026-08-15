@@ -159,7 +159,7 @@ const Self = struct {
     }
 
     fn updateStats(self: *Self, now: u64, comptime force_update: bool) void {
-        if (!force_update) {
+        if (comptime !force_update) {
             if (!self.update_stats_timer.updated(now, .set)) return;
         } else {
             self.update_stats_timer.set(now);
@@ -587,39 +587,35 @@ fn TaggedSections(
     comptime section_type: SectionType,
 ) type {
     const sub_type = subSectionType(section_type);
-    comptime var struct_fields: []const std.builtin.Type.StructField =
-        &[_]std.builtin.Type.StructField{};
-    comptime var enum_fields: []const std.builtin.Type.EnumField = &[_]std.builtin.Type.EnumField{};
-    var idx = 0;
+    const EnumTagType = if (labels.len > 0) std.math.IntFittingRange(0, labels.len - 1) else u0;
+    comptime var field_names: []const []const u8 = &.{};
+    comptime var field_types: []const type = &.{};
+    comptime var field_attrs: []const std.builtin.Type.StructField.Attributes = &.{};
+    comptime var enum_names: []const []const u8 = &.{};
+    comptime var enum_values: []const EnumTagType = &.{};
+    var idx: EnumTagType = 0;
     inline for (labels) |label| {
         const SubSectionType = TaggedSection(this, label, this_label, sub_type);
-        struct_fields = struct_fields ++ [_]std.builtin.Type.StructField{.{
-            .name = label[0.. :0],
-            .type = type,
+        field_names = field_names ++ &.{label[0.. :0]};
+        field_types = field_types ++ type;
+        field_attrs = field_attrs ++ &[_]std.builtin.Type.StructField.Attributes{.{
+            .@"comptime" = true,
+            .@"align" = @alignOf(SubSectionType),
             .default_value_ptr = &SubSectionType,
-            .is_comptime = true,
-            .alignment = @alignOf(SubSectionType),
         }};
-        enum_fields = enum_fields ++ [_]std.builtin.Type.EnumField{.{
-            .name = label[0.. :0],
-            .value = idx,
-        }};
+        enum_names = enum_names ++ &.{label[0.. :0]};
+        enum_values = enum_values ++ &.{idx};
         idx += 1;
     }
 
-    const Sections = @Type(.{ .@"struct" = .{
-        .layout = .auto,
-        .fields = struct_fields,
-        .decls = &[_]std.builtin.Type.Declaration{},
-        .is_tuple = false,
-    } });
-
-    const LabelEnum = @Type(.{ .@"enum" = .{
-        .tag_type = if (labels.len > 0) std.math.IntFittingRange(0, labels.len - 1) else u0,
-        .fields = enum_fields,
-        .decls = &[_]std.builtin.Type.Declaration{},
-        .is_exhaustive = true,
-    } });
+    const Sections = @Struct(
+        .auto,
+        null,
+        field_names,
+        @ptrCast(field_types),
+        @ptrCast(field_attrs),
+    );
+    const LabelEnum = @Enum(EnumTagType, .exhaustive, enum_names, @ptrCast(enum_values));
 
     return struct {
         pub const tag = this;

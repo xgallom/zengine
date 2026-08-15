@@ -85,7 +85,8 @@ pub const Flattened = struct {
 };
 
 pub fn BatchTriangleIterator(comptime fields: std.EnumSet(math.VertexAttr)) type {
-    comptime var field_list: []const std.builtin.Type.EnumField = &.{};
+    comptime var enum_names: []const []const u8 = &.{};
+    comptime var enum_values: []const u8 = &.{};
     {
         var iter = fields.iterator();
         const enum_fields = @typeInfo(math.VertexAttr).@"enum".fields;
@@ -93,16 +94,11 @@ pub fn BatchTriangleIterator(comptime fields: std.EnumSet(math.VertexAttr)) type
             const field: std.builtin.Type.EnumField = blk: for (enum_fields) |enum_field| {
                 if (enum_field.value == @intFromEnum(e)) break :blk enum_field;
             } else unreachable;
-            field_list = field_list ++ &[_]std.builtin.Type.EnumField{field};
+            enum_names = enum_names ++ &.{field.name};
+            enum_values = enum_values ++ &.{field.value};
         }
     }
-    assert(field_list.len > 0);
-    const FieldsEnum = @Type(.{ .@"enum" = .{
-        .tag_type = u8,
-        .fields = field_list,
-        .decls = &.{},
-        .is_exhaustive = true,
-    } });
+    const FieldsEnum = @Enum(u8, .exhaustive, enum_names, enum_values);
 
     return struct {
         items: FlatList(mesh.Object).Slice,
@@ -267,14 +263,11 @@ pub fn BatchTriangleIterator(comptime fields: std.EnumSet(math.VertexAttr)) type
                     "vertex[{}][{}]: {any}",
                     .{ TN, N, s.vertex },
                 );
-                inline for (field_list) |field| {
-                    const src = &s.vertex[field.value];
-                    const dst = item.verts[TN].getPtr(@enumFromInt(field.value));
+                inline for (enum_values) |value| {
+                    const src = &s.vertex[value];
+                    const dst = item.verts[TN].getPtr(@enumFromInt(value));
                     for (0..3) |n| dst[n][N] = src[n];
-                    dst[3][N] = @as(
-                        math.VertexAttr,
-                        @enumFromInt(field.value),
-                    ).transformableElement();
+                    dst[3][N] = @as(math.VertexAttr, @enumFromInt(value)).transformableElement();
                     if (std.mem.eql(u8, "Cube", item.keys[N][0..4])) log.info(
                         "tri[{}][0..3][{}]: {any}",
                         .{ TN, N, src.* },

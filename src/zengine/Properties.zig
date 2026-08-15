@@ -25,37 +25,35 @@ pub fn registryLists(comptime registry_list: []const []const type) []const type 
 }
 
 pub fn GlobalRegistry(comptime registries: []const type) type {
-    comptime var inner_fields: []const std.builtin.Type.StructField =
-        &[_]std.builtin.Type.StructField{};
+    comptime var field_names: []const []const u8 = &.{};
+    comptime var field_types: []const type = &.{};
+    comptime var field_attrs: []const std.builtin.Type.StructField.Attributes = &.{};
     for (registries) |Registry| {
-        inner_fields = inner_fields ++ &[_]std.builtin.Type.StructField{.{
-            .name = @typeName(Registry),
-            .type = Registry,
-            .default_value_ptr = null,
-            .is_comptime = false,
-            .alignment = @alignOf(Registry),
-        }};
+        field_names = field_names ++ &.{@typeName(Registry)};
+        field_types = field_types ++ &.{Registry};
+        field_attrs = field_attrs ++ &.{.{}};
     }
 
     return struct {
         inner: InnerType,
 
         const RA = @This();
-        pub const InnerType = @Type(.{ .@"struct" = .{
-            .layout = .auto,
-            .fields = inner_fields,
-            .decls = &.{},
-            .is_tuple = false,
-        } });
+        pub const InnerType = @Struct(
+            .auto,
+            null,
+            field_names,
+            @ptrCast(field_types),
+            @ptrCast(field_attrs),
+        );
 
         pub fn init() !RA {
             var ra: RA = undefined;
-            inline for (inner_fields) |field| @field(ra.inner, field.name) = try .init();
+            inline for (field_names) |field| @field(ra.inner, field) = try .init();
             return ra;
         }
 
         pub fn deinit(ra: *RA) void {
-            inline for (inner_fields) |field| @field(ra.inner, field.name).deinit();
+            inline for (field_names) |field| @field(ra.inner, field).deinit();
         }
 
         pub inline fn create(ra: *RA, comptime Registry: type, key: Registry.Key) !*Self {
