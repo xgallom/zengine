@@ -66,6 +66,9 @@ fn clearImpl(self: *Self) void {
     self.line_offsets.appendAssumeCapacity(0);
 }
 
+/// Only intended to be called from the log handler, which ensures every call ends with a newline.
+/// Calling this without a newline such that a single line exceeds max_line_len is safety-checked
+/// illegal behavior.
 pub fn print(self: *Self, comptime fmt: []const u8, args: anytype) !void {
     if (!self.is_init) return;
     self.lock.lock(.spinloop);
@@ -156,8 +159,8 @@ pub fn draw(self: *Self, ui: *const UI, is_open: *bool) void {
         const buf = self.buffer.allocatedSlice();
         if (c.ImGuiTextFilter_IsActive(&self.filter)) {
             var los = self.line_offsets.iterator();
-            const start_n = los.self.tail;
-            const end_n = los.self.head;
+            const start_n = los.cursor.tail;
+            const end_n = los.cursor.head;
             assert(end_n > start_n);
             for (start_n..end_n - 1) |n| {
                 _ = n;
@@ -176,7 +179,7 @@ pub fn draw(self: *Self, ui: *const UI, is_open: *bool) void {
                 const start_n: usize = @intCast(clipper.DisplayStart);
                 const end_n: usize = @intCast(clipper.DisplayEnd);
                 var los = self.line_offsets.iterator();
-                los.self.tail +%= start_n;
+                los.cursor.tail +%= start_n;
                 for (start_n..end_n) |n| {
                     _ = n;
                     const tail = los.next() orelse unreachable;
@@ -203,10 +206,12 @@ fn getLine(dst: []u8, src: []const u8, tail: usize, head: usize) []const u8 {
     var len: usize = 0;
     if (start < end) {
         len = end - start;
+        assert(len <= dst.len);
         @memcpy(dst[0..len], src[start..end]);
     } else if (start > end) {
         const len_0 = Buffer.capacity - start;
         len = len_0 + end;
+        assert(len <= dst.len);
         @memcpy(dst[0..len_0], src[start..]);
         @memcpy(dst[len_0..len], src[0..end]);
     }

@@ -160,18 +160,18 @@ pub fn RingBuffer(comptime T: type, comptime N: comptime_int) type {
         }
 
         pub const Iterator = struct {
-            self: Self,
+            cursor: Self,
 
             pub fn init(self: Self) @This() {
-                return .{ .self = self };
+                return .{ .cursor = self };
             }
 
             pub fn peek(i: *@This()) ?T {
-                return if (i.self.length() > 0) i.self.getFirst() else null;
+                return if (i.cursor.length() > 0) i.cursor.getFirst() else null;
             }
 
             pub fn next(i: *@This()) ?T {
-                return i.self.popFirst();
+                return i.cursor.popFirst();
             }
         };
 
