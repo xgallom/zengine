@@ -77,6 +77,7 @@ const Self = struct {
     }
 };
 
+// TODO: Replace with bindable pointer for cross-
 var is_init = false;
 var global_state: Self = undefined;
 
