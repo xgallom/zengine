@@ -49,6 +49,14 @@ pub fn create(renderer: *gfx.Renderer) !*Self {
     section.begin();
     defer section.end();
 
+    const ini_path = try global.prefPath("ui.ini");
+    var ini_exists = true;
+    std.fs.accessAbsolute(ini_path, .{}) catch |err| switch (err) {
+        error.FileNotFound => ini_exists = false,
+        else => return err,
+    };
+    log.info("{s}", .{if (ini_exists) "found ui.ini" else "ui.ini not found"});
+
     _ = c.igCreateContext(null);
     _ = c.ImPlot_CreateContext();
 
@@ -58,6 +66,7 @@ pub fn create(renderer: *gfx.Renderer) !*Self {
 
     io.*.ConfigFlags |= c.ImGuiConfigFlags_NavEnableKeyboard;
     io.*.ConfigFlags |= c.ImGuiConfigFlags_DockingEnable;
+    io.*.IniFilename = ini_path.ptr;
 
     c.igStyleColorsDark(null);
     c.ImGuiStyle_ScaleAllSizes(style, main_scale);
@@ -76,7 +85,9 @@ pub fn create(renderer: *gfx.Renderer) !*Self {
     _ = c.ImGui_ImplSDLGPU3_Init(&init_info);
 
     const result = try allocators.global().create(Self);
-    result.* = .{};
+    result.* = .{
+        .init_docking = !ini_exists,
+    };
     cache.init();
     return result;
 }
@@ -157,14 +168,6 @@ pub fn drawDock(self: *Self) void {
         c.igDockBuilderRemoveNodeChildNodes(dock_node);
         _ = c.igDockBuilderSplitNode(dock_node, c.ImGuiDir_Left, 1.0 / 4.0, &nodes[0], &nodes[3]);
         _ = c.igDockBuilderSplitNode(nodes[3], c.ImGuiDir_Right, 1.0 / 3.0, &nodes[2], &nodes[1]);
-
-        const view_size = viewport.*.WorkSize;
-        const side_size = c.ImVec2{ .x = 630, .y = view_size.y };
-        const central_size = c.ImVec2{ .x = view_size.x - 2 * side_size.x, .y = view_size.y };
-
-        c.igDockBuilderSetNodeSize(nodes[0], side_size);
-        c.igDockBuilderSetNodeSize(nodes[1], central_size);
-        c.igDockBuilderSetNodeSize(nodes[2], side_size);
 
         c.igDockBuilderDockWindow(PropertyEditorWindow.window_name, nodes[0]);
         c.igDockBuilderDockWindow(PerfWindow.window_name, nodes[2]);

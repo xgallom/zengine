@@ -9,6 +9,8 @@ const root = @import("root");
 const math = @import("math.zig");
 
 pub const Options = struct {
+    org_identifier: [:0]const u8 = "xgallom",
+    app_identifier: [:0]const u8 = "zengine",
     has_renderer: bool = true,
     has_scene: bool = true,
     has_ui: bool = true,

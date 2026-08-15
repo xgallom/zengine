@@ -2,17 +2,20 @@ const std = @import("std");
 const assert = std.debug.assert;
 
 pub const allocators = @import("allocators.zig");
+const c = @import("ext.zig").c;
+const options = @import("options.zig").options;
 const str = @import("str.zig");
 const math = @import("math.zig");
 const time = @import("time.zig");
 
-const spaces_buf_count = 1 << 10;
+const spaces_buf_len = 1 << 10;
 
 const Self = struct {
     exe_path: []const u8,
     args: []const [:0]const u8,
-    resources_path: []const u8,
-    assets_path: []const u8,
+    resources_path: [:0]const u8,
+    assets_path: [:0]const u8,
+    prefs_path: [:0]const u8,
     frame_idx: u64 = 0,
     engine_now_ns: u64,
     engine_clock_ns: time.Clock,
@@ -23,7 +26,6 @@ const Self = struct {
         const engine_now_ns = time.getNano();
         const app_args = try std.process.argsAlloc(allocators.global());
         const exe_path = try std.fs.selfExeDirPathAlloc(allocators.global());
-
         const is_macos_app = str.contains(exe_path, ".app/Contents/MacOS");
         const resources_path = try std.fs.path.joinZ(
             allocators.global(),
@@ -34,20 +36,26 @@ const Self = struct {
         );
         const assets_path = try std.fs.path.joinZ(
             allocators.global(),
-            if (is_macos_app)
-                &.{ exe_path, "..", "Resources", "assets" }
-            else
-                &.{ exe_path, "..", "assets" },
+            &.{ resources_path, "assets" },
         );
-
-        const spaces_buf = try allocators.gpa().alloc(u8, spaces_buf_count);
-        for (spaces_buf) |*space| space.* = ' ';
+        const c_prefs_path = c.SDL_GetPrefPath(
+            options.org_identifier.ptr,
+            options.app_identifier.ptr,
+        );
+        defer allocators.sdl().free(c_prefs_path);
+        const prefs_path = try allocators.global().dupeZ(
+            u8,
+            std.mem.trimRight(u8, std.mem.span(c_prefs_path), "\\/"),
+        );
+        const spaces_buf = try allocators.gpa().alloc(u8, spaces_buf_len);
+        @memset(spaces_buf, ' ');
 
         self.* = .{
             .args = app_args[1..],
             .exe_path = exe_path,
             .resources_path = resources_path,
             .assets_path = assets_path,
+            .prefs_path = prefs_path,
             .engine_now_ns = engine_now_ns,
             .engine_clock_ns = .init(engine_now_ns),
             .frame_clock_ns = .init(engine_now_ns),
@@ -115,27 +123,39 @@ pub inline fn exePath() []const u8 {
     return global_state.exe_path;
 }
 
-pub inline fn resourcesPath() []const u8 {
+pub inline fn resourcesPath() [:0]const u8 {
     assert(is_init);
     return global_state.resources_path;
 }
 
-pub inline fn assetsPath() []const u8 {
+pub inline fn assetsPath() [:0]const u8 {
     assert(is_init);
     return global_state.assets_path;
 }
 
 pub inline fn assetPath(path: []const u8) ![:0]const u8 {
     assert(is_init);
-    return std.fs.path.joinZ(
-        allocators.scratch(),
-        &.{ assetsPath(), path },
-    );
+    return std.fs.path.joinZ(allocators.global(), &.{ assetsPath(), path });
 }
 
 pub inline fn assetsDir(flags: std.fs.Dir.OpenOptions) !std.fs.Dir {
     assert(is_init);
     return std.fs.openDirAbsolute(assetsPath(), flags);
+}
+
+pub inline fn prefsPath() [:0]const u8 {
+    assert(is_init);
+    return global_state.prefs_path;
+}
+
+pub inline fn prefPath(path: []const u8) ![:0]const u8 {
+    assert(is_init);
+    return std.fs.path.joinZ(allocators.global(), &.{ prefsPath(), path });
+}
+
+pub inline fn prefsDir(flags: std.fs.Dir.OpenOptions) !std.fs.Dir {
+    assert(is_init);
+    return std.fs.openDirAbsolute(prefsPath(), flags);
 }
 
 pub inline fn frameIndex() u64 {
@@ -219,7 +239,7 @@ pub inline fn timeSinceLastFrameNano() time.Time {
 
 pub inline fn spaces(count: usize) []const u8 {
     assert(is_init);
-    assert(count <= spaces_buf_count);
+    assert(count <= spaces_buf_len);
     return global_state.spaces_buf[0..count];
 }
 

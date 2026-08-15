@@ -31,6 +31,7 @@ pub fn loadFile(gpa: std.mem.Allocator, path: []const u8) !Result {
     defer file.close();
 
     const buf = try allocators.scratch().alloc(u8, 1 << 8);
+    defer allocators.scratch().free(buf);
     var reader = file.reader(buf);
 
     var materials = try Materials.initCapacity(gpa, 1);

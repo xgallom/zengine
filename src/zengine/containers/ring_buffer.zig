@@ -144,13 +144,13 @@ pub fn RingBuffer(comptime T: type, comptime N: comptime_int) type {
             assert(buffer.len <= self.unusedCapacity());
             if (buffer.len == 0) return;
             const start = mask.offset(self.head);
-            const end = mask.offset(self.tail);
             const len_0 = capacity - start;
-            if (start < end or buffer.len <= len_0) {
-                @memcpy(self.buffer[start .. start + buffer.len], buffer);
+            if (buffer.len <= len_0) {
+                @memcpy(self.buffer[start..][0..buffer.len], buffer);
             } else {
+                const len_1 = buffer.len - len_0;
                 @memcpy(self.buffer[start..], buffer[0..len_0]);
-                @memcpy(self.buffer[0 .. buffer.len - len_0], buffer[len_0..]);
+                @memcpy(self.buffer[0..len_1], buffer[len_0..]);
             }
             self.head +%= buffer.len;
         }

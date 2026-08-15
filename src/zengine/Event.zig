@@ -21,7 +21,16 @@ pub fn poll(engine: *Engine) ?Self {
     var result: Self = .invalid;
     if (c.SDL_PollEvent(&result.sdl)) {
         result.type = @enumFromInt(result.sdl.type);
-        if (result.type == .window_resized) engine.state.resized = true;
+        switch (result.type) {
+            .window_resized,
+            .window_pixel_size_changed,
+            .window_maximized,
+            .window_restored,
+            .window_enter_fullscreen,
+            .window_leave_fullscreen,
+            => engine.state.resized = true,
+            else => {},
+        }
         return result;
     }
     return null;

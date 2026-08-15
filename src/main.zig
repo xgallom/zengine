@@ -179,12 +179,13 @@ pub fn main() !void {
     defer log_window.deinit();
 
     const engine = try Zengine.create(.{
-        .register = &register,
-        .load = &load,
-        .unload = &unload,
-        .input = &input,
-        .update = &update,
-        .render = &render,
+        .register = register,
+        .load = load,
+        .unload = unload,
+        .resize = resize,
+        .input = input,
+        .update = update,
+        .render = render,
     }, &.{
         .size = .{ 1920, 1080 },
         .flags = .initMany(&.{ .high_pixel_density, .resizable }),
