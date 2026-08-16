@@ -15,7 +15,10 @@ pub const Options = struct {
 };
 
 comptime {
-    assert(if (@hasDecl(root, "zengine_options")) !@hasDecl(root, "zcore_options") else true);
+    if (@hasDecl(root, "zengine_options") and @hasDecl(root, "zcore_options")) {
+        @compileError("Can not use both zengine_options and zcore_options in the same project, " ++
+            "use zengine_options.core instead.");
+    }
 }
 pub const options: Options = if (@hasDecl(root, "zengine_options"))
     root.zengine_options.core

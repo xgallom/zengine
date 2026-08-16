@@ -7,12 +7,11 @@ const builtin = @import("builtin");
 const root = @import("root");
 
 const zcore = @import("zcore");
-pub const zcore_options: zcore.Options = zcore.options;
 
 const math = @import("math.zig");
 
 pub const Options = struct {
-    core: Zcore = .{},
+    core: Zcore = if (@hasDecl(root, "zcore_options")) root.zcore_options else .{},
     has_renderer: bool = true,
     has_scene: bool = true,
     has_ui: bool = true,
@@ -28,4 +27,5 @@ pub const Options = struct {
 };
 
 pub const options: Options = if (@hasDecl(root, "zengine_options")) root.zengine_options else .{};
+pub const zcore_options = options.core;
 pub const gfx_options = options.gfx;
