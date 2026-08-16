@@ -219,7 +219,7 @@ pub fn KeyTreeMap(comptime V: type, comptime options: struct {
         }
 
         fn createLabel(self: *Self, label: []const u8) ![:0]const u8 {
-            const allocator: std.mem.Allocator = self.pool.arena.allocator();
+            const allocator: std.mem.Allocator = self.pool.allocator;
             return allocator.dupeZ(u8, label);
         }
 

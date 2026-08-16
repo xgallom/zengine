@@ -42,13 +42,13 @@ pub const GroupConfig = struct {
 fn Handlers(comptime configs: []const GroupConfig) type {
     var fields: []const type = &.{};
     inline for (configs) |config| fields = fields ++ &[_]type{config.handlerFn()};
-    return std.meta.Tuple(fields);
+    return @Tuple(fields);
 }
 
 fn Contexts(comptime configs: []const GroupConfig) type {
     var fields: []const type = &.{};
     inline for (configs) |config| fields = fields ++ &[_]type{config.ctx};
-    return std.meta.Tuple(fields);
+    return @Tuple(fields);
 }
 
 fn HandlerFn(comptime Ctx: type) type {

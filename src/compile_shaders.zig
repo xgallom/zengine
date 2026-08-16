@@ -5,6 +5,7 @@ const zengine = @import("zengine");
 const allocators = zengine.allocators;
 const c = zengine.ext.c;
 const str = zengine.str;
+const sched = zengine.sched;
 const ComputeMetadata = c.SDL_ShaderCross_ComputePipelineMetadata;
 const GraphicsMetadata = c.SDL_ShaderCross_GraphicsShaderMetadata;
 const GraphicsMetadataIOVar = c.SDL_ShaderCross_IOVarMetadata;
@@ -12,8 +13,11 @@ const GraphicsMetadataIOVar = c.SDL_ShaderCross_IOVarMetadata;
 const log = std.log.scoped(.compile_shaders);
 const sections = zengine.perf.sections(@This(), &.{ .init, .read, .compile, .write, .install });
 
+const Zengine = zengine.Zengine;
+const options = zengine.options;
+
 pub const std_options: std.Options = .{
-    .log_level = .info,
+    .log_level = .warn,
 };
 
 const usage =
@@ -53,7 +57,6 @@ const FileFormat = enum {
 };
 
 const FileEntry = struct {
-    hlsl_code: [:0]const u8,
     basename: [:0]const u8,
     path: [:0]const u8,
 };
@@ -229,78 +232,62 @@ pub fn main(init: std.process.Init.Minimal) !void {
         .{std.Io.Duration.fromNanoseconds(zengine.time.getNano() - start)},
     );
 
-    var m: std.Io.Mutex = .init;
     var queue: std.ArrayList(FileEntry) = .empty;
-    var is_running: std.atomic.Value(bool) = .init(true);
-
-    const thread_cnt = @max(try std.Thread.getCpuCount() -| 1, 1);
-    const threads = try allocators.global().alloc(std.Thread, thread_cnt);
-
-    for (threads) |*thread| {
-        thread.* = try .spawn(
-            .{},
-            spawnThread,
-            .{ &arguments, output_dir, &queue, &m, &is_running },
-        );
-    }
-
-    // TODO: Migrate to SPSC queues and a thread pool.
     var iter = try input_dir.walk(allocators.gpa());
     defer iter.deinit();
     while (try iter.next(io)) |entry| {
         switch (entry.kind) {
             .file => {
-                try m.lock(io);
-                defer m.unlock(io);
-                const hlsl_code = readInputFileZ(
-                    allocators.gpa(),
-                    entry.basename,
-                    entry.dir,
-                ) catch |err| {
-                    fatal("failed reading input file: {t}", .{err});
-                };
-                errdefer allocators.gpa().free(hlsl_code);
+                log.info("file {s}: {s}", .{ entry.basename, entry.path });
                 try queue.append(allocators.global(), .{
-                    .hlsl_code = hlsl_code,
                     .basename = try str.dupeZ(entry.basename),
                     .path = try str.dupeZ(entry.path),
                 });
             },
             .directory => {
                 log.info("creating output directory {s}", .{entry.path});
-                try m.lock(io);
-                defer m.unlock(io);
                 try output_dir.createDirPath(io, entry.path);
             },
             else => log.info("skipping {t} {s}", .{ entry.kind, entry.path }),
         }
     }
 
-    is_running.store(false, .monotonic);
-    for (threads) |*thread| thread.join();
+    const arenas = try sched.WorkerArena.createArray(allocators.gpa());
+    defer sched.WorkerArena.deinitArray(arenas);
+    var thread_pool: *sched.ThreadPool(&.{.{
+        .ctx = WorkerCtx,
+        .len = .remaining,
+    }}, .{spawnThread}) = try .create();
+    defer thread_pool.deinit();
+    try thread_pool.run(undefined, .{.{
+        .arguments = &arguments,
+        .input_dir = input_dir,
+        .output_dir = output_dir,
+        .arenas = arenas,
+        .queue = queue.items,
+    }});
+    thread_pool.join();
 }
 
-fn spawnThread(
+const WorkerCtx = struct {
     arguments: *const Arguments,
+    input_dir: std.Io.Dir,
     output_dir: std.Io.Dir,
-    queue: *std.ArrayList(FileEntry),
-    m: *std.Io.Mutex,
-    is_running: *std.atomic.Value(bool),
-) !void {
-    while (true) {
-        const item = blk: {
-            try m.lock(io);
-            defer m.unlock(io);
-            break :blk queue.pop();
-        };
-        if (item) |i| {
-            try processFile(arguments, output_dir, i, m);
-        } else if (!is_running.load(.monotonic)) {
-            try m.lock(io);
-            defer m.unlock(io);
-            if (queue.items.len == 0) break;
-        }
-    }
+    arenas: *sched.WorkerArena.Array,
+    queue: []const FileEntry,
+};
+
+fn spawnThread(
+    self: *Zengine,
+    info: *const sched.ThreadInfo,
+    pool_state: *sched.ThreadInfo.GroupSharedState,
+    ctx: WorkerCtx,
+) !bool {
+    _ = self;
+    _ = pool_state;
+    const items = info.slice(ctx.queue);
+    for (items) |item| try processFile(info, ctx, item);
+    return false;
 }
 
 const ProcessState = struct {
@@ -309,17 +296,13 @@ const ProcessState = struct {
 };
 
 fn processFile(
-    arguments: *const Arguments,
-    output_dir: std.Io.Dir,
+    info: *const sched.ThreadInfo,
+    ctx: WorkerCtx,
     item: FileEntry,
-    m: *std.Io.Mutex,
 ) !void {
-    const hlsl_code = item.hlsl_code;
-    defer {
-        m.lock(io) catch @panic("lock failed");
-        defer m.unlock(io);
-        allocators.gpa().free(hlsl_code);
-    }
+    defer _ = ctx.arenas[info.idx].inner.reset(.retain_capacity);
+    const gpa = ctx.arenas[info.idx].allocator();
+    const hlsl_code = try readInputFileZ(gpa, item.path, ctx.input_dir);
 
     const input_extension = std.fs.path.extension(item.basename);
     const input_basename = item.path[0 .. item.path.len - input_extension.len];
@@ -331,28 +314,36 @@ fn processFile(
 
     var output_filenames: std.EnumArray(FileFormat, [:0]const u8) = undefined;
     {
-        try m.lock(io);
-        defer m.unlock(io);
         output_filenames = .init(.{
-            .spirv = try str.allocPrintZ(
+            .spirv = try std.fmt.allocPrintSentinel(
+                gpa,
                 "{s}" ++ FileFormat.extension(.spirv),
                 .{input_basename},
+                0,
             ),
-            .dxil = try str.allocPrintZ(
+            .dxil = try std.fmt.allocPrintSentinel(
+                gpa,
                 "{s}" ++ FileFormat.extension(.dxil),
                 .{input_basename},
+                0,
             ),
-            .metal = try str.allocPrintZ(
+            .metal = try std.fmt.allocPrintSentinel(
+                gpa,
                 "{s}" ++ FileFormat.extension(.metal),
                 .{input_basename},
+                0,
             ),
-            .hlsl = try str.allocPrintZ(
+            .hlsl = try std.fmt.allocPrintSentinel(
+                gpa,
                 "{s}" ++ FileFormat.extension(.hlsl),
                 .{input_basename},
+                0,
             ),
-            .json = try str.allocPrintZ(
+            .json = try std.fmt.allocPrintSentinel(
+                gpa,
                 "{s}" ++ FileFormat.extension(.json),
                 .{input_basename},
+                0,
             ),
         });
     }
@@ -363,7 +354,7 @@ fn processFile(
     const hlsl_info: c.SDL_ShaderCross_HLSL_Info = .{
         .source = hlsl_code.ptr,
         .entrypoint = "main",
-        .include_dir = if (arguments.include_directory) |dir| dir.ptr else null,
+        .include_dir = if (ctx.arguments.include_directory) |dir| dir.ptr else null,
         .shader_stage = @intFromEnum(shader_stage),
     };
 
@@ -375,12 +366,8 @@ fn processFile(
         defer allocators.sdl().free(dxil_code.ptr);
 
         const output_filename = output_filenames.get(.dxil);
-        {
-            try m.lock(io);
-            defer m.unlock(io);
-            try writeOutputFile(dxil_code, output_filename, output_dir);
-            try installFile(arguments, output_filename);
-        }
+        try writeOutputFile(dxil_code, output_filename, ctx.output_dir);
+        try installFile(ctx.arguments, output_filename);
     }
 
     var spirv_code: []u8 = undefined;
@@ -393,12 +380,8 @@ fn processFile(
 
     {
         const output_filename = output_filenames.get(.spirv);
-        {
-            try m.lock(io);
-            defer m.unlock(io);
-            try writeOutputFile(spirv_code, output_filename, output_dir);
-            try installFile(arguments, output_filename);
-        }
+        try writeOutputFile(spirv_code, output_filename, ctx.output_dir);
+        try installFile(ctx.arguments, output_filename);
     }
 
     const spirv_info: c.SDL_ShaderCross_SPIRV_Info = .{
@@ -417,34 +400,22 @@ fn processFile(
         defer allocators.sdl().free(metal_code.ptr);
 
         const output_filename = output_filenames.get(.metal);
-        {
-            try m.lock(io);
-            defer m.unlock(io);
-            try writeOutputFile(metal_code, output_filename, output_dir);
-            try installFile(arguments, output_filename);
-        }
+        try writeOutputFile(metal_code, output_filename, ctx.output_dir);
+        try installFile(ctx.arguments, output_filename);
     }
 
     if (shader_stage == .compute) {
-        const info = c.SDL_ShaderCross_ReflectComputeSPIRV(spirv_code.ptr, spirv_code.len, 0);
-        if (info == null) fatal("failed to reflect spirv: {s}", .{c.SDL_GetError()});
+        const spirv_refl = c.SDL_ShaderCross_ReflectComputeSPIRV(spirv_code.ptr, spirv_code.len, 0);
+        if (spirv_refl == null) fatal("failed to reflect spirv: {s}", .{c.SDL_GetError()});
         const output_filename = output_filenames.get(.json);
-        {
-            try m.lock(io);
-            defer m.unlock(io);
-            try writeComputeJsonFile(info, output_filename, output_dir);
-            try installFile(arguments, output_filename);
-        }
+        try writeComputeJsonFile(spirv_refl, output_filename, ctx.output_dir);
+        try installFile(ctx.arguments, output_filename);
     } else {
-        const info = c.SDL_ShaderCross_ReflectGraphicsSPIRV(spirv_code.ptr, spirv_code.len, 0);
-        if (info == null) fatal("failed to reflect spirv: {s}", .{c.SDL_GetError()});
+        const spirv_refl = c.SDL_ShaderCross_ReflectGraphicsSPIRV(spirv_code.ptr, spirv_code.len, 0);
+        if (spirv_refl == null) fatal("failed to reflect spirv: {s}", .{c.SDL_GetError()});
         const output_filename = output_filenames.get(.json);
-        {
-            try m.lock(io);
-            defer m.unlock(io);
-            try writeGraphicsJsonFile(info, output_filename, output_dir);
-            try installFile(arguments, output_filename);
-        }
+        try writeGraphicsJsonFile(spirv_refl, output_filename, ctx.output_dir);
+        try installFile(ctx.arguments, output_filename);
     }
 }
 

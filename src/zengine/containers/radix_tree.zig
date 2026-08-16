@@ -362,7 +362,7 @@ pub fn RadixTree(comptime V: type, comptime options: std.heap.MemoryPoolOptions)
         }
 
         fn createLabel(self: *Self, label: []const u8) ![:0]const u8 {
-            const allocator: std.mem.Allocator = self.pool.arena.allocator();
+            const allocator: std.mem.Allocator = self.pool.allocator;
             return allocator.dupeZ(label);
         }
 

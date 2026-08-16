@@ -82,7 +82,7 @@ pub fn create(renderer: *gfx.Renderer) !*Self {
         .ColorTargetFormat = @intFromEnum(renderer.swapchainFormat()),
         .MSAASamples = @intFromEnum(gfx.types.SampleCount.@"1"),
     };
-    _ = c.ImGui_ImplSDL3_InitForSDLGPU(&init_info);
+    _ = c.ImGui_ImplSDLGPU3_Init(&init_info);
 
     const result = try allocators.global().create(Self);
     result.* = .{

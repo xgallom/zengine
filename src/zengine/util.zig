@@ -67,3 +67,50 @@ pub fn logStructLayout(comptime T: type) void {
         ));
     }
 }
+
+pub fn sliceFields(comptime fields: []const std.builtin.Type.StructField) struct {
+    names: []const []const u8,
+    types: []const type,
+    attrs: []const std.builtin.Type.StructField.Attributes,
+} {
+    comptime {
+        var field_names: []const [:0]const u8 = &.{};
+        var field_types: []const type = &.{};
+        var field_attrs: []const std.builtin.Type.StructField.Attributes = &.{};
+        for (fields) |field| {
+            field_names = field_names ++ &[_][:0]const u8{field.name};
+            field_types = field_types ++ &[_]type{field.type};
+            field_attrs = field_attrs ++ &[_]std.builtin.Type.StructField.Attributes{.{
+                .@"comptime" = field.is_comptime,
+                .@"align" = field.alignment,
+                .default_value_ptr = field.default_value_ptr,
+            }};
+        }
+        return .{
+            .names = field_names,
+            .types = field_types,
+            .attrs = field_attrs,
+        };
+    }
+}
+
+pub fn sliceEnumFields(
+    comptime T: type,
+    comptime fields: []const std.builtin.Type.EnumField,
+) struct {
+    names: []const []const u8,
+    values: []const T,
+} {
+    comptime {
+        var field_names: []const [:0]const u8 = &.{};
+        var field_values: []const T = &.{};
+        for (fields) |field| {
+            field_names = field_names ++ &[_][:0]const u8{field.name};
+            field_values = field_values ++ &[_]T{field.value};
+        }
+        return .{
+            .names = field_names,
+            .values = field_values,
+        };
+    }
+}

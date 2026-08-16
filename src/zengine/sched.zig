@@ -14,6 +14,7 @@ pub const Counter = @import("sched/Counter.zig");
 pub const Spinlock = @import("sched/Spinlock.zig");
 pub const ThreadInfo = @import("sched/ThreadInfo.zig");
 pub const ThreadPool = @import("sched/thread_pool.zig").ThreadPool;
+pub const WorkerArena = @import("sched/WorkerArena.zig");
 
 pub const WaitBehavior = enum { spinloop, yield };
 

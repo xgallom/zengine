@@ -7,6 +7,7 @@ const assert = std.debug.assert;
 
 const allocators = @import("../allocators.zig");
 const c = @import("../ext.zig").c;
+const util = @import("../util.zig");
 const UI = @import("UI.zig");
 const cache = @import("cache.zig");
 const Engine = @import("../Engine.zig");
@@ -174,24 +175,13 @@ pub fn RefPropertyEditor(comptime C: type, comptime K: type) type {
 
         pub const Self = @This();
         pub const CRef: type = blk: {
-            var field_names: []const []const u8 = &.{};
-            var field_types: []const type = &.{};
-            var field_attrs: []const std.builtin.Type.StructField.Attributes = &.{};
-            for (ref_fields) |field| {
-                field_names = field_names ++ &.{field.name};
-                field_types = field_types ++ &.{field.type};
-                field_attrs = field_attrs ++ &[_]std.builtin.Type.StructField.Attributes{.{
-                    .@"comptime" = field.is_comptime,
-                    .@"align" = field.alignment,
-                    .default_value_ptr = field.default_value_ptr,
-                }};
-            }
+            const field_slice = util.sliceFields(ref_fields);
             break :blk @Struct(
                 .auto,
                 null,
-                field_names,
-                @ptrCast(field_types),
-                @ptrCast(field_attrs),
+                field_slice.names,
+                @ptrCast(field_slice.types),
+                @ptrCast(field_slice.attrs),
             );
         };
         pub const fields = type_info.fields;
@@ -427,11 +417,11 @@ pub fn InputField(comptime C: type, comptime field: StdType.StructField) type {
                         null,
                         &.{struct_field.name},
                         &.{struct_field.type},
-                        &.{
+                        &.{.{
                             .@"comptime" = struct_field.is_comptime,
                             .@"align" = struct_field.alignment,
                             .default_value_ptr = struct_field.default_value_ptr,
-                        },
+                        }},
                     );
                     InputField(Struct, struct_field).drawFieldImpl(
                         @ptrCast(&ptr.*[n]),
@@ -516,11 +506,11 @@ pub fn InputField(comptime C: type, comptime field: StdType.StructField) type {
                         null,
                         &.{struct_field.name},
                         &.{struct_field.type},
-                        &.{
+                        &.{.{
                             .@"comptime" = struct_field.is_comptime,
                             .@"align" = struct_field.alignment,
                             .default_value_ptr = struct_field.default_value_ptr,
-                        },
+                        }},
                     ), struct_field).drawFieldImpl(&ptr[n], ui, is_open);
                 }
             }
@@ -595,24 +585,13 @@ pub fn InputFields(comptime C: type, comptime options: Options.InputFields) type
         .@"packed" => struct {
             component: *C,
             unpacked: blk: {
-                var field_names: []const []const u8 = &.{};
-                var field_types: []const type = &.{};
-                var field_attrs: []const std.builtin.Type.StructField.Attributes = &.{};
-                for (unpacked_fields) |field| {
-                    field_names = field_names ++ &.{field.name};
-                    field_types = field_types ++ &.{field.type};
-                    field_attrs = field_attrs ++ &[_]std.builtin.Type.StructField.Attributes{.{
-                        .@"comptime" = field.is_comptime,
-                        .@"align" = field.alignment,
-                        .default_value_ptr = field.default_value_ptr,
-                    }};
-                }
+                const field_slice = util.sliceFields(unpacked_fields);
                 break :blk @Struct(
                     .auto,
                     null,
-                    field_names,
-                    @ptrCast(field_types),
-                    @ptrCast(field_attrs),
+                    field_slice.names,
+                    @ptrCast(field_slice.types),
+                    @ptrCast(field_slice.attrs),
                 );
             } = undefined,
 
