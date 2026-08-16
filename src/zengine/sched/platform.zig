@@ -8,9 +8,6 @@ const builtin = @import("builtin");
 
 const allocators = @import("../allocators.zig");
 const options = @import("../options.zig").options;
-const Zengine = @import("../zengine.zig").Zengine;
-const Barrier = @import("Barrier.zig");
-const ThreadInfo = @import("ThreadInfo.zig");
 
 const log = std.log.scoped(.sched_thread_pool);
 

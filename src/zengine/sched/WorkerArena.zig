@@ -11,7 +11,6 @@ const allocators = @import("../allocators.zig");
 const options = @import("../options.zig").options;
 const max_threads = options.max_threads;
 const time = @import("../time.zig");
-const Zengine = @import("../zengine.zig").Zengine;
 const Barrier = @import("Barrier.zig");
 const platform = @import("platform.zig");
 const ThreadInfo = @import("ThreadInfo.zig");

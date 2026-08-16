@@ -10,8 +10,6 @@ const allocators = @import("../allocators.zig");
 const options = @import("../options.zig").options;
 const max_threads = options.max_threads;
 const time = @import("../time.zig");
-const Zengine = @import("../zengine.zig").Zengine;
-const Barrier = @import("Barrier.zig");
 const platform = @import("platform.zig");
 const ThreadInfo = @import("ThreadInfo.zig");
 
@@ -51,10 +49,9 @@ fn Contexts(comptime configs: []const GroupConfig) type {
 
 fn HandlerFn(comptime Ctx: type) type {
     return fn (
-        self: *Zengine,
+        ctx: Ctx,
         info: *const ThreadInfo,
         global_state: *ThreadInfo.GroupSharedState,
-        ctx: Ctx,
     ) anyerror!bool;
 }
 
@@ -122,7 +119,6 @@ pub fn ThreadPool(comptime groups: []const GroupConfig, comptime handlers: Handl
         /// Call to this function once the thread pool is running returns an error.
         pub fn run(
             self: *Self,
-            zengine: *Zengine,
             ctx: Contexts(groups),
         ) !void {
             if (builtin.single_threaded) {
@@ -155,7 +151,7 @@ pub fn ThreadPool(comptime groups: []const GroupConfig, comptime handlers: Handl
                     items[idx] = try std.Thread.spawn(
                         .{ .allocator = allocators.gpa() },
                         handlerWrapper(config, handlers[gn], gn),
-                        .{ self, zengine, idx, idx - g_start, len, ctx[gn] },
+                        .{ self, idx, idx - g_start, len, ctx[gn] },
                     );
                     self.data.spawned = idx + 1;
                 }
@@ -200,7 +196,6 @@ pub fn ThreadPool(comptime groups: []const GroupConfig, comptime handlers: Handl
             comptime group_n: comptime_int,
         ) fn (
             self: *Self,
-            zengine: *Zengine,
             thread_idx: u32,
             group_idx: u32,
             group_len: u32,
@@ -209,7 +204,6 @@ pub fn ThreadPool(comptime groups: []const GroupConfig, comptime handlers: Handl
             const Impl = struct {
                 fn impl(
                     self: *Self,
-                    zengine: *Zengine,
                     thread_idx: u32,
                     group_idx: u32,
                     group_len: u32,
@@ -250,12 +244,7 @@ pub fn ThreadPool(comptime groups: []const GroupConfig, comptime handlers: Handl
                             info.broadcastValue(State, &state, .primary);
                             if (state != .running) return;
                         } else if (self.loadState(.monotonic) != .running) return;
-                        if (!try handler(
-                            zengine,
-                            &info,
-                            &self.pool_state,
-                            ctx,
-                        )) self.sendQuit();
+                        if (!try handler(ctx, &info, &self.pool_state)) self.sendQuit();
                     }
                 }
             };

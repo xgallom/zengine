@@ -3,6 +3,7 @@ const log = std.log;
 
 pub const Options = struct {
     compile_shaders: bool,
+    compile_shaders_verbose: bool,
     ext_cmd: ?ExtCommand,
     ext_cmd_cmake_args: []const u8,
     ext_cmd_make_args: []const u8,
@@ -28,6 +29,7 @@ const ext_optimize = std.EnumArray(std.builtin.OptimizeMode, []const u8).init(.{
     .ReleaseSmall = "MinSizeRel",
 });
 
+var ext: *std.Build.Step.TranslateC = undefined;
 var compile_shaders: ?*std.Build.Step.Compile = null;
 var compile_shaders_cmds: std.ArrayList(*std.Build.Step.Run) = .empty;
 
@@ -43,7 +45,7 @@ pub fn build(b: *std.Build) !void {
         .optimize = optimize,
     });
 
-    const ext = b.addTranslateC(.{
+    ext = b.addTranslateC(.{
         .root_source_file = b.path("src/zengine/ext.h"),
         .optimize = optimize,
         .target = target,
@@ -345,11 +347,13 @@ pub fn addCompileShaders(b: *std.Build, options: struct {
         const compile_shaders_mod = b.addModule("compile_shaders", .{
             .root_source_file = zb.path("src/compile_shaders.zig"),
             .imports = &.{
-                .{ .name = "zengine", .module = options.module },
+                .{ .name = "ext", .module = ext.createModule() },
             },
             .target = b.graph.host,
             .optimize = options.optimize,
         });
+        compile_shaders_mod.addLibraryPath(b.path("external/build/lib"));
+        compile_shaders_mod.linkSystemLibrary("SDL3", .{});
         compile_shaders_mod.linkSystemLibrary("SDL3_shadercross", .{});
         compile_shaders = b.addExecutable(.{
             .name = "compile-shaders",
@@ -364,6 +368,7 @@ pub fn addCompileShaders(b: *std.Build, options: struct {
     compile_shaders_cmd.addDirectoryArg(options.src orelse zb.path("shaders/src"));
     compile_shaders_cmd.addArg("--output-dir");
     const shaders_output = compile_shaders_cmd.addOutputDirectoryArg("shaders");
+    if (options.options.compile_shaders_verbose) compile_shaders_cmd.addArg("--verbose");
     compile_shaders_cmd.has_side_effects = options.options.compile_shaders;
 
     // 1 because the 0-th element is from the zengine build step and we don't want to invoke it
@@ -475,6 +480,11 @@ pub fn getOptions(b: *std.Build) Options {
             bool,
             "compile-shaders",
             "Force shader compilation",
+        ) orelse false,
+        .compile_shaders_verbose = b.option(
+            bool,
+            "compile-shaders-verbose",
+            "Print verbose output when compiling shaders",
         ) orelse false,
         .ext_cmd = b.option(ExtCommand, "ext-command", "Project to use for external compilation"),
         .ext_cmd_cmake_args = b.option(

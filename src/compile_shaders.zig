@@ -1,22 +1,24 @@
 const std = @import("std");
 const fatal = std.process.fatal;
 
-const zengine = @import("zengine");
-const allocators = zengine.allocators;
-const c = zengine.ext;
-const str = zengine.str;
-const sched = zengine.sched;
+const c = @import("ext");
 const ComputeMetadata = c.SDL_ShaderCross_ComputePipelineMetadata;
 const GraphicsMetadata = c.SDL_ShaderCross_GraphicsShaderMetadata;
 const GraphicsMetadataIOVar = c.SDL_ShaderCross_IOVarMetadata;
-const Zengine = zengine.Zengine;
-const options = zengine.options;
+
+const allocators = @import("zengine/allocators.zig");
+const options = @import("zengine/options.zig");
+const sched = @import("zengine/sched.zig");
+const str = @import("zengine/str.zig");
+const time = @import("zengine/time.zig");
 
 const log = std.log.scoped(.compile_shaders);
-const sections = zengine.perf.sections(@This(), &.{ .init, .read, .compile, .write, .install });
 
 pub const std_options: std.Options = .{
-    .log_level = .info,
+    .log_level = .warn,
+    .log_scope_levels = &.{
+        .{ .scope = .compile_shaders, .level = .info },
+    },
 };
 
 const usage =
@@ -172,12 +174,8 @@ const GraphicsMetadataJSON = struct {
 
 var io: std.Io = undefined;
 pub fn main(init: std.process.Init.Minimal) !void {
-    allocators.init(1_000_000);
+    allocators.init(1 << 30);
     defer allocators.deinit();
-
-    try zengine.perf.init();
-    defer zengine.perf.deinit();
-    try sections.register();
 
     var threaded: std.Io.Threaded = .init_single_threaded;
     defer threaded.deinit();
@@ -227,10 +225,10 @@ pub fn main(init: std.process.Init.Minimal) !void {
     defer output_dir.close(io);
 
     if (arguments.verbose) log.info("starting shader compilation", .{});
-    const start = zengine.time.getNano();
+    const start = time.getNano();
     defer if (arguments.verbose) log.info(
         "shader compilation took {f}",
-        .{std.Io.Duration.fromNanoseconds(zengine.time.getNano() - start)},
+        .{std.Io.Duration.fromNanoseconds(time.getNano() - start)},
     );
 
     var queue: std.ArrayList(FileEntry) = .empty;
@@ -260,7 +258,7 @@ pub fn main(init: std.process.Init.Minimal) !void {
         .len = .remaining,
     }}, .{spawnThread}) = try .create();
     defer thread_pool.deinit();
-    try thread_pool.run(undefined, .{.{
+    try thread_pool.run(.{.{
         .arguments = &arguments,
         .input_dir = input_dir,
         .output_dir = output_dir,
@@ -279,15 +277,13 @@ const WorkerCtx = struct {
 };
 
 fn spawnThread(
-    self: *Zengine,
-    info: *const sched.ThreadInfo,
-    pool_state: *sched.ThreadInfo.GroupSharedState,
     ctx: WorkerCtx,
+    info: *const sched.ThreadInfo,
+    global_state: *sched.ThreadInfo.GroupSharedState,
 ) !bool {
-    _ = self;
-    _ = pool_state;
+    _ = global_state;
     const items = info.slice(ctx.queue);
-    for (items) |item| try processFile(info, ctx, item);
+    for (items) |item| try processFile(ctx, info, item);
     return false;
 }
 
@@ -297,8 +293,8 @@ const ProcessState = struct {
 };
 
 fn processFile(
-    info: *const sched.ThreadInfo,
     ctx: WorkerCtx,
+    info: *const sched.ThreadInfo,
     item: FileEntry,
 ) !void {
     defer _ = ctx.arenas[info.idx].inner.reset(.retain_capacity);
@@ -428,6 +424,7 @@ fn parseArguments(allocator: std.mem.Allocator, init: std.process.Init.Minimal) 
     var output_directory: ?[:0]const u8 = null;
     var install_directory: ?[:0]const u8 = null;
     var include_directory: ?[:0]const u8 = null;
+    var verbose: bool = false;
 
     {
         var n: usize = 1;
@@ -441,6 +438,8 @@ fn parseArguments(allocator: std.mem.Allocator, init: std.process.Init.Minimal) 
                 try stdout.writeAll(usage);
                 try stdout.flush();
                 return null;
+            } else if (str.eql("--verbose", arg)) {
+                verbose = true;
             } else if (str.eql("--input-dir", arg)) {
                 n += 1;
                 if (n >= args.len) fatal("expected argument after '{s}'", .{arg});
@@ -472,6 +471,7 @@ fn parseArguments(allocator: std.mem.Allocator, init: std.process.Init.Minimal) 
         .output_directory = output_directory orelse fatal("missing argument --output-dir", .{}),
         .install_directory = install_directory,
         .include_directory = include_directory,
+        .verbose = verbose,
     };
 }
 
