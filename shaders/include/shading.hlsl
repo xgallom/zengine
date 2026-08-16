@@ -3,11 +3,11 @@
 
 #include <zengine.hlsl>
 
-inline float3 cameraDir(float3 world_pos, float3 camera_pos) {
+static inline float3 cameraDir(float3 world_pos, float3 camera_pos) {
     return normalize(camera_pos - world_pos);
 }
 
-inline float3 cameraRefl(float3 normal, float3 camera_dir) {
+static inline float3 cameraRefl(float3 normal, float3 camera_dir) {
     return reflect(-camera_dir, normal);
 }
 
@@ -16,7 +16,8 @@ struct Highlights {
     float specular_falloff;
 };
 
-Highlights shadingBlinn(float3 normal, float3 light_dir, float3 camera_refl, float specular_exp) {
+static Highlights shadingBlinn(float3 normal, float3 light_dir, float3 camera_refl,
+                               float specular_exp) {
     Highlights output;
 
     const float diffuse_falloff = max(0, dot(light_dir, normal));
@@ -27,7 +28,8 @@ Highlights shadingBlinn(float3 normal, float3 light_dir, float3 camera_refl, flo
     return output;
 }
 
-Highlights shadingBlinnPhong(float3 normal, float3 light_dir, float3 camera_dir, float specular_exp) {
+static Highlights shadingBlinnPhong(float3 normal, float3 light_dir, float3 camera_dir,
+                                    float specular_exp) {
     Highlights output;
 
     const float diffuse_falloff = max(0, dot(light_dir, normal));
@@ -42,11 +44,12 @@ Highlights shadingBlinnPhong(float3 normal, float3 light_dir, float3 camera_dir,
     return output;
 }
 
-float visG1(float nv, float k) {
+static float visG1(float nv, float k) {
     return 1 / (nv * (1 - k) + k);
 }
 
-Highlights shadingGGX(float3 normal, float3 light_dir, float3 camera_dir, float roughness, float fres_0) {
+static Highlights shadingGGX(float3 normal, float3 light_dir, float3 camera_dir, float roughness,
+                             float fres_0) {
     Highlights output;
 
     const float diffuse_falloff = max(0, dot(light_dir, normal));

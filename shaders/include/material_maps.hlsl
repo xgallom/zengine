@@ -18,7 +18,7 @@ SamplerState SamplerDiffuse  : register(s1, space2);
 Texture2D<float4> BumpMap    : register(t2,space2);
 SamplerState SamplerBump     : register(s2, space2);
 
-float3 bumpMap(float3 world_pos, float2 tex_uv, float3 normal) {
+static float3 bumpMap(float3 world_pos, float2 tex_uv, float3 normal) {
     const float3 vn = normal;
     const float3 wp = world_pos;
 
@@ -38,11 +38,11 @@ float3 bumpMap(float3 world_pos, float2 tex_uv, float3 normal) {
     return vn * (1 - bump_amt) + bump_amt * normalize( abs(det) * vn - surf_grad );
 }
 
-float3 normalMap(float2 tex_uv, float3 normal, float3 tangent, float3 binormal) {
+static float3 normalMap(float2 tex_uv, float3 normal, float3 tangent, float3 binormal) {
     const float4 normal_sample = BumpMap.Sample(SamplerBump, tex_uv);
     const float3 normal_offset = normalize(normal_sample.xyz * 2 - 1);
     const float3x3 tan_bin_norm = float3x3(
-        normalize(tangent), 
+        normalize(tangent),
         normalize(binormal),
         normalize(normal)
     );

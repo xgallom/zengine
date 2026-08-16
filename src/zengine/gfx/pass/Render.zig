@@ -6,13 +6,13 @@ const std = @import("std");
 const assert = std.debug.assert;
 
 const math = @import("../../math.zig");
+const ui = @import("../../ui.zig");
 const GPUCommandBuffer = @import("../GPUCommandBuffer.zig");
 const GPUGraphicsPipeline = @import("../GPUGraphicsPipeline.zig");
 const GPUTexture = @import("../GPUTexture.zig");
 const Loader = @import("../Loader.zig");
 const Renderer = @import("../Renderer.zig");
 const Interface = @import("Interface.zig");
-const ui = @import("../../ui.zig");
 
 const log = std.log.scoped(.gfx_pass_bloom);
 

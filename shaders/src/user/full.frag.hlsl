@@ -10,14 +10,14 @@ struct Input {
     float2 uv : TEXCOORD0;
 };
 
-float map(float3 p) {
+static float map(float3 p) {
     // Domain repetition
     p = abs(frac(p) - 0.5);
     // Cylinder + planes SDF
     return abs(min(length(p.xy) - 0.175, min(p.x, p.y) + 1e-3)) + 1e-3;
 }
 
-float3 estimateNormal(float3 p) {
+static float3 estimateNormal(float3 p) {
     float eps = 0.001;
     return normalize(float3(
         map(p + float3(eps, 0.0, 0.0)) - map(p - float3(eps, 0.0, 0.0)),
@@ -62,7 +62,8 @@ float4 main(Input input) : SV_Target0 {
         const float3 n = estimateNormal(pos);
         const float3 reflectDir = reflect(viewDir, n);
 
-        const float3 envColor = lerp( float3(0.8, 0.4, 0.8), float3(1, 1, 1), 0.5 + 0.5 * reflectDir.y );
+        const float3 envColor = lerp( float3(0.8, 0.4, 0.8),
+                                      float3(1, 1, 1), 0.5 + 0.5 * reflectDir.y );
         const float spec = pow(max(dot(reflectDir, lightDir), 0.0), 32.0);
 
         const float4 baseColor = (1.0 + sin(0.5 * q.z + length(p.xyz - q.xyz) + float4(0,4,3,6)))

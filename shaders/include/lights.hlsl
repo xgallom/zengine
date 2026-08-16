@@ -17,7 +17,7 @@
 #define LGH_MIN_DIST_SQR  0.01
 #define LGH_MIN_INTENSITY 0.01
 
-float lightDistanceFalloff(float3 light_ray, float light_pwr) {
+static float lightDistanceFalloff(float3 light_ray, float light_pwr) {
     const float light_dist_sqr = dot(light_ray, light_ray);
     const float light_dist = sqrt(light_dist_sqr);
 
@@ -70,8 +70,8 @@ LightAmbient lightAmbient() {
     return output;
 }
 
-LightDirectional lightDirectional(float3 world_pos, float3 normal, float3 camera_dir, float roughness, 
-                                  float fres_0) {
+static LightDirectional lightDirectional(float3 world_pos, float3 normal, float3 camera_dir,
+                                         float roughness, float fres_0) {
     LightDirectional output;
 
     const float3 light_ray = LightsBuffer.Load(lgh_idx++).xyz;
@@ -88,7 +88,8 @@ LightDirectional lightDirectional(float3 world_pos, float3 normal, float3 camera
     return output;
 }
 
-LightPoint lightPoint(float3 world_pos, float3 normal, float3 camera_dir, float roughness, float fres_0) {
+static LightPoint lightPoint(float3 world_pos, float3 normal, float3 camera_dir, float roughness,
+                             float fres_0) {
     LightPoint output;
 
     const float3 light_pos = LightsBuffer.Load(lgh_idx++).xyz;
@@ -107,8 +108,8 @@ LightPoint lightPoint(float3 world_pos, float3 normal, float3 camera_dir, float 
     return output;
 }
 
-Light processLights(float3 world_pos, float3 normal, float3 camera_dir, float roughness,
-                    float fres_0) {
+static Light processLights(float3 world_pos, float3 normal, float3 camera_dir, float roughness,
+                           float fres_0) {
     Light output;
     float3 ambient_light = float3(0, 0, 0);
     float3 diffuse_light = float3(0, 0, 0);
@@ -120,7 +121,8 @@ Light processLights(float3 world_pos, float3 normal, float3 camera_dir, float ro
     }
 
     for (uint n = 0; n < lgh_cnt_directional; ++n) {
-        const LightDirectional light = lightDirectional(world_pos, normal, camera_dir, roughness, fres_0);
+        const LightDirectional light = lightDirectional(world_pos, normal, camera_dir, roughness,
+                                                        fres_0);
         diffuse_light += light.int_diffuse * light.clr;
         specular_light += light.int_specular * light.clr;
     }

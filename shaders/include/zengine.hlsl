@@ -3,11 +3,11 @@
 
 #define PI 3.1415926538
 
-float random(float2 uv) {
+static float random(float2 uv) {
     return frac(sin(dot(uv, float2(12.9898, 4.1414))) * 43758.5453);
 }
 
-float noise(float2 uv) {
+static float noise(float2 uv) {
     float2 i = floor(uv);
     float2 f = frac(uv);
 
@@ -29,42 +29,42 @@ float noise(float2 uv) {
             (d - b) * u.x * u.y;
 }
 
-float2 cross2(float2 l, float2 r) {
+static inline float2 cross2(float2 l, float2 r) {
     return float2( l.x * r.y, l.y * r.x );
 }
 
-float2 bleed(float2 uv, float mag) {
+static inline float2 bleed(float2 uv, float mag) {
     const float2 c = uv * mag;
     return float2( uv.x + c.y, c.x + uv.y );
 }
 
-float3 bleed(float3 uv, float2 mag) {
+static float3 bleed(float3 uv, float2 mag) {
     const float3 c1 = uv * mag.x;
     const float3 c2 = uv * mag.y;
     return float3( uv.x + c1.y + c2.z, c2.x + uv.y + c1.z, c1.x + c2.y + uv.z );
 }
 
-float avg(float a, float b) {
+static inline float avg(float a, float b) {
     return ( a + b ) / 2;
 }
 
-float2 avg(float2 a, float2 b) {
+static inline float2 avg(float2 a, float2 b) {
     return ( a + b ) / 2;
 }
 
-float3 avg(float3 a, float3 b) {
+static inline float3 avg(float3 a, float3 b) {
     return ( a + b ) / 2;
 }
 
-float4 avg(float4 a, float4 b) {
+static inline float4 avg(float4 a, float4 b) {
     return ( a + b ) / 2;
 }
 
-float2 sum2(float2 uv) {
+static inline float2 sum2(float2 uv) {
     return avg( uv.xx, uv.yy );
 }
 
-float2x2 rot2(float angle) {
+static inline float2x2 rot2(float angle) {
     const float c = cos(angle), s = sin(angle);
     return float2x2(
         c, -s,
@@ -72,7 +72,7 @@ float2x2 rot2(float angle) {
     );
 }
 
-float3x3 rot3(float angle, float3 axis) {
+static float3x3 rot3(float angle, float3 axis) {
     const float3 u = normalize( axis );
     const float c = cos(angle), s = sin(angle);
     const float3x3 proj = float3x3(
@@ -88,39 +88,39 @@ float3x3 rot3(float angle, float3 axis) {
     return proj * (1 - c) + rest;
 }
 
-float3 saturateBlue(float2 uv) {
+static inline float3 saturateBlue(float2 uv) {
     return saturate( float3( uv, ( uv.x + uv.y - 1 ) / 4 ) );
 }
 
-float2 repeat(float2 uv, float times) {
+static inline float2 repeat(float2 uv, float times) {
     return frac(uv * times);
 }
 
-float2 repeatIndex(float2 uv, float times) {
+static inline float2 repeatIndex(float2 uv, float times) {
     return floor(uv * times);
 }
 
-float linearIndex(float2 idx, float times, int offset) {
+static inline float linearIndex(float2 idx, float times, int offset) {
     return idx.x + idx.y * times + offset;
 }
 
-float2 normalizeUV(float2 uv) {
+static inline float2 normalizeUV(float2 uv) {
     return (uv - 0.5) * 2;
 }
 
-float2 normalizeMousePos(float2 mouse_pos) {
+static inline float2 normalizeMousePos(float2 mouse_pos) {
     return float2(2, 2) * (mouse_pos - 0.5);
 }
 
-float2 aspectRatio(float wh_ratio) {
+static inline float2 aspectRatio(float wh_ratio) {
      return float2(wh_ratio, 1);
 }
 
-float2 texelSize(float w, float h) {
+static inline float2 texelSize(float w, float h) {
     return float2(1 / w, 1 / h);
 }
 
-float2 mixOscillate(float2 a, float2 b, float t) {
+static inline float2 mixOscillate(float2 a, float2 b, float t) {
     const float c = cos(t), s = sin(t);
     return c * c * a + s * s * b;
 }
