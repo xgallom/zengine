@@ -43,6 +43,17 @@ pub fn build(b: *std.Build) !void {
         .optimize = optimize,
     });
 
+    const ext = b.addTranslateC(.{
+        .root_source_file = b.path("src/zengine/ext.h"),
+        .optimize = optimize,
+        .target = target,
+        .link_libc = true,
+    });
+    ext.addSystemIncludePath(b.path("external/build/include"));
+    ext.addSystemIncludePath(b.path("external/cimgui/imgui"));
+    ext.addSystemIncludePath(b.path("external/cimgui"));
+    ext.addSystemIncludePath(b.path("external/cimplot"));
+
     const zengine = b.addModule("zengine", .{
         .root_source_file = b.path("src/zengine/zengine.zig"),
         .target = target,
@@ -50,13 +61,12 @@ pub fn build(b: *std.Build) !void {
         .link_libc = true,
         .link_libcpp = true,
         .pic = true,
+        .imports = &.{
+            .{ .name = "ext", .module = ext.createModule() },
+        },
     });
 
     zengine.addLibraryPath(b.path("external/build/lib"));
-    zengine.addIncludePath(b.path("external/build/include"));
-    zengine.addIncludePath(b.path("external/cimgui/imgui"));
-    zengine.addIncludePath(b.path("external/cimgui"));
-    zengine.addIncludePath(b.path("external/cimplot"));
     zengine.linkSystemLibrary("SDL3", .{});
     zengine.linkSystemLibrary("SDL3_image", .{});
     zengine.linkSystemLibrary("SDL3_mixer", .{});
@@ -69,6 +79,8 @@ pub fn build(b: *std.Build) !void {
         .root_module = zengine,
         .linkage = .dynamic,
     });
+
+    lib.step.dependOn(&ext.step);
 
     // TODO: when -femit-h gets fixed
     // const install_header = b.addInstallHeaderFile(lib.getEmittedH(), "zengine.h");
@@ -94,6 +106,8 @@ pub fn build(b: *std.Build) !void {
         .root_module = exe_mod,
     });
 
+    exe.step.dependOn(&ext.step);
+
     const install_libs = try addInstallLibs(b, .{
         .module = zengine,
         .options = options,
@@ -103,6 +117,7 @@ pub fn build(b: *std.Build) !void {
 
     lib.step.dependOn(install_libs);
     lib.each_lib_rpath = false;
+
     exe.step.dependOn(install_libs);
     exe.each_lib_rpath = false;
 
