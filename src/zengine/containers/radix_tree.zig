@@ -5,7 +5,8 @@
 const std = @import("std");
 const assert = std.debug.assert;
 
-const str = @import("../str.zig");
+const zcore = @import("zcore");
+const str = zcore.str;
 
 const log = std.log.scoped(.radix_tree);
 

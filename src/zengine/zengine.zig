@@ -5,13 +5,19 @@
 const std = @import("std");
 const assert = std.debug.assert;
 
-pub const ext = @import("ext");
+const zcore = @import("zcore");
+pub const allocators = zcore.allocators;
+pub const ext = zcore.ext;
+pub const ChunkAllocator = zcore.ChunkAllocator;
+pub const LogAllocator = zcore.LogAllocator;
+pub const sched = zcore.sched;
+pub const sdl_allocator = zcore.sdl_allocator;
+pub const str = zcore.str;
+pub const time = zcore.time;
 const c = ext;
 
-pub const allocators = @import("allocators.zig");
 pub const anim = @import("anim.zig");
 pub const audio = @import("audio.zig");
-pub const ChunkAllocator = @import("ChunkAllocator.zig");
 pub const containers = @import("containers.zig");
 pub const controls = @import("controls.zig");
 pub const ecs = @import("ecs.zig");
@@ -24,10 +30,6 @@ pub const math = @import("math.zig");
 pub const Options = @import("options.zig").Options;
 pub const options = @import("options.zig").options;
 pub const perf = @import("perf.zig");
-pub const sched = @import("sched.zig");
-pub const sdl_allocator = @import("sdl_allocator.zig");
-pub const str = @import("str.zig");
-pub const time = @import("time.zig");
 pub const TypeId = @import("type_id.zig").TypeId;
 pub const typeId = @import("type_id.zig").typeId;
 pub const ui = @import("ui.zig");

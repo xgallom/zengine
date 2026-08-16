@@ -5,13 +5,14 @@
 const std = @import("std");
 const assert = std.debug.assert;
 
-const c = @import("ext");
+const zcore = @import("zcore");
+const allocators = zcore.allocators;
+const c = zcore.ext;
+const str = zcore.str;
 
-const allocators = @import("allocators.zig");
 const AutoArrayPoolMap = @import("containers.zig").AutoArrayPoolMap;
 const Map = @import("containers.zig").Map;
 const math = @import("math.zig");
-const str = @import("str.zig");
 
 const log = std.log.scoped(.properties);
 

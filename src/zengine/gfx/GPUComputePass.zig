@@ -5,8 +5,10 @@
 const std = @import("std");
 const assert = std.debug.assert;
 
-const allocators = @import("../allocators.zig");
-const c = @import("ext");
+const zcore = @import("zcore");
+const allocators = zcore.allocators;
+const c = zcore.ext;
+
 const global = @import("../global.zig");
 const math = @import("../math.zig");
 const sdl = @import("../sdl.zig");

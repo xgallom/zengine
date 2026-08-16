@@ -10,7 +10,7 @@ const c = @import("ext");
 
 const ChunkAllocator = @import("ChunkAllocator.zig");
 const log_allocator = @import("log_allocator.zig");
-const options = @import("zengine.zig").options;
+const options = @import("options.zig").options;
 const sdl_allocator = @import("sdl_allocator.zig");
 
 const log = std.log.scoped(.alloc);

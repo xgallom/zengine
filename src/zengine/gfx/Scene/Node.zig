@@ -5,11 +5,14 @@
 const std = @import("std");
 const assert = std.debug.assert;
 
-const allocators = @import("../../allocators.zig");
+const zcore = @import("zcore");
+const allocators = zcore.allocators;
+
+const ecs = @import("../../ecs.zig");
+pub const Id = ecs.Id;
 const global = @import("../../global.zig");
 const math = @import("../../math.zig");
 const ui = @import("../../ui.zig");
-const ecs = @import("../../ecs.zig");
 const Transform = @import("Transform.zig");
 
 const log = std.log.scoped(.gfx_scene_node);
@@ -24,8 +27,6 @@ matrix: math.Matrix4x4 = math.matrix4x4.identity,
 const Self = @This();
 
 pub const excluded_properties: ui.property_editor.PropertyList = &.{.matrix};
-
-pub const Id = ecs.Id;
 
 pub const Type = enum {
     empty,

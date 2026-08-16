@@ -1,13 +1,13 @@
 const std = @import("std");
 const assert = std.debug.assert;
 
-const c = @import("ext");
+const zcore = @import("zcore");
+const allocators = zcore.allocators;
+const c = zcore.ext;
+const str = zcore.str;
+const time = zcore.time;
 
-pub const allocators = @import("allocators.zig");
-const math = @import("math.zig");
 const options = @import("options.zig").options;
-const str = @import("str.zig");
-const time = @import("time.zig");
 
 const spaces_buf_len = 1 << 10;
 
@@ -42,8 +42,8 @@ const Self = struct {
             &.{ resources_path, "assets" },
         );
         const c_prefs_path = c.SDL_GetPrefPath(
-            options.org_identifier.ptr,
-            options.app_identifier.ptr,
+            options.core.org_identifier.ptr,
+            options.core.app_identifier.ptr,
         );
         defer allocators.sdl().free(c_prefs_path);
         const prefs_path = try allocators.global().dupeZ(
@@ -81,7 +81,7 @@ const Self = struct {
     }
 };
 
-// TODO: Replace with bindable pointer for cross-
+// TODO: Replace with bindable pointer for dynamic executable integration?
 var is_init = false;
 var global_state: Self = undefined;
 
@@ -251,12 +251,4 @@ pub inline fn spaces(count: usize) []const u8 {
     assert(is_init);
     assert(count <= spaces_buf_len);
     return global_state.spaces_buf[0..count];
-}
-
-pub inline fn up() math.Vector3 {
-    return .{ 0, 1, 0 };
-}
-
-pub inline fn cameraUp() math.Vector3 {
-    return .{ 0, 1, 0 };
 }

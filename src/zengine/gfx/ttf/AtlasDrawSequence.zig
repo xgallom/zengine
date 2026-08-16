@@ -5,14 +5,16 @@
 const std = @import("std");
 const assert = std.debug.assert;
 
-const c = @import("ext");
+const zcore = @import("zcore");
+const c = zcore.ext;
+
 const global = @import("../../global.zig");
 const math = @import("../../math.zig");
 const ui = @import("../../ui.zig");
 const Error = @import("../error.zig").Error;
+const GPUTexture = @import("../GPUTexture.zig");
 const types = @import("../types.zig");
 const Text = @import("Text.zig");
-const GPUTexture = @import("../GPUTexture.zig");
 
 const log = std.log.scoped(.gfx_ttf_atlas_draw_sequence);
 

@@ -5,15 +5,17 @@
 const std = @import("std");
 const assert = std.debug.assert;
 
-const allocators = @import("../allocators.zig");
+const zcore = @import("zcore");
+const allocators = zcore.allocators;
+const c = zcore.ext;
+const str = zcore.str;
+
 const ArrayMap = @import("../containers.zig").ArrayMap;
 const ArrayPoolMap = @import("../containers.zig").ArrayPoolMap;
 const ecs = @import("../ecs.zig");
-const c = @import("ext");
 const global = @import("../global.zig");
 const math = @import("../math.zig");
 const perf = @import("../perf.zig");
-const str = @import("../str.zig");
 const ui_mod = @import("../ui.zig");
 const cube_loader = @import("cube_loader.zig");
 const Error = @import("error.zig").Error;

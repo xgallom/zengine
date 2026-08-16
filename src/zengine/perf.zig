@@ -5,12 +5,14 @@
 const std = @import("std");
 const assert = std.debug.assert;
 
-const allocators = @import("allocators.zig");
+const zcore = @import("zcore");
+const allocators = zcore.allocators;
+const time = zcore.time;
+
 const containers = @import("containers.zig");
 const global = @import("global.zig");
 const math = @import("math.zig");
 const SwapWrapper = @import("containers.zig").SwapWrapper;
-const time = @import("time.zig");
 
 const log = std.log.scoped(.perf);
 pub const perf_sections = sections(@This(), &.{.updateStats});

@@ -5,8 +5,10 @@
 const std = @import("std");
 const assert = std.debug.assert;
 
+const zcore = @import("zcore");
+const sched = zcore.sched;
+
 const math = @import("../math.zig");
-const sched = @import("../sched.zig");
 
 const log = std.log.scoped(.swapper);
 

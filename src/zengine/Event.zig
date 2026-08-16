@@ -4,7 +4,8 @@
 
 const std = @import("std");
 
-const c = @import("ext");
+const zcore = @import("zcore");
+const c = zcore.ext;
 
 const Engine = @import("Engine.zig");
 

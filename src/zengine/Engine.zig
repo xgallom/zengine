@@ -5,9 +5,10 @@
 const std = @import("std");
 const assert = std.debug.assert;
 
-const c = @import("ext");
+const zcore = @import("zcore");
+const c = zcore.ext;
+const allocators = zcore.allocators;
 
-const allocators = @import("allocators.zig");
 const ArrayMap = @import("containers.zig").ArrayMap;
 const Error = @import("error.zig").Error;
 const gfx = @import("gfx.zig");

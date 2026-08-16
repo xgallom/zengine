@@ -5,12 +5,13 @@
 const std = @import("std");
 const assert = std.debug.assert;
 
-const c = @import("ext");
+const zcore = @import("zcore");
+const allocators = zcore.allocators;
+const c = zcore.ext;
+const sched = zcore.sched;
 
-const allocators = @import("../allocators.zig");
 const containers = @import("../containers.zig");
 const global = @import("../global.zig");
-const sched = @import("../sched.zig");
 const UI = @import("UI.zig");
 
 allocator: std.mem.Allocator = undefined,

@@ -141,6 +141,9 @@ pub const quad_face_index = vector4T(Index);
 
 pub const invalid_index = std.math.maxInt(Index);
 
+pub const up: Vector3 = .{ 0, 1, 0 };
+pub const camera_up: Vector3 = .{ 0, 1, 0 };
+
 pub fn percent(x: anytype) @TypeOf(x) {
     return x * 100;
 }

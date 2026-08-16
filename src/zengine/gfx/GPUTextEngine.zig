@@ -5,13 +5,15 @@
 const std = @import("std");
 const assert = std.debug.assert;
 
-const c = @import("ext");
+const zcore = @import("zcore");
+const c = zcore.ext;
+
 const global = @import("../global.zig");
 const math = @import("../math.zig");
 const ui = @import("../ui.zig");
-const ttf = @import("ttf.zig");
 const Error = @import("error.zig").Error;
 const GPUDevice = @import("GPUDevice.zig");
+const ttf = @import("ttf.zig");
 const types = @import("types.zig");
 
 const log = std.log.scoped(.gfx_gpu_text_engine);

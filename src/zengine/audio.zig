@@ -1,8 +1,9 @@
 const std = @import("std");
 
-const c = @import("ext");
+const zcore = @import("zcore");
+const c = zcore.ext;
+const allocators = zcore.allocators;
 
-const allocators = @import("allocators.zig");
 pub const Audio = @import("audio/Audio.zig");
 pub const Error = @import("audio/error.zig").Error;
 pub const loader = @import("audio/loader.zig");

@@ -29,7 +29,6 @@ const ext_optimize = std.EnumArray(std.builtin.OptimizeMode, []const u8).init(.{
     .ReleaseSmall = "MinSizeRel",
 });
 
-var ext: *std.Build.Step.TranslateC = undefined;
 var compile_shaders: ?*std.Build.Step.Compile = null;
 var compile_shaders_cmds: std.ArrayList(*std.Build.Step.Run) = .empty;
 
@@ -45,19 +44,20 @@ pub fn build(b: *std.Build) !void {
         .optimize = optimize,
     });
 
-    ext = b.addTranslateC(.{
-        .root_source_file = b.path("src/zengine/ext.h"),
+    const ext = b.addTranslateC(.{
+        .root_source_file = b.path("src/ext/ext.h"),
         .optimize = optimize,
         .target = target,
         .link_libc = true,
     });
+
     ext.addSystemIncludePath(b.path("external/build/include"));
     ext.addSystemIncludePath(b.path("external/cimgui/imgui"));
     ext.addSystemIncludePath(b.path("external/cimgui"));
     ext.addSystemIncludePath(b.path("external/cimplot"));
 
-    const zengine = b.addModule("zengine", .{
-        .root_source_file = b.path("src/zengine/zengine.zig"),
+    const zcore = b.addModule("zcore", .{
+        .root_source_file = b.path("src/zcore/zcore.zig"),
         .target = target,
         .optimize = optimize,
         .link_libc = true,
@@ -68,8 +68,21 @@ pub fn build(b: *std.Build) !void {
         },
     });
 
+    zcore.linkSystemLibrary("SDL3", .{});
+
+    const zengine = b.addModule("zengine", .{
+        .root_source_file = b.path("src/zengine/zengine.zig"),
+        .target = target,
+        .optimize = optimize,
+        .link_libc = true,
+        .link_libcpp = true,
+        .pic = true,
+        .imports = &.{
+            .{ .name = "zcore", .module = zcore },
+        },
+    });
+
     zengine.addLibraryPath(b.path("external/build/lib"));
-    zengine.linkSystemLibrary("SDL3", .{});
     zengine.linkSystemLibrary("SDL3_image", .{});
     zengine.linkSystemLibrary("SDL3_mixer", .{});
     zengine.linkSystemLibrary("SDL3_ttf", .{});
@@ -347,7 +360,7 @@ pub fn addCompileShaders(b: *std.Build, options: struct {
         const compile_shaders_mod = b.addModule("compile_shaders", .{
             .root_source_file = zb.path("src/compile_shaders.zig"),
             .imports = &.{
-                .{ .name = "ext", .module = ext.createModule() },
+                .{ .name = "zcore", .module = resolveModule(zb, "zcore") },
             },
             .target = b.graph.host,
             .optimize = options.optimize,
@@ -503,6 +516,10 @@ pub fn getOptions(b: *std.Build) Options {
             "Arguments for external installation",
         ) orelse "",
     };
+}
+
+fn resolveModule(b: *std.Build, comptime name: []const u8) *std.Build.Module {
+    return b.modules.get(name) orelse @panic("Missing " ++ name ++ " from zb");
 }
 
 const lib_paths_macos = blk: {

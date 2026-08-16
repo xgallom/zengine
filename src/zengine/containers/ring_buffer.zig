@@ -7,7 +7,6 @@ const Allocator = std.mem.Allocator;
 const assert = std.debug.assert;
 
 const math = @import("../math.zig");
-const sched = @import("../sched.zig");
 
 const log = std.log.scoped(.containers_thread_safe);
 

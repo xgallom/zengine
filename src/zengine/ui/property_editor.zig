@@ -6,9 +6,10 @@ const std = @import("std");
 const assert = std.debug.assert;
 const StdType = std.builtin.Type;
 
-const c = @import("ext");
+const zcore = @import("zcore");
+const allocators = zcore.allocators;
+const c = zcore.ext;
 
-const allocators = @import("../allocators.zig");
 const Engine = @import("../Engine.zig");
 const util = @import("../util.zig");
 const cache = @import("cache.zig");

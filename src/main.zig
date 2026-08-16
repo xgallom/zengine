@@ -56,8 +56,10 @@ pub const std_options: std.Options = .{
 };
 
 pub const zengine_options: zengine.Options = .{
+    .core = .{
+        .log_allocations = false,
+    },
     .has_debug_ui = true,
-    .log_allocations = false,
     .gfx = .{
         .enable_normal_smoothing = true,
         .normal_smoothing_angle_limit = 90.1,
@@ -749,7 +751,7 @@ fn updateCameraControls(
     const scale_speed = 15 * delta;
 
     camera.up = switch (comptime controls_type) {
-        .y_up => global.cameraUp(),
+        .y_up => math.camera_up,
         .y_dynamic => coords.y,
     };
 

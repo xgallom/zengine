@@ -6,7 +6,8 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 const assert = std.debug.assert;
 
-const sched = @import("../sched.zig");
+const zcore = @import("zcore");
+const sched = zcore.sched;
 
 const log = std.log.scoped(.containers_thread_safe);
 

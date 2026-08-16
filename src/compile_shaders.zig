@@ -1,16 +1,15 @@
 const std = @import("std");
 const fatal = std.process.fatal;
 
-const c = @import("ext");
+const zcore = @import("zcore");
+const allocators = zcore.allocators;
+const sched = zcore.sched;
+const str = zcore.str;
+const time = zcore.time;
+const c = zcore.ext;
 const ComputeMetadata = c.SDL_ShaderCross_ComputePipelineMetadata;
 const GraphicsMetadata = c.SDL_ShaderCross_GraphicsShaderMetadata;
 const GraphicsMetadataIOVar = c.SDL_ShaderCross_IOVarMetadata;
-
-const allocators = @import("zengine/allocators.zig");
-const options = @import("zengine/options.zig");
-const sched = @import("zengine/sched.zig");
-const str = @import("zengine/str.zig");
-const time = @import("zengine/time.zig");
 
 const log = std.log.scoped(.compile_shaders);
 

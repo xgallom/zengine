@@ -5,8 +5,10 @@
 const std = @import("std");
 const assert = std.debug.assert;
 
-const allocators = @import("../allocators.zig");
-const c = @import("ext");
+const zcore = @import("zcore");
+const allocators = zcore.allocators;
+const c = zcore.ext;
+
 const global = @import("../global.zig");
 const math = @import("../math.zig");
 const gfx_options = @import("../options.zig").gfx_options;
@@ -15,10 +17,10 @@ const ui_mod = @import("../ui.zig");
 const Camera = @import("Camera.zig");
 const Error = @import("error.zig").Error;
 const GPUFence = @import("GPUFence.zig");
+const GPUTexture = @import("GPUTexture.zig");
 const mesh = @import("mesh.zig");
 const pass = @import("pass.zig");
 const Renderer = @import("Renderer.zig");
-const GPUTexture = @import("GPUTexture.zig");
 const sections = Renderer.sections;
 const Scene = @import("Scene.zig");
 const ttf = @import("ttf.zig");

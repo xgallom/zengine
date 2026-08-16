@@ -5,11 +5,13 @@
 const std = @import("std");
 const assert = std.debug.assert;
 
-const allocators = @import("../allocators.zig");
+const zcore = @import("zcore");
+const allocators = zcore.allocators;
+const str = zcore.str;
+
 const global = @import("../global.zig");
 const math = @import("../math.zig");
 const gfx_options = @import("../options.zig").gfx_options;
-const str = @import("../str.zig");
 const CPUBuffer = @import("CPUBuffer.zig");
 const mesh = @import("mesh.zig");
 

@@ -5,7 +5,6 @@
 const std = @import("std");
 const assert = std.debug.assert;
 
-const global = @import("../global.zig");
 const math = @import("../math.zig");
 const ui = @import("../ui.zig");
 
@@ -14,7 +13,7 @@ const log = std.log.scoped(.gfx_camera);
 name: [:0]const u8 = "",
 position: math.Vector3 = math.vector3.zero,
 direction: math.Vector3 = .{ 1, 0, 0 },
-up: math.Vector3 = global.cameraUp(),
+up: math.Vector3 = math.camera_up,
 fov: f32 = 50,
 orto_scale: f32 = 100,
 type: Type = .perspective,

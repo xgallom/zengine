@@ -5,9 +5,10 @@
 const std = @import("std");
 const assert = std.debug.assert;
 
-const c = @import("ext");
+const zcore = @import("zcore");
+const c = zcore.ext;
+const allocators = zcore.allocators;
 
-const allocators = @import("allocators.zig");
 const global = @import("global.zig");
 
 const log = std.log.scoped(.gfx_shader);

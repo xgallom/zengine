@@ -1,24 +1,25 @@
 //!
-//! The zengine global options
+//! The zcore global options
 //!
 
 const std = @import("std");
 const builtin = @import("builtin");
 const root = @import("root");
 
+const zcore = @import("zcore");
+pub const zcore_options: zcore.Options = zcore.options;
+
 const math = @import("math.zig");
 
 pub const Options = struct {
-    org_identifier: [:0]const u8 = "xgallom",
-    app_identifier: [:0]const u8 = "zengine",
+    core: Zcore = .{},
     has_renderer: bool = true,
     has_scene: bool = true,
     has_ui: bool = true,
     has_debug_ui: bool = std.debug.runtime_safety,
-    log_allocations: bool = std.debug.runtime_safety,
-    max_threads: usize = 8,
     gfx: Gfx = .{},
 
+    pub const Zcore = zcore.Options;
     pub const Gfx = struct {
         default_material: [:0]const u8 = if (std.debug.runtime_safety) "testing" else "default",
         enable_normal_smoothing: bool = false,

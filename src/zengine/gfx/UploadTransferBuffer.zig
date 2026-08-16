@@ -5,15 +5,17 @@
 const std = @import("std");
 const assert = std.debug.assert;
 
-const c = @import("ext");
+const zcore = @import("zcore");
+const c = zcore.ext;
+
 const math = @import("../math.zig");
 const Error = @import("error.zig").Error;
 const GPUCopyPass = @import("GPUCopyPass.zig");
 const GPUDevice = @import("GPUDevice.zig");
 const GPUTransferBuffer = @import("GPUTransferBuffer.zig");
+const LookUpTable = @import("LookUpTable.zig");
 const mesh = @import("mesh.zig");
 const SurfaceTexture = @import("SurfaceTexture.zig");
-const LookUpTable = @import("LookUpTable.zig");
 
 const log = std.log.scoped(.gfx_upload_transfer_buffer);
 

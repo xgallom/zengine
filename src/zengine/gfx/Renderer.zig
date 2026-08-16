@@ -5,11 +5,13 @@
 const std = @import("std");
 const assert = std.debug.assert;
 
-const allocators = @import("../allocators.zig");
+const zcore = @import("zcore");
+const allocators = zcore.allocators;
+const c = zcore.ext;
+
 const ArrayPoolMap = @import("../containers.zig").ArrayPoolMap;
 const ArrayMap = @import("../containers.zig").ArrayMap;
 const Engine = @import("../Engine.zig");
-const c = @import("ext");
 const global = @import("../global.zig");
 const math = @import("../math.zig");
 const gfx_options = @import("../options.zig").gfx_options;
@@ -28,10 +30,10 @@ const GPUTexture = @import("GPUTexture.zig");
 const Light = @import("Light.zig");
 const MaterialInfo = @import("MaterialInfo.zig");
 const mesh = @import("mesh.zig");
+const pass = @import("pass.zig");
 const shader_loader = @import("shader_loader.zig");
 const ttf = @import("ttf.zig");
 const types = @import("types.zig");
-const pass = @import("pass.zig");
 
 const log = std.log.scoped(.gfx_renderer);
 pub const sections = perf.sections(@This(), &.{ .init, .render });

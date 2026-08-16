@@ -5,7 +5,9 @@
 const std = @import("std");
 const assert = std.debug.assert;
 
-const c = @import("ext");
+const zcore = @import("zcore");
+const c = zcore.ext;
+
 const math = @import("../../math.zig");
 const ui = @import("../../ui.zig");
 const CPUBuffer = @import("../CPUBuffer.zig");
