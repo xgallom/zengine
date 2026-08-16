@@ -7,7 +7,7 @@ const assert = std.debug.assert;
 
 const allocators = @import("../allocators.zig");
 const Engine = @import("../Engine.zig");
-const c = @import("../ext.zig").c;
+const c = @import("ext");
 const gfx = @import("../gfx.zig");
 const global = @import("../global.zig");
 const math = @import("../math.zig");

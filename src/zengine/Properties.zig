@@ -8,7 +8,7 @@ const assert = std.debug.assert;
 const allocators = @import("allocators.zig");
 const Map = @import("containers.zig").Map;
 const AutoArrayPoolMap = @import("containers.zig").AutoArrayPoolMap;
-const c = @import("ext.zig").c;
+const c = @import("ext");
 const math = @import("math.zig");
 const str = @import("str.zig");
 

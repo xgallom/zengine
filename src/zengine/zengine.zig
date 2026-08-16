@@ -7,7 +7,7 @@ const log = std.log.scoped(.zengine);
 const assert = std.debug.assert;
 
 pub const allocators = @import("allocators.zig");
-pub const c = @import("ext.zig").c;
+pub const ext = @import("ext");
 pub const anim = @import("anim.zig");
 pub const audio = @import("audio.zig");
 pub const ChunkAllocator = @import("ChunkAllocator.zig");
@@ -16,7 +16,6 @@ pub const controls = @import("controls.zig");
 pub const ecs = @import("ecs.zig");
 pub const Engine = @import("Engine.zig");
 pub const Event = @import("Event.zig");
-pub const ext = @import("ext.zig");
 pub const fs = @import("fs.zig");
 pub const gfx = @import("gfx.zig");
 pub const global = @import("global.zig");
@@ -34,6 +33,7 @@ pub const ui = @import("ui.zig");
 pub const Window = @import("Window.zig");
 
 var global_self: ?*Zengine = null;
+const c = ext;
 
 pub const Zengine = struct {
     engine: *Engine,

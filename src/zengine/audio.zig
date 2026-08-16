@@ -1,7 +1,7 @@
 const std = @import("std");
 
 const allocators = @import("allocators.zig");
-const c = @import("ext.zig").c;
+const c = @import("ext");
 const ArrayMap = @import("containers/key_map.zig").ArrayMap;
 
 pub const Audio = @import("audio/Audio.zig");

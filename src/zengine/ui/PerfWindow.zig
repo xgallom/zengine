@@ -7,7 +7,7 @@ const assert = std.debug.assert;
 const Allocator = std.mem.Allocator;
 
 const allocators = @import("../allocators.zig");
-const c = @import("../ext.zig").c;
+const c = @import("ext");
 const str = @import("../str.zig");
 const global = @import("../global.zig");
 const perf = @import("../perf.zig");

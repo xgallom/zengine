@@ -2,7 +2,7 @@ const std = @import("std");
 const assert = std.debug.assert;
 
 pub const allocators = @import("allocators.zig");
-const c = @import("ext.zig").c;
+const c = @import("ext");
 const options = @import("options.zig").options;
 const str = @import("str.zig");
 const math = @import("math.zig");

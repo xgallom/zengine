@@ -3,7 +3,7 @@ const fatal = std.process.fatal;
 
 const zengine = @import("zengine");
 const allocators = zengine.allocators;
-const c = zengine.ext.c;
+const c = zengine.ext;
 const str = zengine.str;
 const sched = zengine.sched;
 const ComputeMetadata = c.SDL_ShaderCross_ComputePipelineMetadata;

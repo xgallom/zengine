@@ -6,7 +6,7 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 const Alignment = std.mem.Alignment;
 
-const c = @import("ext.zig").c;
+const c = @import("ext");
 
 const Self = @This();
 

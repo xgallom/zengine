@@ -9,7 +9,7 @@ const assert = std.debug.assert;
 const Allocator = std.mem.Allocator;
 const Alignment = std.mem.Alignment;
 
-const c = @import("ext.zig").c;
+const c = @import("ext");
 
 const log = std.log.scoped(.chunk_allocator);
 

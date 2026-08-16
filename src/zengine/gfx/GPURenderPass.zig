@@ -6,7 +6,7 @@ const std = @import("std");
 const assert = std.debug.assert;
 
 const allocators = @import("../allocators.zig");
-const c = @import("../ext.zig").c;
+const c = @import("ext");
 const global = @import("../global.zig");
 const math = @import("../math.zig");
 const sdl = @import("../sdl.zig");

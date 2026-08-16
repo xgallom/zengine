@@ -6,7 +6,7 @@ const std = @import("std");
 const assert = std.debug.assert;
 
 const allocators = @import("../allocators.zig");
-const c = @import("../ext.zig").c;
+const c = @import("ext");
 const GraphicsMetadata = c.SDL_ShaderCross_GraphicsShaderMetadata;
 const GraphicsMetadataIOVar = c.SDL_ShaderCross_IOVarMetadata;
 const fs = @import("../fs.zig");

@@ -5,7 +5,7 @@
 const std = @import("std");
 const assert = std.debug.assert;
 
-const c = @import("ext.zig").c;
+const c = @import("ext");
 
 pub inline fn getNow() u64 {
     return c.SDL_GetTicks();

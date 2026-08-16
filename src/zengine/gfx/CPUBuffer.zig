@@ -6,7 +6,7 @@ const std = @import("std");
 const assert = std.debug.assert;
 
 const Tree = @import("../containers.zig").Tree;
-const c = @import("../ext.zig").c;
+const c = @import("ext");
 const math = @import("../math.zig");
 
 const log = std.log.scoped(.gfx_cpu_buffer);

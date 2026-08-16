@@ -4,7 +4,7 @@
 
 const std = @import("std");
 
-const c = @import("ext.zig").c;
+const c = @import("ext");
 const Engine = @import("Engine.zig");
 
 type: Type = .invalid,
