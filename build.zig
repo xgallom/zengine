@@ -61,7 +61,6 @@ pub fn build(b: *std.Build) !void {
     zengine.linkSystemLibrary("SDL3_image", .{});
     zengine.linkSystemLibrary("SDL3_mixer", .{});
     zengine.linkSystemLibrary("SDL3_ttf", .{});
-    zengine.linkSystemLibrary("SDL3_shadercross", .{});
     zengine.linkSystemLibrary("cimgui", .{});
     zengine.linkSystemLibrary("cimplot", .{});
 
@@ -261,7 +260,7 @@ pub fn addInstallLibs(b: *std.Build, options: struct {
 }) !*std.Build.Step {
     const zb = options.b orelse b;
 
-    var path: []const u8 = undefined;
+    var lib_paths: []const [:0]const u8 = undefined;
     switch (options.target.result.os.tag) {
         .windows => {
             // TODO: Ensure share gets installed on Windows
@@ -277,24 +276,21 @@ pub fn addInstallLibs(b: *std.Build, options: struct {
         .macos => {
             options.module.addRPathSpecial("@executable_path/../lib");
             options.module.addRPathSpecial("@executable_path/../Frameworks");
-            path = zb.pathFromRoot("external/build/lib/*.dylib");
+            lib_paths = lib_paths_macos;
         },
         .linux => {
             options.module.addRPathSpecial("$ORIGIN/../lib");
-            path = zb.pathFromRoot("external/build/lib/*.so");
+            lib_paths = lib_paths_linux;
         },
         else => @panic("Unsupported OS"),
     }
     const install_lib_dir = b.getInstallPath(.lib, "");
     const mkdir = b.addSystemCommand(&.{ "mkdir", "-p", install_lib_dir });
-    const cp = b.addSystemCommand(&.{
-        "sh",
-        "-c",
-        b.fmt("cp -P -R {s} {s}", .{
-            path,
-            install_lib_dir,
-        }),
-    });
+    var cp_vargs: std.ArrayList([]const u8) = .empty;
+    try cp_vargs.appendSlice(b.allocator, &.{ "cp", "-P" });
+    for (lib_paths) |path| try cp_vargs.append(b.allocator, zb.pathFromRoot(path));
+    try cp_vargs.append(b.allocator, install_lib_dir);
+    const cp = b.addSystemCommand(cp_vargs.items);
     if (options.build_ext) |build_ext| cp.step.dependOn(&build_ext.step);
     cp.step.dependOn(&mkdir.step);
     const xattr = b.addSystemCommand(&.{ "xattr", "-rc", install_lib_dir });
@@ -331,16 +327,18 @@ pub fn addCompileShaders(b: *std.Build, options: struct {
 }) !*std.Build.Step.InstallDir {
     const zb = options.b orelse b;
     if (compile_shaders == null) {
+        const compile_shaders_mod = b.addModule("compile_shaders", .{
+            .root_source_file = zb.path("src/compile_shaders.zig"),
+            .imports = &.{
+                .{ .name = "zengine", .module = options.module },
+            },
+            .target = b.graph.host,
+            .optimize = options.optimize,
+        });
+        compile_shaders_mod.linkSystemLibrary("SDL3_shadercross", .{});
         compile_shaders = b.addExecutable(.{
             .name = "compile-shaders",
-            .root_module = b.addModule("compile_shaders", .{
-                .root_source_file = zb.path("src/compile_shaders.zig"),
-                .imports = &.{
-                    .{ .name = "zengine", .module = options.module },
-                },
-                .target = b.graph.host,
-                .optimize = options.optimize,
-            }),
+            .root_module = compile_shaders_mod,
         });
     }
 
@@ -481,3 +479,85 @@ pub fn getOptions(b: *std.Build) Options {
         ) orelse "",
     };
 }
+
+const lib_paths_macos = blk: {
+    var result: []const [:0]const u8 = &.{};
+    for (lib_files) |filename| result = result ++ &[_][:0]const u8{
+        "external/build/lib/" ++ filename ++ ".dylib",
+    };
+    break :blk result;
+};
+
+const lib_paths_linux = blk: {
+    var result: []const [:0]const u8 = &.{};
+    for (lib_files) |filename| result = result ++ &[_][:0]const u8{
+        "external/build/lib/" ++ filename ++ ".so",
+    };
+    break :blk result;
+};
+
+const lib_files = &.{
+    "libaom.3.6.1",
+    "libaom.3",
+    "libaom",
+    "libavif.16.1.1",
+    "libavif.16",
+    "libavif",
+    "libdav1d.6.9.0",
+    "libdav1d.6",
+    "libdav1d",
+    "libdxil",
+    "libFLAC.8.3.0",
+    "libFLAC.8",
+    "libFLAC",
+    "libfluidsynth.3.5.6",
+    "libfluidsynth.3",
+    "libfluidsynth",
+    "libgme.0.6.4",
+    "libgme.0",
+    "libgme",
+    "libmpg123",
+    "libogg.0.8.5",
+    "libogg.0",
+    "libogg",
+    "libopus.0.9.0",
+    "libopus.0",
+    "libopus",
+    "libopusfile.0.12",
+    "libopusfile.0",
+    "libopusfile",
+    "libpng16.16.58.0",
+    "libpng16.16",
+    "libpng16",
+    "libSDL3.0",
+    "libSDL3",
+    "libSDL3_image.0.4.4",
+    "libSDL3_image.0",
+    "libSDL3_image",
+    "libSDL3_mixer.0.3.0",
+    "libSDL3_mixer.0",
+    "libSDL3_mixer",
+    "libSDL3_ttf.0.2.3",
+    "libSDL3_ttf.0",
+    "libSDL3_ttf",
+    "libvorbis.0.4.9",
+    "libvorbis.0",
+    "libvorbis",
+    "libvorbisfile.3.3.8",
+    "libvorbisfile.3",
+    "libvorbisfile",
+    "libwavpack.1",
+    "libwavpack",
+    "libwebp.7.1.8",
+    "libwebp.7",
+    "libwebp",
+    "libwebpdemux.2.0.14",
+    "libwebpdemux.2",
+    "libwebpdemux",
+    "libwebpmux.3.0.13",
+    "libwebpmux.3",
+    "libwebpmux",
+    "libxmp.4.7.2",
+    "libxmp.4",
+    "libxmp",
+};
