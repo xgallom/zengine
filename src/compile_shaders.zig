@@ -9,15 +9,14 @@ const sched = zengine.sched;
 const ComputeMetadata = c.SDL_ShaderCross_ComputePipelineMetadata;
 const GraphicsMetadata = c.SDL_ShaderCross_GraphicsShaderMetadata;
 const GraphicsMetadataIOVar = c.SDL_ShaderCross_IOVarMetadata;
+const Zengine = zengine.Zengine;
+const options = zengine.options;
 
 const log = std.log.scoped(.compile_shaders);
 const sections = zengine.perf.sections(@This(), &.{ .init, .read, .compile, .write, .install });
 
-const Zengine = zengine.Zengine;
-const options = zengine.options;
-
 pub const std_options: std.Options = .{
-    .log_level = .warn,
+    .log_level = .info,
 };
 
 const usage =
@@ -28,6 +27,7 @@ const usage =
     \\  --output-dir OUTPUT_DIRECTORY
     \\  --install-dir INSTALL_DIRECTORY
     \\  --include-dir INCLUDE_DIRECTORY
+    \\  --verbose
     \\
 ;
 
@@ -36,6 +36,7 @@ const Arguments = struct {
     output_directory: [:0]const u8,
     install_directory: ?[:0]const u8,
     include_directory: ?[:0]const u8,
+    verbose: bool,
 };
 
 const FileFormat = enum {
@@ -190,7 +191,7 @@ pub fn main(init: std.process.Init.Minimal) !void {
     );
     defer c.SDL_ShaderCross_Quit();
 
-    log.info(
+    if (arguments.verbose) log.info(
         \\running with:
         \\  input-dir: {s}
         \\  output-dir: {s}
@@ -225,9 +226,9 @@ pub fn main(init: std.process.Init.Minimal) !void {
     );
     defer output_dir.close(io);
 
-    log.info("starting shader compilation", .{});
+    if (arguments.verbose) log.info("starting shader compilation", .{});
     const start = zengine.time.getNano();
-    defer log.info(
+    defer if (arguments.verbose) log.info(
         "shader compilation took {f}",
         .{std.Io.Duration.fromNanoseconds(zengine.time.getNano() - start)},
     );
@@ -238,17 +239,17 @@ pub fn main(init: std.process.Init.Minimal) !void {
     while (try iter.next(io)) |entry| {
         switch (entry.kind) {
             .file => {
-                log.info("file {s}: {s}", .{ entry.basename, entry.path });
+                if (arguments.verbose) log.info("file {s}: {s}", .{ entry.basename, entry.path });
                 try queue.append(allocators.global(), .{
                     .basename = try str.dupeZ(entry.basename),
                     .path = try str.dupeZ(entry.path),
                 });
             },
             .directory => {
-                log.info("creating output directory {s}", .{entry.path});
+                if (arguments.verbose) log.info("creating output directory {s}", .{entry.path});
                 try output_dir.createDirPath(io, entry.path);
             },
-            else => log.info("skipping {t} {s}", .{ entry.kind, entry.path }),
+            else => if (arguments.verbose) log.info("skipping {t} {s}", .{ entry.kind, entry.path }),
         }
     }
 
@@ -308,7 +309,7 @@ fn processFile(
     const input_basename = item.path[0 .. item.path.len - input_extension.len];
 
     if (!str.eql(FileFormat.extension(.hlsl), input_extension)) {
-        log.info("skipping {s}", .{item.path});
+        if (ctx.arguments.verbose) log.info("skipping {s}", .{item.path});
         return;
     }
 
@@ -349,7 +350,7 @@ fn processFile(
     }
 
     const shader_stage = ShaderStage.fromFileName(input_basename);
-    log.info("processing input file {s}", .{item.path});
+    if (ctx.arguments.verbose) log.info("processing input file {s}", .{item.path});
 
     const hlsl_info: c.SDL_ShaderCross_HLSL_Info = .{
         .source = hlsl_code.ptr,
@@ -366,7 +367,7 @@ fn processFile(
         defer allocators.sdl().free(dxil_code.ptr);
 
         const output_filename = output_filenames.get(.dxil);
-        try writeOutputFile(dxil_code, output_filename, ctx.output_dir);
+        try writeOutputFile(ctx.arguments, dxil_code, output_filename, ctx.output_dir);
         try installFile(ctx.arguments, output_filename);
     }
 
@@ -380,7 +381,7 @@ fn processFile(
 
     {
         const output_filename = output_filenames.get(.spirv);
-        try writeOutputFile(spirv_code, output_filename, ctx.output_dir);
+        try writeOutputFile(ctx.arguments, spirv_code, output_filename, ctx.output_dir);
         try installFile(ctx.arguments, output_filename);
     }
 
@@ -400,7 +401,7 @@ fn processFile(
         defer allocators.sdl().free(metal_code.ptr);
 
         const output_filename = output_filenames.get(.metal);
-        try writeOutputFile(metal_code, output_filename, ctx.output_dir);
+        try writeOutputFile(ctx.arguments, metal_code, output_filename, ctx.output_dir);
         try installFile(ctx.arguments, output_filename);
     }
 
@@ -408,13 +409,13 @@ fn processFile(
         const spirv_refl = c.SDL_ShaderCross_ReflectComputeSPIRV(spirv_code.ptr, spirv_code.len, 0);
         if (spirv_refl == null) fatal("failed to reflect spirv: {s}", .{c.SDL_GetError()});
         const output_filename = output_filenames.get(.json);
-        try writeComputeJsonFile(spirv_refl, output_filename, ctx.output_dir);
+        try writeComputeJsonFile(ctx.arguments, spirv_refl, output_filename, ctx.output_dir);
         try installFile(ctx.arguments, output_filename);
     } else {
         const spirv_refl = c.SDL_ShaderCross_ReflectGraphicsSPIRV(spirv_code.ptr, spirv_code.len, 0);
         if (spirv_refl == null) fatal("failed to reflect spirv: {s}", .{c.SDL_GetError()});
         const output_filename = output_filenames.get(.json);
-        try writeGraphicsJsonFile(spirv_refl, output_filename, ctx.output_dir);
+        try writeGraphicsJsonFile(ctx.arguments, spirv_refl, output_filename, ctx.output_dir);
         try installFile(ctx.arguments, output_filename);
     }
 }
@@ -494,7 +495,12 @@ fn readInputFileZ(
     return buf;
 }
 
-fn writeOutputFile(data: []const u8, filename: []const u8, dir: std.Io.Dir) !void {
+fn writeOutputFile(
+    arguments: *const Arguments,
+    data: []const u8,
+    filename: []const u8,
+    dir: std.Io.Dir,
+) !void {
     const file = try dir.createFile(io, filename, .{ .lock = .exclusive });
     defer file.close(io);
 
@@ -504,10 +510,11 @@ fn writeOutputFile(data: []const u8, filename: []const u8, dir: std.Io.Dir) !voi
     var writer = file.writer(io, writer_buf);
     try writer.interface.writeAll(data);
     try writer.end();
-    log.info("processed output file {s}", .{filename});
+    if (arguments.verbose) log.info("processed output file {s}", .{filename});
 }
 
 fn writeComputeJsonFile(
+    arguments: *const Arguments,
     info: *const ComputeMetadata,
     filename: []const u8,
     dir: std.Io.Dir,
@@ -521,10 +528,11 @@ fn writeComputeJsonFile(
     var writer = file.writer(io, writer_buf);
     try std.json.fmt(ComputeMetadataJSON.fromMetadata(info), .{}).format(&writer.interface);
     try writer.end();
-    log.info("processed output file {s}", .{filename});
+    if (arguments.verbose) log.info("processed output file {s}", .{filename});
 }
 
 fn writeGraphicsJsonFile(
+    arguments: *const Arguments,
     info: *const GraphicsMetadata,
     filename: []const u8,
     dir: std.Io.Dir,
@@ -538,7 +546,7 @@ fn writeGraphicsJsonFile(
     var writer = file.writer(io, writer_buf);
     try std.json.fmt(try GraphicsMetadataJSON.fromMetadata(info), .{}).format(&writer.interface);
     try writer.end();
-    log.info("processed output file {s}", .{filename});
+    if (arguments.verbose) log.info("processed output file {s}", .{filename});
 }
 
 fn installFile(arguments: *const Arguments, output_filename: []const u8) !void {
@@ -563,8 +571,14 @@ fn installFile(arguments: *const Arguments, output_filename: []const u8) !void {
         };
 
         switch (update_stat) {
-            .stale => log.info("updated install file {s}", .{output_filename}),
-            .fresh => log.info("file {s} is already installed", .{output_filename}),
+            .stale => if (arguments.verbose) log.info(
+                "updated install file {s}",
+                .{output_filename},
+            ),
+            .fresh => if (arguments.verbose) log.info(
+                "file {s} is already installed",
+                .{output_filename},
+            ),
         }
     }
 }

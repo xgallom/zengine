@@ -5,12 +5,13 @@
 const std = @import("std");
 const assert = std.debug.assert;
 
-const allocators = @import("../allocators.zig");
 const c = @import("ext");
-const Error = @import("error.zig").Error;
 
+const allocators = @import("../allocators.zig");
 const Audio = @import("Audio.zig");
+const Error = @import("error.zig").Error;
 const Mixer = @import("Mixer.zig");
+
 const log = std.log.scoped(.audio_track);
 
 ptr: ?*c.MIX_Track = null,

@@ -2,9 +2,9 @@
 //! Zengine thread grooup sync barrier implementation
 //!
 
-const builtin = @import("builtin");
 const std = @import("std");
 const assert = std.debug.assert;
+const builtin = @import("builtin");
 
 const WaitBehavior = @import("../sched.zig").WaitBehavior;
 

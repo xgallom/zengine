@@ -6,11 +6,12 @@ const std = @import("std");
 const assert = std.debug.assert;
 const Allocator = std.mem.Allocator;
 
-const allocators = @import("../allocators.zig");
 const c = @import("ext");
-const str = @import("../str.zig");
+
+const allocators = @import("../allocators.zig");
 const global = @import("../global.zig");
 const perf = @import("../perf.zig");
+const str = @import("../str.zig");
 const time = @import("../time.zig");
 const plot_fmt = @import("plot_fmt.zig");
 const TreeFilter = @import("TreeFilter.zig");

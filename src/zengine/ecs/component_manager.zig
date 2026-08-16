@@ -1,6 +1,7 @@
 const std = @import("std");
 const assert = std.debug.assert;
 
+const ui_mod = @import("../ui.zig");
 const component_array_list = @import("component_array_list.zig");
 const ComponentArrayList = component_array_list.ComponentArrayList;
 const MultiComponentArrayList = component_array_list.MultiComponentArrayList;
@@ -9,7 +10,6 @@ const FlagsBitSet = types.FlagsBitSet;
 const ComponentFlagsBitSet = types.ComponentFlagsBitSet;
 const ComponentFlag = types.ComponentFlag;
 const Entity = types.Entity;
-const ui_mod = @import("../ui.zig");
 
 const log = std.log.scoped(.ecs_component_manager);
 

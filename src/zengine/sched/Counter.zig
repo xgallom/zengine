@@ -2,10 +2,10 @@
 //! Zengine atomic counter implementation
 //!
 
-const builtin = @import("builtin");
 const std = @import("std");
 const assert = std.debug.assert;
 const AtomicOrder = std.builtin.AtomicOrder;
+const builtin = @import("builtin");
 
 const log = std.log.scoped(.sched_counter);
 

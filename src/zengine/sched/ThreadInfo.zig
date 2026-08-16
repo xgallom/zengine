@@ -2,13 +2,13 @@
 //! Zengine thread info implementation
 //!
 
-const builtin = @import("builtin");
 const std = @import("std");
 const assert = std.debug.assert;
-
-const log = std.log.scoped(.sched_thread_info);
+const builtin = @import("builtin");
 
 const Barrier = @import("Barrier.zig");
+
+const log = std.log.scoped(.sched_thread_info);
 
 broadcast_buffer: *BroadcastBuffer align(std.atomic.cache_line),
 barrier: *Barrier,

@@ -2,8 +2,6 @@ const std = @import("std");
 const assert = std.debug.assert;
 pub const FlagsBitSet = std.DynamicBitSetUnmanaged;
 
-pub const ComponentStorage = @import("ecs/component_storage.zig").ComponentStorage;
-pub const MultiComponentStorage = @import("ecs/component_storage.zig").MultiComponentStorage;
 pub const component_array_list = @import("ecs/component_array_list.zig");
 const ComponentArrayList = component_array_list.ComponentArrayList;
 const MultiComponentArrayList = component_array_list.MultiComponentArrayList;
@@ -13,14 +11,15 @@ pub const ComponentFlagsArrayListUnmanaged =
 pub const component_manager = @import("ecs/component_manager.zig");
 pub const ComponentManager = component_manager.ComponentManager;
 pub const MultiComponentManager = component_manager.MultiComponentManager;
+pub const ComponentStorage = @import("ecs/component_storage.zig").ComponentStorage;
+pub const MultiComponentStorage = @import("ecs/component_storage.zig").MultiComponentStorage;
+pub const Id = @import("ecs/types.zig").Id;
 
 pub const ComponentFlagsBitSet = std.StaticBitSet(512);
 pub const ComponentFlag = u32;
 
 pub const Entity = u32;
 pub const null_entity: Entity = 0;
-
-pub const Id = @import("ecs/types.zig").Id;
 
 pub const OpaqueComponentArrayList = ComponentArrayList(struct {});
 pub const OpaquePrimitiveComponentArrayList = MultiComponentArrayList(u64);

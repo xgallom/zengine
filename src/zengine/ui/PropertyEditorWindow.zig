@@ -5,11 +5,12 @@
 const std = @import("std");
 const assert = std.debug.assert;
 
-const allocators = @import("../allocators.zig");
 const c = @import("ext");
+
+const allocators = @import("../allocators.zig");
 const global = @import("../global.zig");
-const UI = @import("UI.zig");
 const TreeFilter = @import("TreeFilter.zig");
+const UI = @import("UI.zig");
 
 const log = std.log.scoped(.ui_property_editor_window);
 // pub const sections = perf.sections(@This(), &.{ .init, .draw });

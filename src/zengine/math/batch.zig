@@ -37,13 +37,13 @@ pub const DenseVertex = types.DenseVertex;
 pub const Vertex4 = types.Vertex4;
 pub const CVertex4 = types.CVertex4;
 pub const DenseVertex4 = types.DenseVertex4;
+pub const batch_len = types.batch_len;
+pub const batch_len64 = types.batch_len64;
 pub const vectorNBT = @import("batch/vector.zig").vectorNBT;
 const matrixMxNT = @import("matrix.zig").matrixMxNT;
 const vectorNT = @import("vector.zig").vectorNT;
 const vertexNT = @import("vertex.zig").vertexNT;
 
-pub const batch_len = types.batch_len;
-pub const batch_len64 = types.batch_len64;
 pub fn batchN(comptime N: usize) type {
     return batchNT(N, types.Scalar);
 }

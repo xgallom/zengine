@@ -3,11 +3,12 @@
 //!
 
 const std = @import("std");
-const log = std.log.scoped(.zengine);
 const assert = std.debug.assert;
 
-pub const allocators = @import("allocators.zig");
 pub const ext = @import("ext");
+const c = ext;
+
+pub const allocators = @import("allocators.zig");
 pub const anim = @import("anim.zig");
 pub const audio = @import("audio.zig");
 pub const ChunkAllocator = @import("ChunkAllocator.zig");
@@ -32,9 +33,8 @@ pub const typeId = @import("type_id.zig").typeId;
 pub const ui = @import("ui.zig");
 pub const Window = @import("Window.zig");
 
+const log = std.log.scoped(.zengine);
 var global_self: ?*Zengine = null;
-const c = ext;
-
 pub const Zengine = struct {
     engine: *Engine,
     audio: *audio.System,

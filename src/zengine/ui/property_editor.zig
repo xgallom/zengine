@@ -4,14 +4,15 @@
 
 const std = @import("std");
 const assert = std.debug.assert;
+const StdType = std.builtin.Type;
+
+const c = @import("ext");
 
 const allocators = @import("../allocators.zig");
-const c = @import("ext");
-const util = @import("../util.zig");
-const UI = @import("UI.zig");
-const cache = @import("cache.zig");
 const Engine = @import("../Engine.zig");
-const StdType = std.builtin.Type;
+const util = @import("../util.zig");
+const cache = @import("cache.zig");
+const UI = @import("UI.zig");
 
 const log = std.log.scoped(.ui_property_editor);
 // pub const sections = perf.sections(@This(), &.{ .init, .draw });

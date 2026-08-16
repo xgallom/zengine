@@ -5,14 +5,15 @@
 const std = @import("std");
 const assert = std.debug.assert;
 
-const allocators = @import("../allocators.zig");
 const c = @import("ext");
+
+const allocators = @import("../allocators.zig");
 const fs = @import("../fs.zig");
 const global = @import("../global.zig");
-const Error = @import("error.zig").Error;
-
 const Audio = @import("Audio.zig");
+const Error = @import("error.zig").Error;
 const Mixer = @import("Mixer.zig");
+
 const log = std.log.scoped(.audio_loader);
 
 const Self = @This();

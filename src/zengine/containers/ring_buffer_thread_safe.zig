@@ -1,5 +1,5 @@
 //!
-//! Zengine thread-safe containers implementation
+//! Zengine thread-safe ring buffer implementation
 //!
 
 const std = @import("std");
@@ -11,7 +11,7 @@ const sched = @import("../sched.zig");
 const log = std.log.scoped(.containers_thread_safe);
 
 /// SPSC lock-free ring-buffer
-pub fn RingBuffer(comptime T: type, comptime N: comptime_int) type {
+pub fn RingBufferThreadSafe(comptime T: type, comptime N: comptime_int) type {
     assert(std.math.isPowerOfTwo(N));
     return struct {
         head: sched.Counter.Unbounded(u32) = .init,

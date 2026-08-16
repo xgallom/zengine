@@ -5,14 +5,15 @@
 const std = @import("std");
 const assert = std.debug.assert;
 
-const allocators = @import("allocators.zig");
 const c = @import("ext");
-const math = @import("math.zig");
-const Error = @import("error.zig").Error;
+
+const allocators = @import("allocators.zig");
 const ArrayMap = @import("containers.zig").ArrayMap;
+const Error = @import("error.zig").Error;
+const gfx = @import("gfx.zig");
+const math = @import("math.zig");
 pub const Properties = @import("Properties.zig");
 pub const Window = @import("Window.zig");
-const gfx = @import("gfx.zig");
 
 const log = std.log.scoped(.engine);
 

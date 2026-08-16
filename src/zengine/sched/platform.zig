@@ -2,14 +2,13 @@
 //! Zengine thread pool implementation
 //!
 
-const builtin = @import("builtin");
 const std = @import("std");
 const assert = std.debug.assert;
+const builtin = @import("builtin");
 
 const allocators = @import("../allocators.zig");
 const options = @import("../options.zig").options;
 const Zengine = @import("../zengine.zig").Zengine;
-
 const Barrier = @import("Barrier.zig");
 const ThreadInfo = @import("ThreadInfo.zig");
 

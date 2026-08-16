@@ -1,11 +1,12 @@
 const std = @import("std");
 const assert = std.debug.assert;
 
-pub const allocators = @import("allocators.zig");
 const c = @import("ext");
+
+pub const allocators = @import("allocators.zig");
+const math = @import("math.zig");
 const options = @import("options.zig").options;
 const str = @import("str.zig");
-const math = @import("math.zig");
 const time = @import("time.zig");
 
 const spaces_buf_len = 1 << 10;

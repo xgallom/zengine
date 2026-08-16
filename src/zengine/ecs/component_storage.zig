@@ -7,8 +7,8 @@ const assert = std.debug.assert;
 const Allocator = std.mem.Allocator;
 const Alignment = std.mem.Alignment;
 
-const Id = @import("types.zig").Id;
 const typeId = @import("../type_id.zig").typeId;
+const Id = @import("types.zig").Id;
 
 const log = std.log.scoped(.ecs_component_storage);
 

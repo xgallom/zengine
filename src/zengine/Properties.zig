@@ -5,10 +5,11 @@
 const std = @import("std");
 const assert = std.debug.assert;
 
-const allocators = @import("allocators.zig");
-const Map = @import("containers.zig").Map;
-const AutoArrayPoolMap = @import("containers.zig").AutoArrayPoolMap;
 const c = @import("ext");
+
+const allocators = @import("allocators.zig");
+const AutoArrayPoolMap = @import("containers.zig").AutoArrayPoolMap;
+const Map = @import("containers.zig").Map;
 const math = @import("math.zig");
 const str = @import("str.zig");
 

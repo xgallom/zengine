@@ -21,6 +21,7 @@ const sched = zengine.sched;
 const time = zengine.time;
 const Engine = zengine.Engine;
 const ui = zengine.ui;
+var mouse_motion: math.Point_f32 = math.point_f32.zero;
 
 const deathly_grayscale_pass = @import("pass/deathly_grayscale.zig");
 
@@ -128,7 +129,6 @@ var allocs_window: zengine.ui.AllocsWindow = undefined;
 var perf_window: zengine.ui.PerfWindow = undefined;
 var log_window: zengine.ui.LogWindow = .invalid;
 
-var mouse_motion: math.Point_f32 = math.point_f32.zero;
 var execute_raycast: bool = false;
 
 const rnd = struct {

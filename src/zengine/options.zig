@@ -2,8 +2,8 @@
 //! The zengine global options
 //!
 
-const builtin = @import("builtin");
 const std = @import("std");
+const builtin = @import("builtin");
 const root = @import("root");
 
 const math = @import("math.zig");

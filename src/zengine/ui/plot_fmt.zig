@@ -5,12 +5,13 @@
 const std = @import("std");
 const assert = std.debug.assert;
 
-const allocators = @import("../allocators.zig");
 const c = @import("ext");
+
+const allocators = @import("../allocators.zig");
 const global = @import("../global.zig");
 const perf = @import("../perf.zig");
-const UI = @import("UI.zig");
 const time = @import("../time.zig");
+const UI = @import("UI.zig");
 
 const log = std.log.scoped(.ui_plot_fmt);
 
