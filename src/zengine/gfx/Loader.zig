@@ -283,6 +283,7 @@ pub fn createGraphicsPipelines(self: *Self) !void {
     const material_frag = try self.loadShader(.fragment, "system/material.frag");
     // const image_frag = try self.loadShader(.fragment, "system/image.frag");
     const blend_frag = try self.loadShader(.fragment, "system/blend.frag");
+    const letterbox_frag = try self.loadShader(.fragment, "system/letterbox.frag");
     const render_frag = try self.loadShader(.fragment, "system/render.frag");
 
     log.info("swapchain format: {t}", .{self.renderer.swapchainFormat()});
@@ -297,6 +298,10 @@ pub fn createGraphicsPipelines(self: *Self) !void {
     pipeline.vertex_shader = screen_vert;
     pipeline.fragment_shader = blend_frag;
     _ = try self.renderer.createGraphicsPipeline("blend", &pipeline);
+
+    pipeline.vertex_shader = screen_vert;
+    pipeline.fragment_shader = letterbox_frag;
+    _ = try self.renderer.createGraphicsPipeline("letterbox", &pipeline);
 
     pipeline.vertex_shader = screen_vert;
     pipeline.fragment_shader = render_frag;

@@ -37,7 +37,7 @@ float4 main(float2 screen_pos : TEXCOORD) : SV_Target {
     [branch] if (config & RENDER_CONFIG_HAS_SRGB)
         ldr = sRGBToLinear(ldr);
 
-    const float3 color = saturate(pow(ldr, 1 / gamma));
+    const float3 color = pow(ldr, 1 / gamma);
     return float4(color, src.a);
 }
 

@@ -69,6 +69,7 @@ pub fn render(
                 .store_op = .store,
             },
         }, null);
+        defer render_pass.end();
 
         render_pass.bindPipeline(render_pipeline);
         command_buffer.pushUniformData(.fragment, 0, &self.uniformBuffer());
@@ -77,7 +78,6 @@ pub fn render(
             .{ .texture = lut_map, .sampler = lut_sampler },
         });
         render_pass.drawScreen();
-        render_pass.end();
     }
 }
 

@@ -27,6 +27,15 @@ comptime {
     assert(@alignOf(Self) == @alignOf(*c.SDL_GPUSampler));
 }
 
+pub const Config = struct {
+    filter_mode: FilterMode,
+    address_mode: AddressMode,
+
+    pub fn name(comptime config: @This()) [:0]const u8 {
+        return @tagName(config.filter_mode) ++ "_" ++ @tagName(config.address_mode);
+    }
+};
+
 pub const CreateInfo = struct {
     min_filter: types.Filter = .default,
     mag_filter: types.Filter = .default,
@@ -106,14 +115,14 @@ pub const FilterMode = enum {
         mipmap_mode: MipMapMode,
     };
 
-    const configs: std.EnumArray(FilterMode, Config) = .init(.{
+    const configs: std.EnumArray(FilterMode, FilterMode.Config) = .init(.{
         .nearest = .{ .filter = .nearest, .mipmap_mode = .nearest },
         .linear = .{ .filter = .nearest, .mipmap_mode = .linear },
         .bilinear = .{ .filter = .linear, .mipmap_mode = .nearest },
         .trilinear = .{ .filter = .linear, .mipmap_mode = .linear },
     });
 
-    pub fn config(mode: FilterMode) Config {
+    pub fn config(mode: FilterMode) FilterMode.Config {
         return configs.get(mode);
     }
 };
@@ -129,4 +138,19 @@ pub const AddressMode = enum(c.SDL_GPUSamplerAddressMode) {
     mirrored_repeat = c.SDL_GPU_SAMPLERADDRESSMODE_MIRRORED_REPEAT,
     clamp_to_edge = c.SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE,
     pub const default = .repeat;
+};
+
+pub const sampler_configs: []const Config = &.{
+    .{ .filter_mode = .nearest, .address_mode = .repeat },
+    .{ .filter_mode = .nearest, .address_mode = .mirrored_repeat },
+    .{ .filter_mode = .nearest, .address_mode = .clamp_to_edge },
+    .{ .filter_mode = .linear, .address_mode = .repeat },
+    .{ .filter_mode = .linear, .address_mode = .mirrored_repeat },
+    .{ .filter_mode = .linear, .address_mode = .clamp_to_edge },
+    .{ .filter_mode = .bilinear, .address_mode = .repeat },
+    .{ .filter_mode = .bilinear, .address_mode = .mirrored_repeat },
+    .{ .filter_mode = .bilinear, .address_mode = .clamp_to_edge },
+    .{ .filter_mode = .trilinear, .address_mode = .repeat },
+    .{ .filter_mode = .trilinear, .address_mode = .mirrored_repeat },
+    .{ .filter_mode = .trilinear, .address_mode = .clamp_to_edge },
 };

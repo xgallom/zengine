@@ -8,6 +8,7 @@ const root = @import("root");
 
 const zcore = @import("zcore");
 
+const gfx = @import("gfx.zig");
 const math = @import("math.zig");
 
 pub const Options = struct {
@@ -20,6 +21,9 @@ pub const Options = struct {
 
     pub const Zcore = zcore.Options;
     pub const Gfx = struct {
+        wanted_swapchain_composition: gfx.types.SwapchainComposition = .HDR_extended_linear,
+        wanted_present_mode: gfx.types.PresentMode = .mailbox,
+        create_textures: bool = true,
         default_material: [:0]const u8 = if (std.debug.runtime_safety) "testing" else "default",
         enable_normal_smoothing: bool = false,
         normal_smoothing_angle_limit: math.Scalar = 90.0,

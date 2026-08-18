@@ -181,13 +181,18 @@ pub fn setSwapchainParameters(
     swapchain_composition: types.SwapchainComposition,
     present_mode: types.PresentMode,
 ) !void {
+    assert(self.isValid());
+    assert(window.isValid());
     if (!c.SDL_SetGPUSwapchainParameters(
         self.ptr,
         window.ptr,
         @intFromEnum(swapchain_composition),
         @intFromEnum(present_mode),
     )) {
-        log.err("failed setting swapchain parameters: {s}", .{c.SDL_GetError()});
+        log.err(
+            "failed setting swapchain parameters to {t} and {t}: {s}",
+            .{ swapchain_composition, present_mode, c.SDL_GetError() },
+        );
         return Error.WindowFailed;
     }
 }
@@ -196,6 +201,20 @@ pub fn supportsPresentMode(self: Self, window: Window, present_mode: types.Prese
     assert(self.isValid());
     assert(window.isValid());
     return c.SDL_WindowSupportsGPUPresentMode(self.ptr, window.ptr, @intFromEnum(present_mode));
+}
+
+pub fn supportsSwapchainComposition(
+    self: Self,
+    window: Window,
+    swapchain_composition: types.SwapchainComposition,
+) bool {
+    assert(self.isValid());
+    assert(window.isValid());
+    return c.SDL_WindowSupportsGPUSwapchainComposition(
+        self.ptr,
+        window.ptr,
+        @intFromEnum(swapchain_composition),
+    );
 }
 
 pub fn textureSupportsFormat(

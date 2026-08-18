@@ -55,6 +55,8 @@ textures: Textures,
 samplers: Samplers,
 texts: Texts,
 stencil_format: GPUTexture.Format,
+present_mode: types.PresentMode = undefined,
+swapchain_composition: types.SwapchainComposition = undefined,
 settings: Settings = .{},
 
 const Self = @This();
@@ -114,9 +116,10 @@ pub fn create(engine: *const Engine) !*Self {
     if (!self.gpu_device.setAllowedFramesInFlight(3)) {
         log.warn("failed to enable triple-buffering", .{});
     }
-    try self.setPresentMode();
-    try self.createTextures();
+
+    try self.setSwapchainParameters();
     try self.createSamplers();
+    if (gfx_options.create_textures) try self.createTextures();
 
     sections.sub(.init).end();
     return self;
@@ -168,10 +171,45 @@ pub fn swapchainFormat(self: *const Self) GPUTexture.Format {
     return @enumFromInt(c.SDL_GetGPUSwapchainTextureFormat(self.gpu_device.ptr, self.window.ptr));
 }
 
-pub fn setPresentMode(self: *Self) !void {
-    var present_mode: types.PresentMode = .vsync;
-    if (self.gpu_device.supportsPresentMode(self.window, .mailbox)) present_mode = .mailbox;
-    try self.gpu_device.setSwapchainParameters(self.window, .HDR_extended_linear, present_mode);
+pub fn setSwapchainParameters(self: *Self) !void {
+    const swapchain_composition = switch (gfx_options.wanted_swapchain_composition) {
+        .SDR => .SDR,
+        .SDR_linear => self.supportedSwapchainComposition(.SDR_linear) orelse .SDR,
+        .HDR10_ST2084 => self.supportedSwapchainComposition(.HDR10_ST2084) orelse .SDR,
+        .HDR_extended_linear => self.supportedSwapchainComposition(.HDR_extended_linear) orelse
+            .SDR,
+    };
+    const present_mode = switch (gfx_options.wanted_present_mode) {
+        .vsync => .vsync,
+        .immediate => self.supportedPresentMode(.immediate) orelse
+            self.supportedPresentMode(.mailbox) orelse
+            .vsync,
+        .mailbox => self.supportedPresentMode(.mailbox) orelse .vsync,
+    };
+    try self.gpu_device.setSwapchainParameters(
+        self.window,
+        swapchain_composition,
+        present_mode,
+    );
+    self.swapchain_composition = swapchain_composition;
+    self.present_mode = present_mode;
+}
+
+fn supportedPresentMode(self: *Self, present_mode: types.PresentMode) ?types.PresentMode {
+    return if (self.gpu_device.supportsPresentMode(self.window, present_mode))
+        present_mode
+    else
+        null;
+}
+
+fn supportedSwapchainComposition(
+    self: *Self,
+    swapchain_composition: types.SwapchainComposition,
+) ?types.SwapchainComposition {
+    return if (self.gpu_device.supportsSwapchainComposition(
+        self.window,
+        swapchain_composition,
+    )) swapchain_composition else null;
 }
 
 fn createSelf(allocator: std.mem.Allocator, engine: *const Engine) !*Self {
@@ -249,42 +287,17 @@ pub fn resizeTextures(self: *Self) !void {
     try self.createTextures();
 }
 
-const sampler_configs = struct {
-    const Config = struct {
-        filter_mode: GPUSampler.FilterMode,
-        address_mode: GPUSampler.AddressMode,
-    };
-
-    const configs: []const Config = &.{
-        .{ .filter_mode = .nearest, .address_mode = .repeat },
-        .{ .filter_mode = .nearest, .address_mode = .mirrored_repeat },
-        .{ .filter_mode = .nearest, .address_mode = .clamp_to_edge },
-        .{ .filter_mode = .linear, .address_mode = .repeat },
-        .{ .filter_mode = .linear, .address_mode = .mirrored_repeat },
-        .{ .filter_mode = .linear, .address_mode = .clamp_to_edge },
-        .{ .filter_mode = .bilinear, .address_mode = .repeat },
-        .{ .filter_mode = .bilinear, .address_mode = .mirrored_repeat },
-        .{ .filter_mode = .bilinear, .address_mode = .clamp_to_edge },
-        .{ .filter_mode = .trilinear, .address_mode = .repeat },
-        .{ .filter_mode = .trilinear, .address_mode = .mirrored_repeat },
-        .{ .filter_mode = .trilinear, .address_mode = .clamp_to_edge },
-    };
-};
-
 fn createSamplers(self: *Self) !void {
-    inline for (sampler_configs.configs) |config| {
+    inline for (GPUSampler.sampler_configs) |config| {
         const filter_config = comptime config.filter_mode.config();
-        _ = try self.createSampler(
-            @tagName(config.filter_mode) ++ "_" ++ @tagName(config.address_mode),
-            &.{
-                .min_filter = filter_config.filter,
-                .mag_filter = filter_config.filter,
-                .mipmap_mode = filter_config.mipmap_mode,
-                .address_mode_u = config.address_mode,
-                .address_mode_v = config.address_mode,
-                .address_mode_w = config.address_mode,
-            },
-        );
+        _ = try self.createSampler(config.name(), &.{
+            .min_filter = filter_config.filter,
+            .mag_filter = filter_config.filter,
+            .mipmap_mode = filter_config.mipmap_mode,
+            .address_mode_u = config.address_mode,
+            .address_mode_v = config.address_mode,
+            .address_mode_w = config.address_mode,
+        });
     }
 }
 
