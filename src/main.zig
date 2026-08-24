@@ -125,11 +125,11 @@ var flat_scene: Scene.Flattened = undefined;
 var scene_map: zengine.containers.ArrayMap(Scene.Node.Id) = .empty;
 
 var controls = zengine.controls.CameraControls{};
+var log_window: zengine.ui.LogWindow = .invalid;
 var debug_ui: zengine.ui.DebugUI = undefined;
 var property_editor: ui.PropertyEditorWindow = undefined;
 var allocs_window: zengine.ui.AllocsWindow = undefined;
 var perf_window: zengine.ui.PerfWindow = undefined;
-var log_window: zengine.ui.LogWindow = .invalid;
 
 var execute_raycast: bool = false;
 
@@ -409,17 +409,9 @@ fn load(self: *const Zengine) !bool {
     Zengine.sections.sub(.load).sub(.ui).begin();
 
     debug_ui = .init();
-    property_editor = .init(allocators.global());
+    property_editor = .init(allocators.frame());
     allocs_window = .init();
-    perf_window = .init(allocators.global());
-
-    const gfx_node = try property_editor.appendNode(@typeName(gfx), "gfx");
-    _ = try self.renderer.propertyEditorNode(&property_editor, gfx_node);
-    _ = try gfx_loader.propertyEditorNode(&property_editor, gfx_node);
-    _ = try self.scene.propertyEditorNode(&property_editor, gfx_node);
-    _ = try gfx_passes.propertyEditorNode(&property_editor, gfx_node);
-
-    _ = try propertyEditorNode(&property_editor);
+    perf_window = .init(allocators.frame());
 
     try self.engine.windows.getPtr("main").setRelativeMouseMode(config.flags.mouse_captured);
 
@@ -435,10 +427,6 @@ fn unload(self: *const Zengine) !void {
     }
     scene_map.deinit(self.scene.allocator);
     gfx_loader.deinit();
-    debug_ui.deinit();
-    property_editor.deinit();
-    allocs_window.deinit();
-    perf_window.deinit();
 }
 
 fn input(self: *const Zengine) !bool {
@@ -614,6 +602,14 @@ fn update(self: *const Zengine) !bool {
 }
 
 fn render(self: *const Zengine) !void {
+    defer property_editor.clearNodes();
+    const gfx_node = try property_editor.appendNode(@typeName(gfx), "gfx");
+    _ = try self.renderer.propertyEditorNode(&property_editor, gfx_node);
+    _ = try gfx_loader.propertyEditorNode(&property_editor, gfx_node);
+    _ = try self.scene.propertyEditorNode(&property_editor, gfx_node);
+    _ = try gfx_passes.propertyEditorNode(&property_editor, gfx_node);
+    _ = try propertyEditorNode(&property_editor);
+
     self.ui.beginDraw();
     self.ui.drawMainMenuBar(.{
         .allocs_open = &allocs_window.is_open,

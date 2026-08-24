@@ -22,6 +22,7 @@ active_item: ?*const Item = null,
 max_depth: u32 = 0,
 is_open: bool = true,
 filter: TreeFilter = .{ .initial_open_depth = 2 },
+active_id: [127:0]u8 = @splat(0),
 
 const Self = @This();
 pub const window_name = "Property Editor";
@@ -32,8 +33,8 @@ pub const Item = struct {
     element: ?UI.Element = null,
     children: std.DoublyLinkedList = .{},
     depth: u32,
-    id: [128]u8 = undefined,
-    name: [128]u8 = undefined,
+    id: [127:0]u8 = undefined,
+    name: [127:0]u8 = undefined,
 
     fn draw(item: *Item, ui: *const UI, is_open: *bool) void {
         var walk = item.children.first;
@@ -90,6 +91,10 @@ fn destroy(self: *const Self, node: *std.DoublyLinkedList.Node) void {
     self.allocator.destroy(item);
 }
 
+pub fn clearNodes(self: *Self) void {
+    self.items = .{};
+}
+
 pub fn append(self: *Self, node_element: UI.Element, id: []const u8, name: []const u8) !*Item {
     const result = try self.appendImpl(&self.items, .{
         .self = self,
@@ -98,6 +103,7 @@ pub fn append(self: *Self, node_element: UI.Element, id: []const u8, name: []con
     });
     _ = try std.fmt.bufPrintZ(&result.id, "{s}", .{id});
     _ = try std.fmt.bufPrintZ(&result.name, "{s}", .{name});
+    self.setIfActive(result);
     return result;
 }
 
@@ -109,6 +115,7 @@ pub fn appendNode(self: *Self, id: []const u8, name: []const u8) !*Item {
     // result.element = result.nodeElement();
     _ = try std.fmt.bufPrintZ(&result.id, "{s}", .{id});
     _ = try std.fmt.bufPrintZ(&result.name, "{s}", .{name});
+    self.setIfActive(result);
     return result;
 }
 
@@ -126,6 +133,7 @@ pub fn appendChild(
     });
     _ = try std.fmt.bufPrintZ(&result.id, "{s}", .{id});
     _ = try std.fmt.bufPrintZ(&result.name, "{s}", .{name});
+    self.setIfActive(result);
     return result;
 }
 
@@ -137,6 +145,7 @@ pub fn appendChildNode(self: *Self, item: *Item, id: []const u8, name: []const u
     // result.element = result.nodeElement();
     _ = try std.fmt.bufPrintZ(&result.id, "{s}", .{id});
     _ = try std.fmt.bufPrintZ(&result.name, "{s}", .{name});
+    self.setIfActive(result);
     return result;
 }
 
@@ -147,6 +156,14 @@ fn appendImpl(self: *Self, items: *std.DoublyLinkedList, src_item: Item) !*Item 
     self.max_depth = @max(self.max_depth, item.depth + 1);
     items.append(&item.node);
     return item;
+}
+
+fn setIfActive(self: *Self, item: *Item) void {
+    if (std.mem.eql(
+        u8,
+        std.mem.span(item.id[0..].ptr),
+        std.mem.span(self.active_id[0..].ptr),
+    )) self.active_item = item;
 }
 
 pub fn draw(self: *Self, ui: *const UI, is_open: *bool) void {
@@ -228,7 +245,10 @@ fn drawTreeNode(
 
     self.filter.toggleOpen(filt_res, item.depth);
     const node_open = c.igTreeNodeEx_StrStr("##node", tree_flags, "%s", &item.name);
-    if (c.igIsItemFocused()) self.active_item = item;
+    if (c.igIsItemFocused()) {
+        @memcpy(self.active_id[0..], item.id[0..]);
+        self.active_item = item;
+    }
     if (node_open) {
         var walk = item.children.first;
         while (walk != null) : (walk = walk.?.next) {

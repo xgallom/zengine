@@ -438,7 +438,7 @@ const StackTraceItem = struct {
         di.getSymbols(
             global.io(),
             gpa,
-            allocators.global(),
+            allocators.sdlArena(),
             address,
             true,
             symbols,

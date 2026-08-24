@@ -36,6 +36,7 @@ const Self = struct {
     log_state: LogAllocator = undefined,
     gpa: std.mem.Allocator = undefined,
     chunk: ChunkAllocator = undefined,
+    sdl_arena: Arena = .init(sdl_allocator.raw),
     arena_states: std.EnumArray(ArenaKey, Arena) = .initUndefined(),
     arenas: std.EnumArray(ArenaKey, std.mem.Allocator) = .initUndefined(),
     max_alloc: usize = 0,
@@ -63,6 +64,7 @@ const Self = struct {
     }
 
     fn deinit(self: *Self) std.heap.Check {
+        self.sdl_arena.deinit();
         var iter = self.arena_states.iterator();
         while (iter.next()) |item| item.value.deinit();
         self.chunk.deinit();
@@ -166,6 +168,11 @@ pub inline fn arena(key: ArenaKey) std.mem.Allocator {
 
 pub inline fn arenaReset(key: ArenaKey, mode: Arena.ResetMode) bool {
     return arenaState(key).reset(mode);
+}
+
+pub inline fn sdlArena() std.mem.Allocator {
+    assert(is_init);
+    return global_state.sdl_arena.allocator();
 }
 
 pub inline fn global() std.mem.Allocator {
