@@ -71,9 +71,7 @@ pub fn deinit(self: *Self, gpu_device: GPUDevice) void {
 
 pub fn create(gpu_device: GPUDevice, info: *const CreateInfo) !*c.SDL_GPUComputePipeline {
     assert(gpu_device.isValid());
-    var arena = allocators.initArena();
-    defer arena.deinit();
-    const sdl_info = try info.toSDL(arena.allocator());
+    const sdl_info = try info.toSDL(allocators.frame());
     const ptr = c.SDL_CreateGPUComputePipeline(gpu_device.ptr, &sdl_info);
     if (ptr == null) {
         log.err("failed creating gpu graphics pipeline: {s}", .{c.SDL_GetError()});

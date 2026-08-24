@@ -124,10 +124,7 @@ pub fn query(self: Self, fence: GPUFence) bool {
 pub fn wait(self: Self, comptime behavior: GPUFence.WaitBehavior, fences: []const GPUFence) !void {
     assert(self.isValid());
     log.debug("wait for {t} fences: {any}", .{ behavior, fences });
-    var arena = allocators.initArena();
-    defer arena.deinit();
-    const gpa = arena.allocator();
-    const fens = try sdl.sliceFrom(gpa, fences);
+    const fens = try sdl.sliceFrom(allocators.frame(), fences);
     if (!c.SDL_WaitForGPUFences(self.ptr, behavior == .all, fens.ptr, @intCast(fens.len))) {
         log.err("failed waiting for fences: {s}", .{c.SDL_GetError()});
         return Error.FenceFailed;

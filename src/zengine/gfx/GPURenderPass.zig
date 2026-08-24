@@ -50,9 +50,7 @@ pub fn bindPipeline(self: Self, pipeline: GPUGraphicsPipeline) void {
 
 pub fn bindVertexBuffers(self: Self, first_slot: u32, buffers: []const GPUBuffer.Binding) !void {
     assert(self.isValid());
-    var arena = allocators.initArena();
-    defer arena.deinit();
-    const bufs = try sdl.sliceFrom(arena.allocator(), buffers);
+    const bufs = try sdl.sliceFrom(allocators.frame(), buffers);
     c.SDL_BindGPUVertexBuffers(self.ptr, first_slot, bufs.ptr, @intCast(bufs.len));
 }
 
@@ -78,9 +76,7 @@ pub fn bindSamplers(
     };
 
     assert(self.isValid());
-    var arena = allocators.initArena();
-    defer arena.deinit();
-    const bufs = try sdl.sliceFrom(arena.allocator(), bindings);
+    const bufs = try sdl.sliceFrom(allocators.frame(), bindings);
     call(self.ptr, first_slot, bufs.ptr, @intCast(bufs.len));
 }
 
@@ -96,9 +92,7 @@ pub fn bindStorageTextures(
     };
 
     assert(self.isValid());
-    var arena = allocators.initArena();
-    defer arena.deinit();
-    const texes = try sdl.sliceFrom(arena.allocator(), textures);
+    const texes = try sdl.sliceFrom(allocators.frame(), textures);
     call(self.ptr, first_slot, texes.ptr, @intCast(texes.len));
 }
 
@@ -114,9 +108,7 @@ pub fn bindStorageBuffers(
     };
 
     assert(self.isValid());
-    var arena = allocators.initArena();
-    defer arena.deinit();
-    const bufs = try sdl.sliceFrom(arena.allocator(), buffers);
+    const bufs = try sdl.sliceFrom(allocators.frame(), buffers);
     call(self.ptr, first_slot, bufs.ptr, @intCast(bufs.len));
 }
 

@@ -54,25 +54,19 @@ pub fn bindSamplers(
     bindings: []const types.TextureSamplerBinding,
 ) !void {
     assert(self.isValid());
-    var arena = allocators.initArena();
-    defer arena.deinit();
-    const bufs = try sdl.sliceFrom(arena.allocator(), bindings);
+    const bufs = try sdl.sliceFrom(allocators.frame(), bindings);
     c.SDL_BindGPUComputeSamplers(self.ptr, first_slot, bufs.ptr, @intCast(bufs.len));
 }
 
 pub fn bindStorageTextures(self: Self, first_slot: u32, textures: []const GPUTexture) !void {
     assert(self.isValid());
-    var arena = allocators.initArena();
-    defer arena.deinit();
-    const bufs = try sdl.sliceFrom(arena.allocator(), textures);
+    const bufs = try sdl.sliceFrom(allocators.frame(), textures);
     c.SDL_BindGPUComputeStorageTextures(self.ptr, first_slot, bufs.ptr, @intCast(bufs.len));
 }
 
 pub fn bindStorageBuffers(self: Self, first_slot: u32, buffers: []const GPUBuffer) !void {
     assert(self.isValid());
-    var arena = allocators.initArena();
-    defer arena.deinit();
-    const bufs = try sdl.sliceFrom(arena.allocator(), buffers);
+    const bufs = try sdl.sliceFrom(allocators.frame(), buffers);
     c.SDL_BindGPUComputeStorageBuffers(self.ptr, first_slot, bufs.ptr, @intCast(bufs.len));
 }
 

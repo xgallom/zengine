@@ -43,6 +43,7 @@ pub fn SDLTypePtr(comptime T: type) type {
     return SDLType(std.meta.Child(T));
 }
 
+/// Identical interface to std.EnumSet but for enums based on SDL flag types.
 pub fn Flags(comptime E: type) type {
     assert(@typeInfo(E) == .@"enum");
     const info = @typeInfo(E).@"enum";
@@ -128,16 +129,14 @@ pub fn Flags(comptime E: type) type {
             return self.bits == other.bits;
         }
 
-        /// Returns true iff all the keys in this set are
-        /// in the other set. The other set may have keys
-        /// not found in this set.
+        /// Returns true iff all the keys in this set are in the other set. The other set may have
+        /// keys not found in this set.
         pub fn subsetOf(self: Self, other: Self) bool {
             return self.bits & other.bits == self.bits;
         }
 
-        /// Returns true iff this set contains all the keys
-        /// in the other set. This set may have keys not
-        /// found in the other set.
+        /// Returns true iff this set contains all the keys in the other set. This set may have keys
+        /// not found in the other set.
         pub fn supersetOf(self: Self, other: Self) bool {
             return self.bits & other.bits == other.bits;
         }
@@ -158,8 +157,7 @@ pub fn Flags(comptime E: type) type {
             return .{ .bits = self.bits ^ other.bits };
         }
 
-        /// Returns a set with keys that are in this set
-        /// except for keys in the other set.
+        /// Returns a set with keys that are in this set except for keys in the other set.
         pub fn differenceWith(self: Self, other: Self) Self {
             return .{ .bits = self.bits & ~other.bits };
         }

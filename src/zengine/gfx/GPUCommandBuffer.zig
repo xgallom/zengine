@@ -92,9 +92,7 @@ pub fn renderPass(
     depth_stencil_target_info: ?*const types.DepthStencilTargetInfo,
 ) !GPURenderPass {
     assert(self.isValid());
-    var arena = allocators.initArena();
-    defer arena.deinit();
-    const ct_infos = try sdl.sliceFrom(arena.allocator(), color_target_infos);
+    const ct_infos = try sdl.sliceFrom(allocators.frame(), color_target_infos);
     const ptr = c.SDL_BeginGPURenderPass(
         self.ptr,
         ct_infos.ptr,
@@ -114,11 +112,8 @@ pub fn computePass(
     storage_buffer_bindings: []const types.StorageBufferReadWriteBinding,
 ) !GPUComputePass {
     assert(self.isValid());
-    var arena = allocators.initArena();
-    defer arena.deinit();
-    const gpa = arena.allocator();
-    const st_bindings = try sdl.sliceFrom(gpa, storage_texture_bindings);
-    const sb_bindings = try sdl.sliceFrom(gpa, storage_buffer_bindings);
+    const st_bindings = try sdl.sliceFrom(allocators.frame(), storage_texture_bindings);
+    const sb_bindings = try sdl.sliceFrom(allocators.frame(), storage_buffer_bindings);
     const ptr = c.SDL_BeginGPUComputePass(
         self.ptr,
         st_bindings.ptr,
