@@ -64,10 +64,12 @@ pub fn quat(t0: math.Quat, t1: math.Quat, t: math.Scalar) math.Quat {
     return result;
 }
 
-/// Does linear interpolation between values
-pub fn AutoInterpolation(comptime T: type) type {
+pub fn LinearInterpolation(comptime T: type) type {
     return Interpolation(T, defaultLerpFn(T));
 }
+
+/// Quaternion interpolation.
+pub const QuatInterpolation = Interpolation(math.Quat, quat);
 
 pub fn Interpolation(comptime T: type, comptime lerpFn: LerpFn(T)) type {
     return struct {
