@@ -2,6 +2,9 @@
 //! External libraries
 //!
 
+#ifndef _ZENGINE_EXT_EXT_H_
+#define _ZENGINE_EXT_EXT_H_
+
 #define CIMGUI_DEFINE_ENUMS_AND_STRUCTS 1
 #define CIMGUI_USE_SDL3 1
 #define CIMGUI_USE_SDLGPU3 1
@@ -16,3 +19,5 @@
 #include <cimgui.h>
 #include <cimgui_impl.h>
 #include <cimplot.h>
+
+#endif // _ZENGINE_EXT_EXT_H_

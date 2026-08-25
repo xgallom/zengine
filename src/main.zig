@@ -444,12 +444,16 @@ fn input(self: *const Zengine) !bool {
                         c.SDLK_F1 => {
                             self.ui.show_ui = !self.ui.show_ui;
                             try self.engine.windows.getPtr("main")
-                                .setRelativeMouseMode(!self.ui.show_ui and config.flags.mouse_captured);
+                                .setRelativeMouseMode(
+                                !self.ui.show_ui and config.flags.mouse_captured,
+                            );
                         },
                         c.SDLK_ESCAPE => {
                             self.ui.show_ui = !self.ui.show_ui;
                             try self.engine.windows.getPtr("main")
-                                .setRelativeMouseMode(!self.ui.show_ui and config.flags.mouse_captured);
+                                .setRelativeMouseMode(
+                                !self.ui.show_ui and config.flags.mouse_captured,
+                            );
                         },
                         else => {},
                     }
@@ -670,14 +674,6 @@ fn executeRaycast(self: *const Zengine) void {
 
     var iter = flat_scene.batchTriIterator(.mesh_objs, .initOne(.position));
     while (iter.next()) |item| {
-        // @compileLog("item", @sizeOf(@TypeOf(item)));
-        // @compileLog("transform", @sizeOf(@TypeOf(item.transform)));
-        // @compileLog("verts", @sizeOf(@TypeOf(item.verts)));
-        // @compileLog("verts[0]", @sizeOf(@TypeOf(item.verts[0].get(.position))));
-        // for (0..item.len) |n| log.info("item {s}[{}][{}]", .{ item.keys[n], item.sections[n], item.offsets[n] });
-        // log.info("{any}", .{item.verts[0].get(.position)});
-        // log.info("{any}", .{item.verts[1].get(.position)});
-        // log.info("{any}", .{item.verts[2].get(.position)});
         var pos: [3]math.batch.DenseVector4 = undefined;
         for (0..3) |vert_n| {
             math.batch.dense_matrix4x4.apply(
@@ -842,8 +838,11 @@ fn updateCameraControls(
 fn propertyEditorNode(editor: *ui.PropertyEditorWindow) !*ui.PropertyEditorWindow.Item {
     const root_id = @typeName(@This());
     const root_node = try editor.appendNode(root_id, "main");
-
-    _ = try editor.appendChild(root_node, config.propertyEditor(), root_id ++ ".config", "Config");
-
+    _ = try editor.appendChild(
+        root_node,
+        config.propertyEditor(),
+        root_id ++ ".config",
+        "Config",
+    );
     return root_node;
 }
