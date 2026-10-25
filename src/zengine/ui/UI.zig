@@ -81,8 +81,8 @@ pub fn create(renderer: *gfx.Renderer) !*Self {
     var init_info: c.ImGui_ImplSDLGPU3_InitInfo = .{
         .Device = renderer.gpu_device.ptr,
         // .ColorTargetFormat = @intFromEnum(renderer.swapchainFormat()),
-        .ColorTargetFormat = @intFromEnum(renderer.swapchainFormat()),
-        .MSAASamples = @intFromEnum(gfx.types.SampleCount.@"1"),
+        .ColorTargetFormat = @backingInt(renderer.swapchainFormat()),
+        .MSAASamples = @backingInt(gfx.types.SampleCount.@"1"),
     };
     _ = c.ImGui_ImplSDLGPU3_Init(&init_info);
 
@@ -108,6 +108,7 @@ pub fn beginDraw(self: *Self) void {
     if (!self.render_ui) return;
 
     sections.sub(.draw).begin();
+    log.debug("ui begin draw", .{});
 
     c.ImGui_ImplSDLGPU3_NewFrame();
     c.ImGui_ImplSDL3_NewFrame();
@@ -185,6 +186,10 @@ pub fn endDraw(self: *Self) void {
     c.igRender();
     self.draw_data = c.igGetDrawData();
 
+    log.debug(
+        "ui end draw {}x{}",
+        .{ self.draw_data.?.DisplaySize.x, self.draw_data.?.DisplaySize.y },
+    );
     sections.sub(.draw).end();
 }
 

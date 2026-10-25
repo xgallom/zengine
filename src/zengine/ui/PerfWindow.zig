@@ -474,7 +474,7 @@ const StackTraceItem = struct {
     const Similarity = std.EnumSet(SimilarityType);
 
     fn compare(lhs: *const StackTraceItem, rhs: *const StackTraceItem) Similarity {
-        if (lhs.is_valid != rhs.is_valid) return .initEmpty();
+        if (lhs.is_valid != rhs.is_valid) return .empty;
         const both_no_src = lhs.src == null and rhs.src == null;
         const both_src = lhs.src != null and rhs.src != null;
         const same_file = both_src and str.eql(lhs.src.?.file_name, rhs.src.?.file_name);
@@ -748,9 +748,9 @@ fn walkCallGraph(filter: *TreeFilter, item: *const perf.SectionsListTree.Edge) T
 }
 
 fn bufPrintZ(_: *Self, comptime fmt: []const u8, args: anytype) [:0]u8 {
-    return std.fmt.bufPrintZ(&buf, fmt, args) catch unreachable;
+    return std.fmt.bufPrintSentinel(&buf, fmt, args, 0) catch unreachable;
 }
 
 fn bufPrintZ2(_: *Self, first: [:0]const u8, comptime fmt: []const u8, args: anytype) [:0]u8 {
-    return std.fmt.bufPrintZ(buf[first.len + 1 ..], fmt, args) catch unreachable;
+    return std.fmt.bufPrintSentinel(buf[first.len + 1 ..], fmt, args, 0) catch unreachable;
 }

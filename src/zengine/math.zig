@@ -5,6 +5,7 @@
 const std = @import("std");
 
 pub const batch = @import("math/batch.zig");
+pub const int = @import("math/int.zig");
 pub const matrixMxNT = @import("math/matrix.zig").matrixMxNT;
 pub const paramT = @import("math/param.zig").paramT;
 pub const quatT = @import("math/quat.zig").quatT;

@@ -598,14 +598,14 @@ fn TaggedSections(
     const EnumTagType = if (labels.len > 1) std.math.IntFittingRange(0, labels.len - 1) else u1;
     comptime var field_names: []const []const u8 = &.{};
     comptime var field_types: []const type = &.{};
-    comptime var field_attrs: []const std.builtin.Type.StructField.Attributes = &.{};
+    comptime var field_attrs: []const std.builtin.Type.Struct.FieldAttributes = &.{};
     comptime var enum_names: []const []const u8 = &.{};
     comptime var enum_values: []const EnumTagType = &.{};
     inline for (labels, 0..) |label, idx| {
         const SubSectionType = TaggedSection(this, label, this_label, sub_type);
         field_names = field_names ++ &[_][]const u8{label[0.. :0]};
         field_types = field_types ++ &[_]type{type};
-        field_attrs = field_attrs ++ &[_]std.builtin.Type.StructField.Attributes{.{
+        field_attrs = field_attrs ++ &[_]std.builtin.Type.Struct.FieldAttributes{.{
             .@"comptime" = true,
             .@"align" = @alignOf(SubSectionType),
             .default_value_ptr = &SubSectionType,
@@ -642,7 +642,7 @@ fn TaggedSections(
 
         pub fn avgs() std.EnumArray(Label, time.Time) {
             var result: std.EnumArray(Label, time.Time) = undefined;
-            inline for (labels, 0..) |label, n| result.set(@enumFromInt(n), subTag(label).avg());
+            inline for (labels, 0..) |label, n| result.set(@fromBackingInt(@intCast(n)), subTag(label).avg());
             return result;
         }
     };

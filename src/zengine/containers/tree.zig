@@ -4,6 +4,7 @@
 
 const std = @import("std");
 const assert = std.debug.assert;
+const Allocator = std.mem.Allocator;
 
 const log = std.log.scoped(.tree);
 
@@ -15,19 +16,20 @@ pub const InsertionOrder = enum {
 
 /// Tree data structure
 pub fn Tree(comptime V: type, comptime options: struct {
-    pool_options: std.heap.MemoryPoolOptions = .{},
+    pool_options: std.heap.memory_pool.Options = .{},
     insertion_order: InsertionOrder = .insert_last,
     order_fn: ?*const fn (lhs: *const V, rhs: *const V) std.math.Order = null,
     has_depth: bool = false,
 }) type {
     return struct {
+        gpa: Allocator,
         pool: Pool,
         edges: Edges = .{},
 
         pub const Self = @This();
         pub const Value = V;
 
-        const Pool = std.heap.memory_pool.ExtraManaged(Node, options.pool_options);
+        const Pool = std.heap.memory_pool.Extra(Node, options.pool_options);
 
         pub const Edges = std.SinglyLinkedList;
 
@@ -157,12 +159,12 @@ pub fn Tree(comptime V: type, comptime options: struct {
 
         // Initializes the tree
         pub fn init(allocator: std.mem.Allocator, preheat: usize) !Self {
-            return .{ .pool = try Pool.initCapacity(allocator, preheat) };
+            return .{ .gpa = allocator, .pool = try Pool.initCapacity(allocator, preheat) };
         }
 
         /// Deinitializes the tree
         pub fn deinit(self: *Self) void {
-            self.pool.deinit();
+            self.pool.deinit(self.gpa);
         }
 
         /// Inserts new value into the root
@@ -226,7 +228,7 @@ pub fn Tree(comptime V: type, comptime options: struct {
         }
 
         fn createNode(self: *Self, value: Value) !*Node {
-            const node = try self.pool.create();
+            const node = try self.pool.create(self.gpa);
             node.* = .{
                 .parent = null,
                 .edge_node = .{},

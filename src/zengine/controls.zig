@@ -8,7 +8,7 @@ const assert = std.debug.assert;
 pub fn Controls(comptime K: type) type {
     if (@typeInfo(K) != .@"enum") @compileError("Key must be an enum");
     return struct {
-        control_matrix: std.bit_set.IntegerBitSet(max_key + 1) = .initEmpty(),
+        control_matrix: std.bit_set.IntegerBitSet(max_key + 1) = .empty,
 
         pub const Self = @This();
         pub const Key = K;
@@ -21,15 +21,15 @@ pub fn Controls(comptime K: type) type {
         }
 
         pub fn set(self: *Self, key: Key) void {
-            self.control_matrix.set(@intFromEnum(key));
+            self.control_matrix.set(@backingInt(key));
         }
 
         pub fn clear(self: *Self, key: Key) void {
-            self.control_matrix.unset(@intFromEnum(key));
+            self.control_matrix.unset(@backingInt(key));
         }
 
         pub fn has(self: *const Self, key: Key) bool {
-            return self.control_matrix.isSet(@intFromEnum(key));
+            return self.control_matrix.isSet(@backingInt(key));
         }
 
         pub fn hasAny(self: *const Self) bool {
@@ -37,7 +37,7 @@ pub fn Controls(comptime K: type) type {
         }
 
         pub fn reset(self: *Self) void {
-            self.control_matrix = .initEmpty();
+            self.control_matrix = .empty;
         }
     };
 }
@@ -66,10 +66,10 @@ pub const CameraControls = Controls(enum(std.math.Log2Int(u32)) {
     pub const Self = @This();
 
     const last_custom = std.math.maxInt(std.math.Log2Int(u32));
-    const max_custom = Self.last_custom - @intFromEnum(Self.first_custom);
+    const max_custom = Self.last_custom - @backingInt(Self.first_custom);
 
     pub fn custom(comptime idx: comptime_int) Self {
         comptime assert(idx >= 0 and idx <= max_custom);
-        return @enumFromInt(@intFromEnum(Self.first_custom) + idx);
+        return @fromBackingInt(@intCast(@backingInt(Self.first_custom) + idx));
     }
 });

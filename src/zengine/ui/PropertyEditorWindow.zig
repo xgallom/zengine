@@ -101,8 +101,8 @@ pub fn append(self: *Self, node_element: UI.Element, id: []const u8, name: []con
         .element = node_element,
         .depth = 0,
     });
-    _ = try std.fmt.bufPrintZ(&result.id, "{s}", .{id});
-    _ = try std.fmt.bufPrintZ(&result.name, "{s}", .{name});
+    _ = try std.fmt.bufPrintSentinel(&result.id, "{s}", .{id}, 0);
+    _ = try std.fmt.bufPrintSentinel(&result.name, "{s}", .{name}, 0);
     self.setIfActive(result);
     return result;
 }
@@ -113,8 +113,8 @@ pub fn appendNode(self: *Self, id: []const u8, name: []const u8) !*Item {
         .depth = 0,
     });
     // result.element = result.nodeElement();
-    _ = try std.fmt.bufPrintZ(&result.id, "{s}", .{id});
-    _ = try std.fmt.bufPrintZ(&result.name, "{s}", .{name});
+    _ = try std.fmt.bufPrintSentinel(&result.id, "{s}", .{id}, 0);
+    _ = try std.fmt.bufPrintSentinel(&result.name, "{s}", .{name}, 0);
     self.setIfActive(result);
     return result;
 }
@@ -131,8 +131,8 @@ pub fn appendChild(
         .element = node_element,
         .depth = item.depth + 1,
     });
-    _ = try std.fmt.bufPrintZ(&result.id, "{s}", .{id});
-    _ = try std.fmt.bufPrintZ(&result.name, "{s}", .{name});
+    _ = try std.fmt.bufPrintSentinel(&result.id, "{s}", .{id}, 0);
+    _ = try std.fmt.bufPrintSentinel(&result.name, "{s}", .{name}, 0);
     self.setIfActive(result);
     return result;
 }
@@ -143,8 +143,8 @@ pub fn appendChildNode(self: *Self, item: *Item, id: []const u8, name: []const u
         .depth = item.depth + 1,
     });
     // result.element = result.nodeElement();
-    _ = try std.fmt.bufPrintZ(&result.id, "{s}", .{id});
-    _ = try std.fmt.bufPrintZ(&result.name, "{s}", .{name});
+    _ = try std.fmt.bufPrintSentinel(&result.id, "{s}", .{id}, 0);
+    _ = try std.fmt.bufPrintSentinel(&result.name, "{s}", .{name}, 0);
     self.setIfActive(result);
     return result;
 }

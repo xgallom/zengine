@@ -66,11 +66,11 @@ const Face = struct {
 
 const FaceInfo = struct {
     face_type: mesh.FaceType = .invalid,
-    attrs_present: AttrsPresent = .initEmpty(),
+    attrs_present: AttrsPresent = .empty,
 };
 
 const Index = struct {
-    attrs_present: AttrsPresent = .initEmpty(),
+    attrs_present: AttrsPresent = .empty,
     data: IndexData = @splat(math.invalid_index),
 };
 
@@ -104,7 +104,7 @@ pub const Node = struct {
 
             pub fn checkInfo(obj: *Object, info: FaceInfo) void {
                 if (obj.info.face_type == .invalid) obj.info.face_type = info.face_type;
-                if (obj.info.attrs_present.eql(.initEmpty())) {
+                if (obj.info.attrs_present.eql(.empty)) {
                     obj.info.attrs_present = info.attrs_present;
                 }
                 assert(obj.info.face_type == info.face_type);
@@ -296,7 +296,7 @@ fn checkFace(self: *const Self, face: *const Face) void {
     var attr_iter = face.info.attrs_present.iterator();
     while (attr_iter.next()) |attr| {
         const len = self.attr_verts.getPtrConst(attr).items.len;
-        for (0..@intFromEnum(face.info.face_type)) |vert_n| {
+        for (0..@backingInt(face.info.face_type)) |vert_n| {
             const idx = getFaceIndex(&face.data, @intCast(vert_n), attr);
             if (idx >= len) log.err("{} {}: {} >= {}", .{ attr, vert_n, idx, len });
             assert(idx < len);
@@ -378,14 +378,14 @@ fn parseFace(iter: *str.ScalarIterator, list: *FacePolygon) !FaceInfo {
         if (token.len == 0) continue;
         if (n >= list.capacity) return error.TooManyArguments;
         const index = try parseIndex(token);
-        if (result.attrs_present.eql(.initEmpty())) result.attrs_present = index.attrs_present;
+        if (result.attrs_present.eql(.empty)) result.attrs_present = index.attrs_present;
         assert(result.attrs_present.eql(index.attrs_present));
         list.appendAssumeCapacity(index.data);
         n += 1;
     }
 
     if (n < face_arr_min) return error.NotEnoughArguments;
-    result.face_type = if (n > 3) .triangle else @enumFromInt(n);
+    result.face_type = if (n > 3) .triangle else @fromBackingInt(@intCast(n));
     return result;
 }
 
@@ -398,7 +398,7 @@ fn parseIndex(line: []const u8) !Index {
         if (token.len == 0) continue;
         if (n >= AttrType.arr_len) return error.TooManyArguments;
         const index = std.fmt.parseInt(math.Index, token, 10) catch return error.ParseIntError;
-        result.attrs_present.insert(@enumFromInt(n));
+        result.attrs_present.insert(@fromBackingInt(@intCast(n)));
         result.data[n] = index - 1;
     }
 
@@ -422,7 +422,7 @@ const CreateResultState = struct {
     node_n: usize = 0,
     face_n: usize = 0,
     material_active: ?[:0]const u8 = null,
-    smoothing_groups_active: std.bit_set.IntegerBitSet(smoothing_groups_len) = .initEmpty(),
+    smoothing_groups_active: std.bit_set.IntegerBitSet(smoothing_groups_len) = .empty,
     vert_data: std.EnumArray(AttrType, []const math.Vector3),
     face_normals: std.ArrayList(math.Vector3) = .empty,
     face_tangents: std.ArrayList([2]math.Vector3) = .empty,
@@ -855,7 +855,7 @@ inline fn getIndexVector(
 }
 
 inline fn getVectorIndex(vert_idx: usize, attr: math.VertexAttr) usize {
-    return vert_idx * math.VertexAttr.len + @intFromEnum(attr);
+    return vert_idx * math.VertexAttr.len + @backingInt(attr);
 }
 
 inline fn getFaceIndex(face: *const FaceData, vert_n: u8, attr: AttrType) math.Index {
@@ -864,5 +864,5 @@ inline fn getFaceIndex(face: *const FaceData, vert_n: u8, attr: AttrType) math.I
 }
 
 inline fn getIndexIndex(index: *const IndexData, attr: AttrType) math.Index {
-    return index[@intFromEnum(attr)];
+    return index[@backingInt(attr)];
 }

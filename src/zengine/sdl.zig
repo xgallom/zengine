@@ -21,7 +21,7 @@ pub fn sdlNeedsAllocator(comptime T: type) bool {
     assert(@hasDecl(T, "toSDL"));
     const ToSDL = @TypeOf(T.toSDL);
     assert(@typeInfo(ToSDL) == .@"fn");
-    const params_len = @typeInfo(ToSDL).@"fn".params.len;
+    const params_len = @typeInfo(ToSDL).@"fn".param_types.len;
     assert(params_len <= 2 and params_len > 0);
     return params_len == 2;
 }
@@ -82,7 +82,7 @@ pub fn Flags(comptime E: type) type {
         }
 
         pub fn initOne(key: Key) Self {
-            return .{ .bits = @intFromEnum(key) };
+            return .{ .bits = @backingInt(key) };
         }
 
         pub fn count(self: Self) usize {
@@ -172,7 +172,7 @@ pub fn Flags(comptime E: type) type {
 
             pub fn next(i: *Iterator) ?Key {
                 while (i.idx < len) : (i.idx += 1) {
-                    const key: Key = @enumFromInt(info.fields[i.idx].value);
+                    const key: Key = @fromBackingInt(@intCast(info.fields[i.idx].value));
                     if (i.self.contains(key)) return key;
                 }
                 return null;
@@ -180,7 +180,7 @@ pub fn Flags(comptime E: type) type {
         };
 
         fn int(key: Key) info.tag_type {
-            return @intFromEnum(key);
+            return @backingInt(key);
         }
     };
 }

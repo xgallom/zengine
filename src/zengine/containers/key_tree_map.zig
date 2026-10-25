@@ -4,6 +4,7 @@
 
 const std = @import("std");
 const assert = std.debug.assert;
+const Allocator = std.mem.Allocator;
 
 const log = std.log.scoped(.key_tree);
 
@@ -15,13 +16,14 @@ pub const InsertionOrder = enum {
 
 /// Key tree map data structure
 pub fn KeyTreeMap(comptime V: type, comptime options: struct {
-    pool_options: std.heap.MemoryPoolOptions = .{},
+    pool_options: std.heap.memory_pool.Options = .{},
     insertion_order: InsertionOrder = .ordered,
     separator: u8 = '.',
     has_depth: bool = false,
     is_big: bool = @sizeOf(V) >= 16,
 }) type {
     return struct {
+        gpa: Allocator,
         pool: Pool,
         root: *Node = undefined,
 
@@ -29,7 +31,7 @@ pub fn KeyTreeMap(comptime V: type, comptime options: struct {
         pub const Value = V;
         const ValIn = if (options.is_big) *const V else V;
 
-        const Pool = std.heap.memory_pool.ExtraManaged(Edge, options.pool_options);
+        const Pool = std.heap.memory_pool.Extra(Edge, options.pool_options);
 
         pub const Edges = std.SinglyLinkedList;
 
@@ -67,14 +69,17 @@ pub fn KeyTreeMap(comptime V: type, comptime options: struct {
 
         // Initializes the tree
         pub fn init(allocator: std.mem.Allocator, preheat: usize) !Self {
-            var result = Self{ .pool = try Pool.initCapacity(allocator, preheat) };
+            var result = Self{
+                .gpa = allocator,
+                .pool = try Pool.initCapacity(allocator, preheat),
+            };
             result.root = &(try result.createEdge(&.{}, null)).target;
             return result;
         }
 
         /// Deinitializes the tree
         pub fn deinit(self: *Self) void {
-            self.pool.deinit();
+            self.pool.deinit(self.gpa);
         }
 
         pub fn get(self: *const Self, key: []const u8) ?Value {
@@ -206,7 +211,7 @@ pub fn KeyTreeMap(comptime V: type, comptime options: struct {
         }
 
         fn createEdge(self: *Self, label: [:0]const u8, value: ?ValIn) !*Edge {
-            const edge = try self.pool.create();
+            const edge = try self.pool.create(self.gpa);
             edge.* = .{
                 .edge_node = .{},
                 .label = label,
@@ -219,8 +224,7 @@ pub fn KeyTreeMap(comptime V: type, comptime options: struct {
         }
 
         fn createLabel(self: *Self, label: []const u8) ![:0]const u8 {
-            const allocator: std.mem.Allocator = self.pool.allocator;
-            return allocator.dupeZ(u8, label);
+            return self.gpa.dupeSentinel(u8, label, 0);
         }
 
         fn destroyNode(self: *Self, node: *Node) void {

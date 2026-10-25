@@ -151,7 +151,7 @@ const GraphicsMetadataJSON = struct {
                 buf[n] = .{
                     .name = std.mem.span(item.name),
                     .location = item.location,
-                    .vector_type = @enumFromInt(item.vector_type),
+                    .vector_type = @fromBackingInt(@intCast(item.vector_type)),
                     .vector_size = item.vector_size,
                 };
             }
@@ -351,7 +351,7 @@ fn processFile(
         .source = hlsl_code.ptr,
         .entrypoint = "main",
         .include_dir = if (ctx.arguments.include_directory) |dir| dir.ptr else null,
-        .shader_stage = @intFromEnum(shader_stage),
+        .shader_stage = @backingInt(shader_stage),
     };
 
     {
@@ -384,7 +384,7 @@ fn processFile(
         .bytecode = spirv_code.ptr,
         .bytecode_size = spirv_code.len,
         .entrypoint = "main",
-        .shader_stage = @intFromEnum(shader_stage),
+        .shader_stage = @backingInt(shader_stage),
     };
 
     {
@@ -443,22 +443,22 @@ fn parseArguments(allocator: std.mem.Allocator, init: std.process.Init.Minimal) 
                 n += 1;
                 if (n >= args.len) fatal("expected argument after '{s}'", .{arg});
                 if (input_directory != null) fatal("duplicated argument {s}", .{arg});
-                input_directory = try allocator.dupeZ(u8, args[n]);
+                input_directory = try allocator.dupeSentinel(u8, args[n], 0);
             } else if (str.eql("--output-dir", arg)) {
                 n += 1;
                 if (n >= args.len) fatal("expected argument after '{s}'", .{arg});
                 if (output_directory != null) fatal("duplicated argument {s}", .{arg});
-                output_directory = try allocator.dupeZ(u8, args[n]);
+                output_directory = try allocator.dupeSentinel(u8, args[n], 0);
             } else if (str.eql("--install-dir", arg)) {
                 n += 1;
                 if (n >= args.len) fatal("expected argument after '{s}'", .{arg});
                 if (install_directory != null) fatal("duplicated argument {s}", .{arg});
-                install_directory = try allocator.dupeZ(u8, args[n]);
+                install_directory = try allocator.dupeSentinel(u8, args[n], 0);
             } else if (str.eql("--include-dir", arg)) {
                 n += 1;
                 if (n >= args.len) fatal("expected argument after '{s}'", .{arg});
                 if (include_directory != null) fatal("duplicated argument {s}", .{arg});
-                include_directory = try allocator.dupeZ(u8, args[n]);
+                include_directory = try allocator.dupeSentinel(u8, args[n], 0);
             } else {
                 fatal("unrecognized argument: {s}", .{arg});
             }
@@ -482,10 +482,8 @@ fn readInputFileZ(
     const file = try dir.openFile(io, filename, .{ .lock = .shared });
     defer file.close(io);
 
-    const reader_buf = try allocators.scratch().alloc(u8, 256);
-    defer allocators.scratch().free(reader_buf);
-
-    var reader = file.reader(io, reader_buf);
+    var reader_buf: [256]u8 = undefined;
+    var reader = file.reader(io, &reader_buf);
     const size = try reader.getSize();
     const buf = try allocator.allocSentinel(u8, size, 0);
     errdefer allocator.free(buf);
@@ -503,10 +501,8 @@ fn writeOutputFile(
     const file = try dir.createFile(io, filename, .{ .lock = .exclusive });
     defer file.close(io);
 
-    const writer_buf = try allocators.scratch().alloc(u8, 256);
-    defer allocators.scratch().free(writer_buf);
-
-    var writer = file.writer(io, writer_buf);
+    var writer_buf: [256]u8 = undefined;
+    var writer = file.writer(io, &writer_buf);
     try writer.interface.writeAll(data);
     try writer.end();
     if (arguments.verbose) log.info("processed output file {s}", .{filename});
@@ -521,10 +517,8 @@ fn writeComputeJsonFile(
     const file = try dir.createFile(io, filename, .{ .lock = .exclusive });
     defer file.close(io);
 
-    const writer_buf = try allocators.scratch().alloc(u8, 256);
-    defer allocators.scratch().free(writer_buf);
-
-    var writer = file.writer(io, writer_buf);
+    var writer_buf: [256]u8 = undefined;
+    var writer = file.writer(io, &writer_buf);
     try std.json.fmt(ComputeMetadataJSON.fromMetadata(info), .{}).format(&writer.interface);
     try writer.end();
     if (arguments.verbose) log.info("processed output file {s}", .{filename});
@@ -539,10 +533,8 @@ fn writeGraphicsJsonFile(
     const file = try dir.createFile(io, filename, .{ .lock = .exclusive });
     defer file.close(io);
 
-    const writer_buf = try allocators.scratch().alloc(u8, 256);
-    defer allocators.scratch().free(writer_buf);
-
-    var writer = file.writer(io, writer_buf);
+    var writer_buf: [256]u8 = undefined;
+    var writer = file.writer(io, &writer_buf);
     try std.json.fmt(try GraphicsMetadataJSON.fromMetadata(info), .{}).format(&writer.interface);
     try writer.end();
     if (arguments.verbose) log.info("processed output file {s}", .{filename});

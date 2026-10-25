@@ -58,7 +58,7 @@ pub const alpha_max = 1;
 pub const alpha_speed = 0.05;
 
 pub fn config(self: *const Self) u32 {
-    var result: std.EnumSet(Config) = .initEmpty();
+    var result: std.EnumSet(Config) = .empty;
 
     if (self.texture != null) result.insert(.has_texture);
     if (self.diffuse_map != null) result.insert(.has_diffuse_map);

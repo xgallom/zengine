@@ -4,22 +4,24 @@
 
 const std = @import("std");
 const assert = std.debug.assert;
+const Allocator = std.mem.Allocator;
 
 const log = std.log.scoped(.key_map);
 
 /// Auto key map data structure backed by a memory pool and a pointer array hash map
 pub fn AutoArrayPoolMap(comptime K: type, comptime V: type, comptime options: struct {
-    pool_options: std.heap.MemoryPoolOptions = .{},
+    pool_options: std.heap.memory_pool.Options = .{},
     is_big: bool = @sizeOf(V) > 16,
 }) type {
     return struct {
+        gpa: Allocator,
         pool: Pool,
         map: std.AutoArrayHashMapUnmanaged(K, *V),
 
         pub const Self = @This();
         pub const Value = V;
         pub const empty: Self = .{};
-        const Pool = std.heap.memory_pool.ExtraManaged(V, options.pool_options);
+        const Pool = std.heap.memory_pool.Extra(V, options.pool_options);
         const ValIn = if (options.is_big) *const V else V;
 
         inline fn valDeref(value: ValIn) V {
@@ -29,6 +31,7 @@ pub fn AutoArrayPoolMap(comptime K: type, comptime V: type, comptime options: st
         // Initializes the map
         pub fn init(allocator: std.mem.Allocator, preheat: usize) !Self {
             var result: Self = .{
+                .gpa = allocator,
                 .pool = try Pool.initCapacity(allocator, preheat),
                 .map = .empty,
             };
@@ -38,8 +41,8 @@ pub fn AutoArrayPoolMap(comptime K: type, comptime V: type, comptime options: st
 
         /// Deinitializes the map
         pub fn deinit(self: *Self) void {
-            self.map.deinit(self.gpa());
-            self.pool.deinit();
+            self.map.deinit(self.gpa);
+            self.pool.deinit(self.gpa);
         }
 
         pub fn contains(self: *const Self, key: K) bool {
@@ -69,8 +72,8 @@ pub fn AutoArrayPoolMap(comptime K: type, comptime V: type, comptime options: st
 
         // Creates a new uninitialized value
         pub fn create(self: *Self, key: K) !*V {
-            const item = try self.pool.create();
-            try self.map.putNoClobber(self.gpa(), key, item);
+            const item = try self.pool.create(self.gpa);
+            try self.map.putNoClobber(self.gpa, key, item);
             return item;
         }
 
@@ -89,18 +92,14 @@ pub fn AutoArrayPoolMap(comptime K: type, comptime V: type, comptime options: st
         }
 
         pub fn put(self: *Self, key: K, value: ValIn) !*V {
-            const r = try self.map.getOrPut(self.gpa(), key);
-            if (!r.found_existing) r.value_ptr.* = try self.pool.create();
+            const r = try self.map.getOrPut(self.gpa, key);
+            if (!r.found_existing) r.value_ptr.* = try self.pool.create(self.gpa);
             r.value_ptr.*.* = valDeref(value);
             return r.value_ptr.*;
         }
 
         pub fn values(self: *const Self) []*V {
             return self.map.values();
-        }
-
-        inline fn gpa(self: *const Self) std.mem.Allocator {
-            return self.pool.allocator;
         }
     };
 }
@@ -229,17 +228,18 @@ pub fn AutoArrayMap(comptime K: type, comptime V: type) type {
 
 /// Key map data structure backed by a memory pool and a pointer array hash map
 pub fn ArrayPoolMap(comptime V: type, comptime options: struct {
-    pool_options: std.heap.MemoryPoolOptions = .{},
+    pool_options: std.heap.memory_pool.Options = .{},
     is_big: bool = @sizeOf(V) > 16,
 }) type {
     return struct {
+        gpa: Allocator,
         pool: Pool,
         map: std.StringArrayHashMapUnmanaged(*V) = .empty,
 
         pub const Self = @This();
         pub const Value = V;
         pub const empty: Self = .{};
-        const Pool = std.heap.memory_pool.ExtraManaged(V, options.pool_options);
+        const Pool = std.heap.memory_pool.Extra(V, options.pool_options);
         const ValIn = if (options.is_big) *const V else V;
 
         inline fn valDeref(value: ValIn) V {
@@ -249,6 +249,7 @@ pub fn ArrayPoolMap(comptime V: type, comptime options: struct {
         // Initializes the map
         pub fn init(allocator: std.mem.Allocator, preheat: usize) !Self {
             var result: Self = .{
+                .gpa = allocator,
                 .pool = try Pool.initCapacity(allocator, preheat),
             };
             try result.map.ensureTotalCapacity(allocator, preheat);
@@ -257,8 +258,8 @@ pub fn ArrayPoolMap(comptime V: type, comptime options: struct {
 
         /// Deinitializes the map
         pub fn deinit(self: *Self) void {
-            self.map.deinit(self.gpa());
-            self.pool.deinit();
+            self.map.deinit(self.gpa);
+            self.pool.deinit(self.gpa);
         }
 
         pub fn contains(self: *const Self, key: []const u8) bool {
@@ -288,8 +289,8 @@ pub fn ArrayPoolMap(comptime V: type, comptime options: struct {
 
         // Creates a new uninitialized value
         pub fn create(self: *Self, key: []const u8) !*V {
-            const item = try self.pool.create();
-            try self.map.putNoClobber(self.gpa(), key, item);
+            const item = try self.pool.create(self.gpa);
+            try self.map.putNoClobber(self.gpa, key, item);
             return item;
         }
 
@@ -308,18 +309,14 @@ pub fn ArrayPoolMap(comptime V: type, comptime options: struct {
         }
 
         pub fn put(self: *Self, key: []const u8, value: ValIn) !*V {
-            const r = try self.map.getOrPut(self.gpa(), key);
-            if (!r.found_existing) r.value_ptr.* = try self.pool.create();
+            const r = try self.map.getOrPut(self.gpa, key);
+            if (!r.found_existing) r.value_ptr.* = try self.pool.create(self.gpa);
             r.value_ptr.*.* = valDeref(value);
             return r.value_ptr.*;
         }
 
         pub fn values(self: *const Self) []*V {
             return self.map.values();
-        }
-
-        inline fn gpa(self: *const Self) std.mem.Allocator {
-            return self.pool.allocator;
         }
     };
 }
@@ -455,16 +452,17 @@ pub fn ArrayMap(comptime V: type) type {
 
 /// Sparse key map data structure backed by a memory pool and a pointer hash map
 pub fn PoolMap(comptime V: type, comptime options: struct {
-    pool_options: std.heap.MemoryPoolOptions = .{},
+    pool_options: std.heap.memory_pool.Options = .{},
     is_big: bool = @sizeOf(V) > 16,
 }) type {
     return struct {
+        gpa: Allocator,
         pool: Pool,
         map: PtrHashMap(V) = .empty,
 
         pub const Self = @This();
         pub const empty: Self = .{};
-        const Pool = std.heap.memory_pool.ExtraManaged(V, options.pool_options);
+        const Pool = std.heap.memory_pool.Extra(V, options.pool_options);
         const ValIn = if (options.is_big) *const V else V;
 
         inline fn valDeref(value: ValIn) V {
@@ -474,6 +472,7 @@ pub fn PoolMap(comptime V: type, comptime options: struct {
         // Initializes the map
         pub fn init(allocator: std.mem.Allocator, preheat: u32) !Self {
             var result: Self = .{
+                .gpa = allocator,
                 .pool = try Pool.initCapacity(allocator, preheat),
             };
             try result.map.ensureTotalCapacity(allocator, preheat);
@@ -482,7 +481,7 @@ pub fn PoolMap(comptime V: type, comptime options: struct {
 
         /// Deinitializes the map
         pub fn deinit(self: *Self) void {
-            self.map.deinit(self.gpa());
+            self.map.deinit(self.gpa);
             self.pool.deinit();
         }
 
@@ -513,8 +512,8 @@ pub fn PoolMap(comptime V: type, comptime options: struct {
 
         // Creates a new uninitialized value
         pub fn create(self: *Self, key: []const u8) !*V {
-            const item = try self.pool.create();
-            try self.map.putNoClobber(self.gpa(), key, item);
+            const item = try self.pool.create(self.gpa);
+            try self.map.putNoClobber(self.gpa, key, item);
             return item;
         }
 
@@ -533,14 +532,10 @@ pub fn PoolMap(comptime V: type, comptime options: struct {
         }
 
         pub fn put(self: *Self, key: []const u8, value: ValIn) !*V {
-            const r = try self.map.getOrPut(self.gpa(), key);
-            if (!r.found_existing) r.value_ptr.* = try self.pool.create();
+            const r = try self.map.getOrPut(self.gpa, key);
+            if (!r.found_existing) r.value_ptr.* = try self.pool.create(self.gpa);
             r.value_ptr.*.* = valDeref(value);
             return r.value_ptr.*;
-        }
-
-        inline fn gpa(self: *const Self) std.mem.Allocator {
-            return self.pool.allocator;
         }
 
         pub fn valueIterator(self: *const Self) ValueIterator {

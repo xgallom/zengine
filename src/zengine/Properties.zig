@@ -29,11 +29,11 @@ pub fn registryLists(comptime registry_list: []const []const type) []const type 
 pub fn GlobalRegistry(comptime registries: []const type) type {
     comptime var field_names: []const []const u8 = &.{};
     comptime var field_types: []const type = &.{};
-    comptime var field_attrs: []const std.builtin.Type.StructField.Attributes = &.{};
+    comptime var field_attrs: []const std.builtin.Type.Struct.FieldAttributes = &.{};
     for (registries) |Registry| {
         field_names = field_names ++ &[_][]const u8{@typeName(Registry)};
         field_types = field_types ++ &[_]type{Registry};
-        field_attrs = field_attrs ++ &[_]std.builtin.Type.StructField.Attributes{.{}};
+        field_attrs = field_attrs ++ &[_]std.builtin.Type.Struct.FieldAttributes{.{}};
     }
 
     return struct {

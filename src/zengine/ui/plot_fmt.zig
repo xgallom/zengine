@@ -163,6 +163,6 @@ pub fn Time(comptime unit: time.Unit) type {
 }
 
 fn bufPrintZ(buf: [*c]u8, size: c_int, comptime fmt: []const u8, args: anytype) c_int {
-    const text = std.fmt.bufPrintZ(buf[0..@intCast(size)], fmt, args) catch unreachable;
+    const text = std.fmt.bufPrintSentinel(buf[0..@intCast(size)], fmt, args, 0) catch unreachable;
     return @intCast(text.len);
 }

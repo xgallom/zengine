@@ -122,8 +122,8 @@ fn AnyComponentManager(comptime C: type, comptime AL: type) type {
             var buf: [128]u8 = undefined;
             defer iter.deinit();
             while (iter.next()) |entry| {
-                const id = try std.fmt.bufPrintZ(&buf, "{s}#{}", .{ @typeName(C), entry.entity });
-                const name = try std.fmt.bufPrintZ(buf[id.len + 1 ..], "{}", .{entry.entity});
+                const id = try std.fmt.bufPrintSentinel(&buf, "{s}#{}", .{ @typeName(C), entry.entity }, 0);
+                const name = try std.fmt.bufPrintSentinel(buf[id.len + 1 ..], "{}", .{entry.entity}, 0);
                 _ = try editor.appendChild(
                     root_node,
                     entry.item.propertyEditor(),

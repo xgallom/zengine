@@ -23,10 +23,10 @@ pub const ExtCommand = enum {
 };
 
 const ext_optimize = std.EnumArray(std.builtin.OptimizeMode, []const u8).init(.{
-    .Debug = "Debug",
-    .ReleaseSafe = "RelWithDebInfo",
-    .ReleaseFast = "Release",
-    .ReleaseSmall = "MinSizeRel",
+    .debug = "Debug",
+    .safe = "RelWithDebInfo",
+    .fast = "Release",
+    .small = "MinSizeRel",
 });
 
 var compile_shaders: ?*std.Build.Step.Compile = null;
@@ -82,12 +82,7 @@ pub fn build(b: *std.Build) !void {
         },
     });
 
-    zengine.addLibraryPath(b.path("external/build/lib"));
-    zengine.linkSystemLibrary("SDL3_image", .{});
-    zengine.linkSystemLibrary("SDL3_mixer", .{});
-    zengine.linkSystemLibrary("SDL3_ttf", .{});
-    zengine.linkSystemLibrary("cimgui", .{});
-    zengine.linkSystemLibrary("cimplot", .{});
+    linkLibraries(b, zengine);
 
     const lib = b.addLibrary(.{
         .name = "zengine",
@@ -203,10 +198,7 @@ pub fn build(b: *std.Build) !void {
     const run_cmd = b.addRunArtifact(exe);
     run_cmd.step.dependOn(zengine_step);
     run_cmd.step.dependOn(b.getInstallStep());
-
-    if (b.args) |args| {
-        run_cmd.addArgs(args);
-    }
+    run_cmd.addPassthruArgs();
 
     const run_step = b.step("run", "Run Zengine");
     run_step.dependOn(&run_cmd.step);
@@ -223,7 +215,7 @@ pub fn addExternal(b: *std.Build, options: struct {
 } {
     const zb = options.b orelse b;
 
-    const build_ext_cmd = zb.pathFromRoot(try std.fs.path.join(b.allocator, &.{
+    const build_ext_cmd = try zb.root.joinString(b.allocator, try std.fs.path.join(b.allocator, &.{
         "build-scripts",
         b.fmt("build-{t}.{s}", .{
             options.options.ext_cmd orelse .external,
@@ -257,7 +249,7 @@ pub fn addExternal(b: *std.Build, options: struct {
     const build_ext_step = b.step("ext", "Build external dependencies");
     build_ext_step.dependOn(&build_ext.step);
 
-    const clean_ext_cmd = zb.pathFromRoot(try std.fs.path.join(b.allocator, &.{
+    const clean_ext_cmd = try zb.root.joinString(b.allocator, try std.fs.path.join(b.allocator, &.{
         "build-scripts",
         b.fmt("clean-{t}.{s}", .{
             options.options.ext_cmd orelse .cache,
@@ -314,16 +306,22 @@ pub fn addInstallLibs(b: *std.Build, options: struct {
         },
         else => @panic("Unsupported OS"),
     }
-    const install_lib_dir = b.getInstallPath(.lib, "");
-    const mkdir = b.addSystemCommand(&.{ "mkdir", "-p", install_lib_dir });
+    const prefix_path: std.Build.LazyPath = .{ .relative = .{ .base = .install_lib } };
+    const install_lib_dir = prefix_path.path(b, "");
+    const mkdir = b.addSystemCommand(&.{ "mkdir", "-p" });
+    mkdir.addDirectoryArg(install_lib_dir);
     var cp_vargs: std.ArrayList([]const u8) = .empty;
     try cp_vargs.appendSlice(b.allocator, &.{ "cp", "-P" });
-    for (lib_paths) |path| try cp_vargs.append(b.allocator, zb.pathFromRoot(path));
-    try cp_vargs.append(b.allocator, install_lib_dir);
+    for (lib_paths) |path| try cp_vargs.append(
+        b.allocator,
+        try zb.root.joinString(b.allocator, path),
+    );
     const cp = b.addSystemCommand(cp_vargs.items);
+    cp.addDirectoryArg(install_lib_dir);
     if (options.build_ext) |build_ext| cp.step.dependOn(&build_ext.step);
     cp.step.dependOn(&mkdir.step);
-    const xattr = b.addSystemCommand(&.{ "xattr", "-rc", install_lib_dir });
+    const xattr = b.addSystemCommand(&.{ "xattr", "-rc" });
+    xattr.addDirectoryArg(install_lib_dir);
     xattr.step.dependOn(&cp.step);
 
     const install_share = b.addInstallDirectory(.{
@@ -411,18 +409,19 @@ pub fn addBundleMacOSApp(b: *std.Build, config: struct {
         .exclude_extensions = &.{".gitkeep"},
     });
 
-    const exe_path = b.getInstallPath(.prefix, b.pathJoin(&.{
+    const prefix_path: std.Build.LazyPath = .{ .relative = .{ .base = .install_prefix } };
+    const bin_path: std.Build.LazyPath = .{ .relative = .{ .base = .install_bin } };
+    const lib_path: std.Build.LazyPath = .{ .relative = .{ .base = .install_lib } };
+    const exe_input = bin_path.path(b, config.install_exe.artifact.out_filename);
+    const exe_path = prefix_path.path(b, b.pathJoin(&.{
         config.app_dirname,
         "Contents",
         "MacOS",
         config.exe_app_filename,
     }));
-    const install_exe = b.addSystemCommand(&.{
-        "cp",
-        "-f",
-        b.getInstallPath(.bin, config.install_exe.artifact.out_filename),
-        exe_path,
-    });
+    const install_exe = b.addSystemCommand(&.{ "cp", "-f" });
+    install_exe.addFileArg(exe_input);
+    install_exe.addFileArg(exe_path);
     install_exe.step.dependOn(&copy_base_dir.step);
     install_exe.step.dependOn(&config.install_exe.step);
 
@@ -430,27 +429,23 @@ pub fn addBundleMacOSApp(b: *std.Build, config: struct {
         "install_name_tool",
         "-delete_rpath",
         "/usr/local/lib",
-        exe_path,
     });
+    strip_rpath.addFileArg(exe_path);
     strip_rpath.step.dependOn(&install_exe.step);
 
-    const install_libs = b.addSystemCommand(&.{
-        "cp",
-        "-PRf",
-        b.getInstallPath(.lib, ""),
-        b.getInstallPath(.prefix, b.pathJoin(&.{ config.app_dirname, "Contents", "Frameworks" })),
-    });
-    const install_share = b.addSystemCommand(&.{
-        "cp",
-        "-rf",
-        b.getInstallPath(.prefix, "share"),
-        b.getInstallPath(.prefix, b.pathJoin(&.{
-            config.app_dirname,
-            "Contents",
-            "Resources",
-            "share",
-        })),
-    });
+    const install_libs = b.addSystemCommand(&.{ "cp", "-PRf" });
+    install_libs.addDirectoryArg(lib_path);
+    install_libs.addDirectoryArg(
+        prefix_path.path(b, b.pathJoin(&.{ config.app_dirname, "Contents", "Frameworks" })),
+    );
+    const install_share = b.addSystemCommand(&.{ "cp", "-rf" });
+    install_share.addDirectoryArg(prefix_path.path(b, "share"));
+    install_share.addDirectoryArg(prefix_path.path(b, b.pathJoin(&.{
+        config.app_dirname,
+        "Contents",
+        "Resources",
+        "share",
+    })));
     install_libs.step.dependOn(&copy_base_dir.step);
     install_libs.step.dependOn(config.install_libs);
     install_share.step.dependOn(&copy_base_dir.step);
@@ -461,20 +456,20 @@ pub fn addBundleMacOSApp(b: *std.Build, config: struct {
         config.install_resources.len,
     );
     for (install_resources, config.install_resources) |*ir, install_resource| {
-        ir.* = b.addSystemCommand(&.{
-            "cp",
-            "-rf",
-            b.getInstallPath(
-                install_resource.options.install_dir,
-                install_resource.options.install_subdir,
-            ),
-            b.getInstallPath(.prefix, b.pathJoin(&.{
-                config.app_dirname,
-                "Contents",
-                "Resources",
-                install_resource.options.install_subdir,
-            })),
-        });
+        ir.* = b.addSystemCommand(&.{ "cp", "-rf" });
+        const path = switch (install_resource.options.install_dir) {
+            .prefix => prefix_path,
+            .bin => bin_path,
+            .lib => lib_path,
+            else => unreachable,
+        };
+        ir.*.addDirectoryArg(path.path(b, install_resource.options.install_subdir));
+        ir.*.addDirectoryArg(prefix_path.path(b, b.pathJoin(&.{
+            config.app_dirname,
+            "Contents",
+            "Resources",
+            install_resource.options.install_subdir,
+        })));
         ir.*.step.dependOn(&copy_base_dir.step);
         ir.*.step.dependOn(&install_resource.step);
     }
@@ -485,6 +480,15 @@ pub fn addBundleMacOSApp(b: *std.Build, config: struct {
     add_bundle_macos_app.dependOn(&install_share.step);
     for (install_resources) |ir| add_bundle_macos_app.dependOn(&ir.step);
     return add_bundle_macos_app;
+}
+
+pub fn linkLibraries(b: *std.Build, mod: *std.Build.Module) void {
+    mod.addLibraryPath(b.path("external/build/lib"));
+    mod.linkSystemLibrary("SDL3_image", .{});
+    mod.linkSystemLibrary("SDL3_mixer", .{});
+    mod.linkSystemLibrary("SDL3_ttf", .{});
+    mod.linkSystemLibrary("cimgui", .{});
+    mod.linkSystemLibrary("cimplot", .{});
 }
 
 pub fn getOptions(b: *std.Build) Options {

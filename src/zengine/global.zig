@@ -46,9 +46,10 @@ const Self = struct {
             options.core.app_identifier.ptr,
         );
         defer allocators.sdl().free(c_prefs_path);
-        const prefs_path = try allocators.global().dupeZ(
+        const prefs_path = try allocators.global().dupeSentinel(
             u8,
             std.mem.trimEnd(u8, std.mem.span(c_prefs_path), "\\/"),
+            0,
         );
         const spaces_buf = try allocators.gpa().alloc(u8, spaces_buf_len);
         @memset(spaces_buf, ' ');

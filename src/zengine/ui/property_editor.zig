@@ -131,7 +131,7 @@ pub fn PropertiesEditor(comptime Registry: type) type {
                 while (iter.next()) |e| {
                     const Input = InputCheckbox(.{});
                     const old_name = Input.name;
-                    Input.name = allocators.scratch().dupeZ(u8, e.key_ptr.*) catch |err| {
+                    Input.name = allocators.scratch().dupeSentinel(u8, e.key_ptr.*, 0) catch |err| {
                         log.err("allocation failed: {t}", .{err});
                         std.process.exit(1);
                     };
@@ -145,7 +145,7 @@ pub fn PropertiesEditor(comptime Registry: type) type {
                 while (iter.next()) |e| {
                     const Input = InputScalar(u8, 1, .{});
                     const old_name = Input.name;
-                    Input.name = allocators.scratch().dupeZ(u8, e.key_ptr.*) catch |err| {
+                    Input.name = allocators.scratch().dupeSentinel(u8, e.key_ptr.*, 0) catch |err| {
                         log.err("allocation failed: {t}", .{err});
                         std.process.exit(1);
                     };

@@ -9,6 +9,8 @@
 #define CIMGUI_USE_SDL3 1
 #define CIMGUI_USE_SDLGPU3 1
 
+#include <pthread.h>
+
 #include <SDL3/SDL.h>
 #include <SDL3_image/SDL_image.h>
 #include <SDL3_mixer/SDL_mixer.h>

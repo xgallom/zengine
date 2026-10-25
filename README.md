@@ -20,7 +20,7 @@ A modern 3D game engine built in Zig using SDL3
 ### Source code
 
 Download the latest source files from [github](https://github.com/xgallom/zengine) and build with
-[Zig 0.16.0](https://ziglang.org/download/#release-0.16.0). Zengine currently supports only target
+[Zig 0.17.0](https://ziglang.org/download/#release-0.16.0). Zengine currently supports only target
 macos, builds of SDL for other platforms are not implemented yet.
 
 ```bash

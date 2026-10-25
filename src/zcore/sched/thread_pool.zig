@@ -22,11 +22,11 @@ pub const GroupConfig = struct {
 
     pub const Length = enum(u32) {
         remaining,
-        one,
+        one = 1,
         _,
 
         pub fn init(len: u32) @This() {
-            return @enumFromInt(len);
+            return @fromBackingInt(len);
         }
     };
 
@@ -91,10 +91,16 @@ pub fn ThreadPool(comptime groups: []const GroupConfig, comptime handlers: Handl
             var result = 0;
             for (groups) |config| switch (config.len) {
                 .remaining => {},
-                else => result += @intFromEnum(config.len),
+                else => result += @backingInt(config.len),
             };
             break :blk result;
         };
+        pub const main_group_idx: ?comptime_int = for (groups, 0..) |config, gn| {
+            if (config.priority == .main) {
+                assert(config.len == .one);
+                break gn;
+            }
+        } else null;
         pub const has_remaining = for (groups) |config| {
             if (config.len == .remaining) break true;
         } else false;
@@ -129,7 +135,7 @@ pub fn ThreadPool(comptime groups: []const GroupConfig, comptime handlers: Handl
                 // At least one thread for remaining group
                 if (self.data.len <= static_len) return error.InvalidThreadCount;
             } else {
-                if (self.data.len != static_len) return error.InvalidThreadCount;
+                if (self.data.len < static_len) return error.InvalidThreadCount;
             }
             if (self.loadState(.acquire) != .init) return error.AlreadyRunning;
 
@@ -142,23 +148,40 @@ pub fn ThreadPool(comptime groups: []const GroupConfig, comptime handlers: Handl
             inline for (groups, 0..) |config, gn| {
                 const len: u32 = switch (config.len) {
                     .remaining => @intCast(items.len - static_len),
-                    else => @intFromEnum(config.len),
+                    else => @backingInt(config.len),
                 };
                 self.group_states[gn].barrier = .init(len);
-                log.info("spawning thread group {} with size {}", .{ gn, len });
-                for (0..len) |n| {
-                    const idx = g_start + @as(u32, @intCast(n));
-                    items[idx] = try std.Thread.spawn(
-                        .{ .allocator = allocators.gpa() },
-                        handlerWrapper(config, handlers[gn], gn),
-                        .{ self, idx, idx - g_start, len, ctx[gn] },
-                    );
-                    self.data.spawned = idx + 1;
+                if (config.priority != .main) {
+                    log.info("spawning thread group {} with size {}", .{ gn, len });
+                    for (0..len) |n| {
+                        const idx = g_start + @as(u32, @intCast(n));
+                        items[self.data.spawned] = try std.Thread.spawn(
+                            .{ .allocator = allocators.gpa() },
+                            handlerWrapper(config, handlers[gn], gn),
+                            .{ self, idx, idx - g_start, len, ctx[gn] },
+                        );
+                        self.data.spawned += 1;
+                    }
                 }
                 g_start += len;
             }
 
             self.setState(.running, .release);
+            if (main_group_idx) |mgn| {
+                g_start = 0;
+                inline for (groups, 0..) |config, gn| {
+                    const len: u32 = switch (config.len) {
+                        .remaining => @intCast(items.len - static_len),
+                        else => @backingInt(config.len),
+                    };
+                    if (gn == mgn) {
+                        const idx = g_start;
+                        log.info("spawning main thread {}", .{gn});
+                        try handlerWrapper(config, handlers[gn], gn)(self, idx, 0, 1, ctx[gn]);
+                    }
+                    g_start += len;
+                }
+            }
         }
 
         /// Waits for the thread pool to finish.
@@ -237,14 +260,20 @@ pub fn ThreadPool(comptime groups: []const GroupConfig, comptime handlers: Handl
                         &self.group_states[group_n].barrier,
                         &self.group_states[group_n].buffer,
                     );
+                    var ret_err: ?anyerror = null;
                     while (true) {
                         if (config.len != .one) {
                             var state: State = undefined;
                             if (info.isPrimary()) state = self.loadState(.monotonic);
                             info.broadcastValue(State, &state, .primary);
-                            if (state != .running) return;
+                            if (state != .running) if (ret_err) |err| return err else return;
                         } else if (self.loadState(.monotonic) != .running) return;
-                        if (!try handler(ctx, &info, &self.pool_state)) self.sendQuit();
+                        const should_run = handler(ctx, &info, &self.pool_state) catch |err| {
+                            self.sendQuit();
+                            ret_err = err;
+                            continue;
+                        };
+                        if (!should_run) self.sendQuit();
                     }
                 }
             };

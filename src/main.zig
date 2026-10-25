@@ -59,7 +59,7 @@ pub const zengine_options: zengine.Options = .{
     .core = .{
         .log_allocations = false,
     },
-    .has_debug_ui = true,
+    .has_debug_ui = false,
     .gfx = .{
         .enable_normal_smoothing = true,
         .normal_smoothing_angle_limit = 90.1,
@@ -127,7 +127,7 @@ var scene_map: zengine.containers.ArrayMap(Scene.Node.Id) = .empty;
 var controls = zengine.controls.CameraControls{};
 var log_window: zengine.ui.LogWindow = .invalid;
 var debug_ui: zengine.ui.DebugUI = undefined;
-var property_editor: ui.PropertyEditorWindow = undefined;
+// var property_editor: ui.PropertyEditorWindow = undefined;
 var allocs_window: zengine.ui.AllocsWindow = undefined;
 var perf_window: zengine.ui.PerfWindow = undefined;
 
@@ -409,7 +409,7 @@ fn load(self: *const Zengine) !bool {
     Zengine.sections.sub(.load).sub(.ui).begin();
 
     debug_ui = .init();
-    property_editor = .init(allocators.frame());
+    // property_editor = .init(allocators.frame());
     allocs_window = .init();
     perf_window = .init(allocators.frame());
 
@@ -606,18 +606,18 @@ fn update(self: *const Zengine) !bool {
 }
 
 fn render(self: *const Zengine) !void {
-    defer property_editor.clearNodes();
-    const gfx_node = try property_editor.appendNode(@typeName(gfx), "gfx");
-    _ = try self.renderer.propertyEditorNode(&property_editor, gfx_node);
-    _ = try gfx_loader.propertyEditorNode(&property_editor, gfx_node);
-    _ = try self.scene.propertyEditorNode(&property_editor, gfx_node);
-    _ = try gfx_passes.propertyEditorNode(&property_editor, gfx_node);
-    _ = try propertyEditorNode(&property_editor);
+    // defer property_editor.clearNodes();
+    // const gfx_node = try property_editor.appendNode(@typeName(gfx), "gfx");
+    // _ = try self.renderer.propertyEditorNode(&property_editor, gfx_node);
+    // _ = try gfx_loader.propertyEditorNode(&property_editor, gfx_node);
+    // _ = try self.scene.propertyEditorNode(&property_editor, gfx_node);
+    // _ = try gfx_passes.propertyEditorNode(&property_editor, gfx_node);
+    // _ = try propertyEditorNode(&property_editor);
 
     self.ui.beginDraw();
     self.ui.drawMainMenuBar(.{
         .allocs_open = &allocs_window.is_open,
-        .property_editor_open = &property_editor.is_open,
+        // .property_editor_open = &property_editor.is_open,
         .perf_open = &perf_window.is_open,
         .log_open = &log_window.is_open,
         .debug_ui_open = &debug_ui.is_open,
@@ -625,7 +625,7 @@ fn render(self: *const Zengine) !void {
     self.ui.drawDock();
 
     self.ui.draw(debug_ui.element(), &debug_ui.is_open);
-    self.ui.draw(property_editor.element(), &property_editor.is_open);
+    // self.ui.draw(property_editor.element(), &property_editor.is_open);
     self.ui.draw(allocs_window.element(), &allocs_window.is_open);
     self.ui.draw(perf_window.element(), &perf_window.is_open);
     self.ui.draw(log_window.element(), &log_window.is_open);
@@ -648,11 +648,11 @@ fn render(self: *const Zengine) !void {
         &gfx_fence,
     );
     log.debug("did draw: {}", .{did_draw});
-    const to_sleep = if (did_draw)
-        1_000_000_000 / 120 -| global.sinceLastFrameNano()
-    else
-        ((1_000_000_000 / 120 - 1_000_000) -| global.sinceLastFrameNano()) + 1_000_000;
-    if (to_sleep != 0) zengine.sleepNano(to_sleep);
+    // const to_sleep = if (did_draw)
+    //     1_000_000_000 / 120 -| global.sinceLastFrameNano()
+    // else
+    //     ((1_000_000_000 / 120 - 1_000_000) -| global.sinceLastFrameNano()) + 1_000_000;
+    // if (to_sleep != 0) zengine.sleepNano(to_sleep);
 }
 
 fn executeRaycast(self: *const Zengine) void {

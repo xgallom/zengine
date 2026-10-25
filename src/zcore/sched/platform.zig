@@ -6,17 +6,12 @@ const std = @import("std");
 const assert = std.debug.assert;
 const builtin = @import("builtin");
 
+const c = @import("ext");
+
 const allocators = @import("../allocators.zig");
 const options = @import("../options.zig").options;
 
 const log = std.log.scoped(.sched_thread_pool);
-
-const c = switch (builtin.os.tag) {
-    .macos => @cImport({
-        @cInclude("pthread.h");
-    }),
-    else => @compileError("Unsupported OS"),
-};
 
 pub const ThreadPriority = enum { main, default, background };
 pub fn setPriority(comptime priority: ThreadPriority) !void {
